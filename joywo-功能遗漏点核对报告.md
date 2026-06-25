@@ -210,6 +210,99 @@
 
 ---
 
+## 五、美团渠道专项深度核对（重点）
+
+美团（点评直果 zhenguo 开放平台）是全系统迭代最多的模块（PMS-TD-003 一路做到 TD-064，约 50 个 TD）。代码在 `services/api/app/api/v1/channels_meituan.py`（路由）+ `services/api/app/services/channels/meituan/`（30 个文件）。清单第 "美团渠道" 一节方向对，但**把它压缩得太简略**，丢了很多关键能力和"到底同步了哪些信息"。
+
+### 5.1 完整功能清单（按类别）
+
+**(1) OAuth / 连接管理**
+- 生成授权链接 `GET /channels/meituan/authorize`（state 防 CSRF，存 Redis，见 `state.py`）
+- 授权回调 `GET /channels/meituan/callback`（落 access/refresh token + 门店绑定）
+- 连接状态 `GET /channels/meituan/status`、断开 `DELETE /channels/meituan/disconnect`、重置 `POST .../reset`
+- **公司网关中转授权** `GET /channels/meituan/relay-callback`（PMS-TD-004，OAuth 经公司 gateway 转发）
+- **mock-bind 联调** `GET /channels/meituan/debug/mock-bind`（dev 用全局 singleton token，PMS-TD-004）
+- **token 自动刷新 + 刷新失败自动停用连接**（`scheduler_jobs.run_meituan_token_refresh`，token 寿命约 1h，半小时控频；refresh 失败标记 `meituan_channel_disabled_by_refresh_failure`，后续 cron 跳过）
+
+**(2) 拉取同步（美团 → PMS，只读入站）**
+- **房源/产品同步** `sync_product.py`（PMS-TD-003 T4）：房型、房间、房东级房间池
+- **房源静态信息同步** `sync_product.py`（PMS-TD-061）：封面图/图集、地址、**经纬度坐标**、**设施（拉 307 条全局设施字典翻译）**、描述、面积
+- **订单同步** `sync_order.py`（PMS-TD-003 T5 + 010 增量窗口）：列表分页 + 逐单 `orderDetail`（5 路并发），90 天首灌 / 24h 增量
+- **结算财务同步** `settlement_sync.py`（PMS-TD-035/051）：从 `orderDetail.priceInfo` 落 `booking_settlements`
+- **入住指南导入** `guide_import.py`（PMS-TD-058）+ **自动"只填空"导入 cron**（PMS-TD-064，错峰 13/43 分）
+- **房客资料补全** `guest_profile.py`（3002 echo 取昵称/头像，PMS-TD-052）、`public_profile.py`（3003 公众号 publicId 昵称/头像，PMS-TD-054）
+
+**(3) 反向推送（PMS → 美团，出站；走 `meituan_push_outbox` + `push_worker`）**
+共 11 个 payload builder（`push.py`），动作（`ACTION_TO_PATH`）：
+- 订单：`order_accept` 接单、`order_refuse` 拒单、`order_cancel` 取消、`arrange_room` 排房、`order_check_in` 确认入住、`order_refuse_negotiate_refund` 拒绝协商退款
+- 日历：`room_status_update` 房态、`room_price_update` 价格、`room_stock_update` 库存（按日批量）
+- 房源：`product_info_update` 房源信息、`product_media_update` 房源图片
+- **自动排房**：日历有空房时自动给美团订单排房，溢出生成待办（PMS-TD-017）
+- **推送失败可见性**：失败按业务码分类、永久失败通知房东、38266 重试（PMS-TD-011/060）
+
+**(4) inform 通用 Webhook（美团 → PMS，23 种事件）** `POST /channels/meituan/webhook/inform`
+- 入站 AES 解密 `encryptedParam$`（PMS-TD-013），落 `meituan_inform_inbox`
+- **1001 库存 / 1002 房态 / 1005 价格 / 1113 房间状态** → 触发**价格反向取价同步**（`inform_price_sync.py`，PMS-TD-055）
+- **1003 上架 / 1004 下架 / 1111 房间静态变更 / 1112 房间-房源绑定** → 触发**单产品同步**（`inform_product_sync.py`，PMS-TD-053）
+- **2001 订单状态 / 2002 退款 / 2003 排房** → 触发**即时订单同步**（`inform_order_sync.py`，PMS-TD-015）
+- **3001 房客→房东 / 3002 房东→房客 / 3003 公众号→房东** → 翻译成 `IncomingOTAMessage` 入收件箱（`inbound.py` + `message.py`）
+
+**(5) 聊天消息**
+- 收：3001/3002/3003 三种来源（`inbound.py`）；3003 系统消息 body 是序列化 JSON 需二次解析
+- 发：`POST /channels/meituan/send-message`（房东回复，调美团 message API）
+- 据订单建会话 `POST .../conversation-from-booking`；**占位会话（placeholder conversation）机制**：订单先建占位会话，收到首条消息再激活（PMS-TD-009/028，含每 5 分钟救济 cron）
+- 系统/营销会话折叠（PMS-TD-054/057）
+
+**(6) 其它**
+- **协商退款设置查询** `GET /channels/meituan/negotiate-refund-settings`
+- **生命周期事件 → AI 待办通知**（订单状态变更生成 `AgentTask`，PMS-TD-025）
+- **连接失效横幅 + 重新授权入口**（PMS-TD-050）
+- 订单号 hex↔数字双存（`channel_booking_id` + `channel_booking_id_plain`，PMS-TD-006）
+
+### 5.2 定时任务（cron）汇总
+
+| cron 入口 | 频率 | 作用 |
+|---|---|---|
+| `run_meituan_sync_all` | */10 分钟 | 串行 token 刷新 → 房源同步(30min 控频) → 订单同步(每轮) |
+| `run_meituan_settlement_sync` | 独立 | 结算财务同步 |
+| `run_meituan_sync_price` | 9-54/15 错峰 | 美团→PMS 价格反向同步（TD-055） |
+| `run_meituan_guide_auto_import` | 13/43 分错峰 | 入住指南自动"只填空"导入（TD-064） |
+| `run_meituan_push_worker` | 持续 | 消费 outbox 反向推送美团 |
+| 占位 conv 救济 | 每 5 分钟 | 激活滞留占位会话（TD-028） |
+
+### 5.3 "美团到底同步了哪些重要信息？"（数据字段层面）
+
+**A. 订单信息**（`mapper.py` `map_order_to_booking_fields`）：渠道 `meituan`、美团订单号（hex + 数字 plain）、**房客姓名 guestName**、**房客手机号 mobile**、入住/退房日期、间夜数、**订单金额（分）**、订单状态（美团 4 位码映射）、备注 remark→notes、排房房间 `arrangeRoomInfos[0].roomId`→本地 room_id。
+
+**B. 结算财务信息**（`settlement_mapper.py` → `booking_settlements`，**金额全程"分"**）：
+- `sellingMoney` 挂牌房费、`commission` 平台佣金、`commissionRate` 佣金率（千分位整数，1000=10%）、`incomeMoney` 净房费（= 挂牌 − 佣金）、`deposit` 押金、`discount` 优惠、`cancelMoney` 退款、`orderMoney` 订单总额、`roomPriceItemList` **按日房价+佣金率明细**、原始 `priceInfo` 留底。带勾稽校验（挂牌 − 佣金 == 净房费）。
+
+**C. 房源/房型信息**（`mapper.py` + TD-061）：房型名 title、挂牌价 normalPrice、户型 layoutRoom→bedrooms、房间名 roomName、**封面图/图集**、**详细地址**、**经纬度坐标**、**设施（翻译 307 条字典）**、描述、面积。
+
+**D. 入住指南内容**（`guide_import.py`，TD-058/064）：Wi-Fi 名/密码、路线图片+到达指引文字、门锁密码使用说明。（**注意**：不导入门锁密码本体，不覆盖 house_rules / lock_mode 等本地字段。）
+
+**E. 房客社交资料**：昵称 nickname、头像 avatar（两个来源：3002 房东 echo / 3003 公众号 publicId）。
+
+**F. 聊天消息**：3001/3002/3003 的文本/产品消息内容、收发时间、收发方 ID。
+
+### 5.4 清单在美团部分的具体遗漏 / 不足
+
+| 清单写法 | 实际情况 / 遗漏 |
+|---|---|
+| "同步：产品/订单/价格/结算/指南导入/客人资料补全" | 方向对，但漏了**房源静态信息（地址/经纬度/设施/图片/面积）**、**指南自动只填空 cron**、客人资料补全有 **3002/3003 两个来源** |
+| "订单动作：接受/拒绝/取消/确认入住/拒绝协商退款/撤销房间分配" | 漏了 **arrange_room 排房 + 自动排房 + 溢出待办**；"撤销房间分配"在代码里没有独立动作 |
+| 没有单列"反向推送房态/价格/库存" | 实际有 `room_status/price/stock_update` 三个**日历反向推送**动作（出站到美团），是核心能力 |
+| "Webhook：新订单/状态变化/消息/授权/退款" | 实际是 **23 种 inform 事件**，细分到库存(1001)/房态(1002)/价格(1005)/上下架(1003/1004)/房间变更(1111/1112/1113)/订单(2001-2003)/消息(3001-3003)，且**入站要 AES 解密** |
+| 没提结算字段 | 结算同步的是**完整财务明细**（挂牌/佣金/佣金率/净房费/押金/优惠/退款/按日明细），不是单一数字 |
+| 没提会话机制 | **占位会话 + 激活 + 救济 cron** 是消息打通的关键设计 |
+| 没提推送可靠性 | **outbox + push_worker + 业务码分类 + 失败通知房东 + 重试** 是反向推送的核心 |
+| 没提连接健壮性 | **token 自动刷新 + 刷新失败自动停用 + 失效横幅 + 重新授权** |
+| 没提 mock-bind / relay-callback | dev 联调与**公司网关中转 OAuth**两条接入路径 |
+
+> 一句话：清单把美团当成"OAuth + 几个同步 + Webhook"，实际它是一套**双向（拉取入站 + 反向推送出站）、事件驱动（23 种 inform）、带可靠投递（outbox/worker/重试）、覆盖房源/订单/财务/指南/消息/房客资料全链路**的渠道中台。
+
+---
+
 ### 附：核对依据
 
 - 功能清单原文：有道云笔记《久窝系统现有功能模块 list》（已抓取全文比对）
