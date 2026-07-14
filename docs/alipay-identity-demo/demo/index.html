@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>久窝 · 支付宝小程序实名三要素/实人认证 DEMO</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --brand: #1677ff;
+      --brand-dark: #0f5ed7;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --soft: #eff6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(160deg, #e8eefc 0%, #f7f8fa 45%, #eef2ff 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .lead { color: var(--muted); margin: 0 0 22px; line-height: 1.6; }
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .panel, .phone-shell {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+    .panel { padding: 18px; }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; }
+    .meta { font-size: 13px; color: var(--muted); line-height: 1.7; }
+    .meta code {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-size: 12px;
+    }
+    .steps {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .step-btn {
+      text-align: left;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .step-btn.active {
+      border-color: var(--brand);
+      background: var(--soft);
+      color: var(--brand-dark);
+      font-weight: 600;
+    }
+    .step-btn small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }
+    .phone-wrap { display: flex; justify-content: center; padding: 18px; }
+    .phone {
+      width: 375px;
+      min-height: 720px;
+      border-radius: 28px;
+      border: 10px solid #111827;
+      background: #f8fafc;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0,0,0,.18);
+    }
+    .status-bar {
+      height: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 11px;
+      color: #111;
+      background: #fff;
+    }
+    .nav {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      font-weight: 600;
+      position: relative;
+    }
+    .nav .back {
+      position: absolute;
+      left: 12px;
+      border: 0;
+      background: transparent;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .screen { padding: 14px; min-height: 640px; }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .chip {
+      display: inline-block;
+      font-size: 12px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #fff7ed;
+      color: var(--warn);
+    }
+    .chip.ok { background: #ecfdf5; color: var(--ok); }
+    .title { font-size: 18px; font-weight: 700; margin: 4px 0 8px; }
+    .row { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 13px; }
+    .row span:first-child { color: var(--muted); }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .kyc-bar {
+      margin-top: 12px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .kyc-bar p { margin: 0; font-size: 13px; flex: 1; }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.secondary { background: #e5e7eb; color: #111827; }
+    .btn.ghost { background: transparent; color: var(--brand); border: 1px solid #bfdbfe; }
+    .btn.block { width: 100%; margin-top: 10px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .field { margin: 10px 0; }
+    .field label { display: block; font-size: 13px; margin-bottom: 6px; }
+    .field input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 11px 12px;
+      font-size: 14px;
+    }
+    .mask {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, .45);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 16px;
+    }
+    .auth-sheet {
+      width: 100%;
+      background: #fff;
+      border-radius: 18px;
+      padding: 18px 16px 16px;
+    }
+    .auth-sheet h3 { margin: 0 0 8px; font-size: 17px; }
+    .perm {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin: 10px 0 14px;
+      font-size: 13px;
+      line-height: 1.7;
+      background: #f9fafb;
+    }
+    .auth-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .face-frame {
+      width: 210px;
+      height: 210px;
+      margin: 24px auto;
+      border-radius: 50%;
+      border: 3px dashed #93c5fd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      background: radial-gradient(circle at 50% 40%, #dbeafe, #fff 70%);
+      font-size: 13px;
+      text-align: center;
+      padding: 20px;
+    }
+    .lock-box {
+      background: #111827;
+      color: #fff;
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      letter-spacing: 4px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .note {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 12px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>久窝支付宝小程序 · 实名三要素 / 实人认证 DEMO</h1>
+    <p class="lead">
+      本 DEMO 供支付宝能力开通申请审核使用。请左侧切换 4 个必审场景；也可在右侧手机界面内点击按钮完成完整交互。
+      小程序名称：久窝朋赞会；支付宝小程序 AppID：<code>2021006157657093</code>。
+    </p>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2>审核场景切换</h2>
+        <div class="meta">
+          业务：民宿/酒店旅客自助入住指南<br />
+          目的：住宿实名登记 + 展示门锁密码前身份核验<br />
+          能力：方案二（实名三要素）/ 方案三（刷脸实人）
+        </div>
+        <div class="steps" id="sceneButtons"></div>
+        <div class="note">
+          用户拒绝授权后，不会强制反复弹窗；只有用户再次点击「重新发起核验」才会再次调起授权。
+        </div>
+      </aside>
+
+      <section class="phone-shell">
+        <div class="phone-wrap">
+          <div class="phone" id="phone">
+            <div class="status-bar"><span>9:41</span><span>久窝 DEMO</span><span>100%</span></div>
+            <div class="nav">
+              <button class="back" id="backBtn" type="button">‹</button>
+              <span id="navTitle">入住指南</span>
+            </div>
+            <div class="screen" id="screen"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const scenes = [
+      { id: "before", label: "1. 授权前上级场景", desc: "入住指南页，点击「去认证」触发授权" },
+      { id: "auth", label: "2. 授权弹窗页面", desc: "展示申请权限与同意/拒绝" },
+      { id: "agree", label: "3. 同意授权后下级场景", desc: "核验通过，展示完整入住指南与门锁密码" },
+      { id: "deny", label: "4. 拒绝授权后下级场景", desc: "核验未完成，不强制反复弹窗" },
+      { id: "face", label: "5. 方案三刷脸页（补充）", desc: "三要素通过后继续刷脸实人认证" },
+    ];
+
+    let state = {
+      scene: "before",
+      verified: false,
+      deniedOnce: false,
+      showAuth: false,
+      faceDone: false,
+    };
+
+    const screen = document.getElementById("screen");
+    const navTitle = document.getElementById("navTitle");
+    const sceneButtons = document.getElementById("sceneButtons");
+
+    function setScene(id, opts = {}) {
+      state.scene = id;
+      if (id === "auth") state.showAuth = true;
+      if (id === "before") { state.showAuth = false; state.verified = false; state.faceDone = false; }
+      if (id === "agree") { state.verified = true; state.showAuth = false; state.faceDone = true; }
+      if (id === "deny") { state.verified = false; state.deniedOnce = true; state.showAuth = false; }
+      if (id === "face") { state.showAuth = false; }
+      if (opts.keepAuth) state.showAuth = true;
+      render();
+    }
+
+    function renderButtons() {
+      sceneButtons.innerHTML = scenes.map((s) => `
+        <button class="step-btn ${state.scene === s.id ? "active" : ""}" data-id="${s.id}">
+          ${s.label}
+          <small>${s.desc}</small>
+        </button>
+      `).join("");
+      sceneButtons.querySelectorAll("button").forEach((btn) => {
+        btn.onclick = () => setScene(btn.dataset.id);
+      });
+    }
+
+    function guideBase(extraHtml = "") {
+      return `
+        <div class="card">
+          <span class="chip ${state.verified ? "ok" : ""}">${state.verified ? "已认证" : "未认证"}</span>
+          <div class="title">清溪院 · 大床房 101</div>
+          <div class="row"><span>入住人</span><strong>张三</strong></div>
+          <div class="row"><span>入住日期</span><strong>07-14 至 07-15</strong></div>
+          <div class="row"><span>Wi-Fi</span><strong>${state.verified ? "QingXi_Guest / qingxi2026" : "核验后可见"}</strong></div>
+        </div>
+        <div class="card">
+          <div class="row"><span>地址</span><strong>${state.verified ? "杭州市西湖区××路××号" : "核验后可见详细门牌"}</strong></div>
+          <div class="muted">${state.verified ? "到达后请走侧门，电梯至 3 楼右转。" : "完整导航与门锁密码需完成身份核验后展示。"}</div>
+          ${extraHtml}
+        </div>
+      `;
+    }
+
+    function renderBefore() {
+      navTitle.textContent = "入住指南";
+      screen.innerHTML = guideBase(`
+        <div class="kyc-bar">
+          <p>入住前需完成实名认证以获取门锁密码</p>
+          <button class="btn" id="goAuth">去认证</button>
+        </div>
+      `) + `
+        <div class="card">
+          <div class="muted">根据旅馆业实名登记要求，旅客需完成本人身份核验后，方可查看门锁密码、蓝牙开锁与完整入住信息。</div>
+        </div>
+      `;
+      document.getElementById("goAuth").onclick = () => {
+        state.scene = "auth";
+        state.showAuth = true;
+        render();
+      };
+    }
+
+    function renderAuthOverlay(baseRenderer) {
+      baseRenderer();
+      const overlay = document.createElement("div");
+      overlay.className = "mask";
+      overlay.innerHTML = `
+        <div class="auth-sheet">
+          <h3>获取以下权限</h3>
+          <div class="muted">久窝将使用支付宝实名信息进行住宿入住身份核验，确认入住人与实名账户一致。核验信息仅用于本次住宿登记与安全验证。</div>
+          <div class="perm">
+            · 姓名<br />
+            · 身份证号<br />
+            · 手机号<br />
+            · 实名核验结果
+          </div>
+          <div class="auth-actions">
+            <button class="btn secondary" id="denyBtn">拒绝</button>
+            <button class="btn" id="agreeBtn">同意</button>
+          </div>
+        </div>
+      `;
+      document.getElementById("phone").appendChild(overlay);
+      document.getElementById("denyBtn").onclick = () => {
+        state.showAuth = false;
+        state.deniedOnce = true;
+        state.scene = "deny";
+        render();
+      };
+      document.getElementById("agreeBtn").onclick = () => {
+        state.showAuth = false;
+        state.scene = "face";
+        render();
+      };
+    }
+
+    function renderDeny() {
+      navTitle.textContent = "身份核验";
+      screen.innerHTML = `
+        <div class="card">
+          <div class="title">身份核验未完成</div>
+          <p class="muted">为保障住宿安全并满足实名登记要求，完成身份核验后才可查看完整入住指南和门锁密码。</p>
+          <button class="btn block" id="retryBtn">重新发起核验</button>
+          <button class="btn secondary block" id="contactBtn">联系房东</button>
+          <button class="btn ghost block" id="backGuide">返回订单</button>
+        </div>
+        <div class="note">已拒绝授权。系统不会自动重复弹窗；仅在用户主动点击「重新发起核验」时再次调起。</div>
+      `;
+      document.getElementById("retryBtn").onclick = () => {
+        state.scene = "auth";
+        state.showAuth = true;
+        render();
+      };
+      document.getElementById("contactBtn").onclick = () => alert("DEMO：跳转联系房东 / 客服");
+      document.getElementById("backGuide").onclick = () => setScene("before");
+    }
+
+    function renderFace() {
+      navTitle.textContent = "刷脸实人认证";
+      screen.innerHTML = `
+        <div class="card">
+          <div class="title">请完成刷脸实人认证</div>
+          <p class="muted">三要素实名验证已通过。为确认本人操作，请正对屏幕、光线充足、露出完整人脸。</p>
+          <div class="face-frame">模拟人脸采集区域<br />（支付宝刷脸组件）</div>
+          <button class="btn block" id="faceOk">刷脸通过</button>
+          <button class="btn secondary block" id="faceCancel">取消认证</button>
+        </div>
+      `;
+      document.getElementById("faceOk").onclick = () => {
+        state.verified = true;
+        state.faceDone = true;
+        state.scene = "agree";
+        render();
+      };
+      document.getElementById("faceCancel").onclick = () => {
+        state.scene = "deny";
+        render();
+      };
+    }
+
+    function renderAgree() {
+      navTitle.textContent = "入住指南";
+      screen.innerHTML = guideBase(`
+        <div style="margin-top:12px">
+          <div class="muted" style="margin-bottom:8px">门锁密码（核验通过后可见）</div>
+          <div class="lock-box">258046</div>
+        </div>
+      `) + `
+        <div class="card">
+          <div class="chip ok">核验成功</div>
+          <p class="muted" style="margin-top:8px">实名三要素 + 刷脸实人认证已通过。您可查看完整入住指南、门锁密码与蓝牙开锁入口。</p>
+          <button class="btn block" id="doneBtn">完成</button>
+        </div>
+      `;
+      document.getElementById("doneBtn").onclick = () => alert("DEMO：返回订单列表 / 继续入住");
+    }
+
+    function render() {
+      // clear previous overlay if any
+      document.querySelectorAll(".mask").forEach((n) => n.remove());
+      renderButtons();
+      if (state.scene === "before") renderBefore();
+      else if (state.scene === "auth") renderAuthOverlay(renderBefore);
+      else if (state.scene === "deny") renderDeny();
+      else if (state.scene === "face") renderFace();
+      else if (state.scene === "agree") renderAgree();
+    }
+
+    document.getElementById("backBtn").onclick = () => {
+      if (state.scene === "auth") setScene("before");
+      else if (state.scene === "face") setScene("before");
+      else if (state.scene === "deny") setScene("before");
+      else if (state.scene === "agree") setScene("before");
+    };
+
+    render();
+  </script>
+</body>
+</html>
