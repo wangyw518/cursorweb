@@ -1,0 +1,7 @@
+node_modules
+dist
+minigame-dist
+.env
+.DS_Store
+*.local
+.vite

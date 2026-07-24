@@ -1,0 +1,16 @@
+{
+  "name": "moyu-judge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "摸鱼判官 - 微信小游戏（可浏览器预览）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:minigame": "node scripts/build-minigame.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
