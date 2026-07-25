@@ -23,8 +23,8 @@ npm run build:minigame
 
 用**微信开发者工具**导入 `minigame-dist/`（或直接导入仓库内 `minigame/` 做原生调试）。
 
-- 游客 AppID 可预览玩法
-- 正式发布把 AppID 写入 `.env` / `project.config.json`
+- 当前工程 AppID：`wxc8683bd9c1599d7d`（已写入 `minigame/project.config.json`）
+- 激励视频广告位仍需在流量主开通后填入 `.env`
 
 ## 架构要点
 
