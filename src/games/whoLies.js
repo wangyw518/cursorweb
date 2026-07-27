@@ -31,8 +31,8 @@ export function mountWhoLies(root) {
   const TOTAL = 10;
   const WINDOW = 1.2;
 
-  const stage = el('div', { className: 'stage' });
-  root.append(stage);
+  const stage = root;
+  clear(stage);
 
   function nextRound() {
     locked = false;
@@ -113,19 +113,22 @@ export function mountWhoLies(root) {
     hud.innerHTML = `<span>轮次 <strong>${round}/${TOTAL}</strong></span><span>得分 <strong>${score}</strong></span><span>连击 <strong>${streak}</strong></span>`;
     stage.append(hud);
 
-    stage.append(
+    const body = el('div', {
+      style: 'position:absolute;inset:44px 0 0;display:flex;flex-direction:column;padding:8px 0 12px;z-index:3',
+    });
+    body.append(
       el('div', {
-        style: 'margin:52px 16px 8px;color:#9db5a8;font-size:13px;text-align:center',
+        style: 'margin:0 16px 8px;color:#9db5a8;font-size:13px;text-align:center',
         text: '三句话里只有一句假话，快指出说谎的人',
       }),
     );
     const timerBg = el('div', {
-      style: 'margin:0 16px 10px;height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden',
+      style: 'margin:0 16px 10px;height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;flex:0 0 auto',
     });
     timerBg.append(el('div', { 'data-timer': '1', style: `height:100%;width:100%;background:#ffb020` }));
-    stage.append(timerBg);
+    body.append(timerBg);
 
-    const faces = el('div', { className: 'faces' });
+    const faces = el('div', { className: 'faces', style: 'flex:1;align-content:center' });
     options.forEach((opt, i) => {
       const face = FACES[(round * 3 + i) % FACES.length];
       faces.append(
@@ -135,7 +138,8 @@ export function mountWhoLies(root) {
         ]),
       );
     });
-    stage.append(faces);
+    body.append(faces);
+    stage.append(body);
   }
 
   stage.append(

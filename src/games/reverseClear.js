@@ -42,12 +42,11 @@ export function mountReverseClear(root) {
   let steps;
   let maxSteps;
   let path;
-  const stage = el('div', { className: 'stage' });
+  const stage = root;
+  clear(stage);
   const canvas = el('canvas');
-  stage.append(canvas);
   const hud = el('div', { className: 'hud-top' });
-  stage.append(hud);
-  root.append(stage);
+  stage.append(canvas, hud);
   const ctx = canvas.getContext('2d');
   let cssW = 0;
   let cssH = 0;
@@ -247,19 +246,21 @@ export function mountReverseClear(root) {
     else tryMove(0, dy > 0 ? 1 : -1);
   });
 
-  const dock = el('div', { className: 'dock row' });
-  const mk = (label, dx, dy) =>
-    el('button', {
-      className: 'btn btn-secondary',
-      text: label,
-      onClick: () => tryMove(dx, dy),
-    });
-  // 2x2 pad-ish via 4 buttons in 2 rows - use nested
-  clear(dock);
-  const pad = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px' });
-  pad.append(el('div'), mk('上', 0, -1), el('div'), mk('左', -1, 0), mk('下', 0, 1), mk('右', 1, 0));
-  dock.append(pad);
-  stage.append(dock);
+  let dock;
+  function mountDock() {
+    dock?.remove();
+    dock = el('div', { className: 'dock' });
+    const mk = (label, dx, dy) =>
+      el('button', {
+        className: 'btn btn-secondary',
+        text: label,
+        onClick: () => tryMove(dx, dy),
+      });
+    const pad = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px' });
+    pad.append(el('div'), mk('上', 0, -1), el('div'), mk('左', -1, 0), mk('下', 0, 1), mk('右', 1, 0));
+    dock.append(pad);
+    stage.append(dock);
+  }
 
   window.addEventListener('resize', resize);
   resize();
@@ -270,7 +271,17 @@ export function mountReverseClear(root) {
     resultPanel({
       title: '倒着通关',
       body: '你出生在终点。滑动/点方向，一步步退回 S。步数不够就会崩——专治「差一点点」。',
-      actions: [{ label: '开始倒退', primary: true, onClick: () => stage.querySelector('.panel')?.remove() }],
+      actions: [
+        {
+          label: '开始倒退',
+          primary: true,
+          onClick: () => {
+            stage.querySelector('.panel')?.remove();
+            mountDock();
+            resize();
+          },
+        },
+      ],
     }),
   );
 

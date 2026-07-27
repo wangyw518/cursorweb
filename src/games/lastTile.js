@@ -19,11 +19,13 @@ export function mountLastTile(root) {
   let raf;
   let particles = [];
 
+  const stage = root;
+  clear(stage);
   const canvas = el('canvas');
-  const stage = el('div', { className: 'stage' }, [canvas]);
   const hud = el('div', { className: 'hud-top' });
-  stage.append(hud);
-  root.append(stage);
+  stage.append(canvas, hud);
+  let started = false;
+  let dock = null;
 
   const ctx = canvas.getContext('2d');
   let cssW = 0;
@@ -50,7 +52,8 @@ export function mountLastTile(root) {
     selectedMode = 'place';
     over = false;
     particles = [];
-    mountDock();
+    if (started) mountDock();
+    else dock?.remove();
     renderHud();
   }
 
@@ -221,7 +224,6 @@ export function mountLastTile(root) {
     hud.innerHTML = `<span>回合 <strong>${turn === 'you' ? '你' : 'AI'}</strong></span><span>空格 <strong>${emptyCells().length}</strong></span><span>陷阱 <strong>${trapsLeft.you}</strong></span>`;
   }
 
-  let dock;
   function mountDock() {
     dock?.remove();
     dock = el('div', { className: 'dock row' }, [
@@ -266,12 +268,22 @@ export function mountLastTile(root) {
   reset();
   draw();
 
-  // intro
   stage.append(
     resultPanel({
       title: '最后一格',
       body: '轮流占格。你可埋最多 2 个隐形坑。踩坑会丢掉回合。让对方无路可走就赢。',
-      actions: [{ label: '开始坑人', primary: true, onClick: () => stage.querySelector('.panel')?.remove() }],
+      actions: [
+        {
+          label: '开始坑人',
+          primary: true,
+          onClick: () => {
+            stage.querySelector('.panel')?.remove();
+            started = true;
+            mountDock();
+            resize();
+          },
+        },
+      ],
     }),
   );
 

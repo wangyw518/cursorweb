@@ -8,11 +8,11 @@ export const redPacket = {
 };
 
 export function mountRedPacket(root) {
+  const stage = root;
+  clear(stage);
   const canvas = el('canvas');
-  const stage = el('div', { className: 'stage' }, [canvas]);
   const hud = el('div', { className: 'hud-top' });
-  stage.append(hud);
-  root.append(stage);
+  stage.append(canvas, hud);
   const ctx = canvas.getContext('2d');
 
   let cssW = 0;
@@ -196,6 +196,7 @@ export function mountRedPacket(root) {
           primary: true,
           onClick: () => {
             stage.querySelector('.panel')?.remove();
+            resize();
             start();
           },
         },

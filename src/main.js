@@ -63,36 +63,37 @@ function renderHub() {
 
 function renderShell(game) {
   const stageHost = el('div', { className: 'stage', id: 'game-root' });
-  app.append(
-    el('div', { className: 'shell' }, [
-      el('div', { className: 'shell-bar' }, [
-        el('button', {
-          className: 'chip-btn',
-          text: '← 大厅',
-          onClick: () => {
-            location.hash = '#/';
-          },
-        }),
-        el('h1', { text: game.meta.name }),
-        el('button', {
-          className: 'chip-btn',
-          text: '重开',
-          onClick: () => route(),
-        }),
-      ]),
-      stageHost,
+  const shell = el('div', { className: 'shell' }, [
+    el('div', { className: 'shell-bar' }, [
+      el('button', {
+        className: 'chip-btn',
+        text: '← 大厅',
+        onClick: () => {
+          location.hash = '#/';
+        },
+      }),
+      el('h1', { text: game.meta.name }),
+      el('button', {
+        className: 'chip-btn',
+        text: '重开',
+        onClick: () => route(),
+      }),
     ]),
-  );
-  // override history.back used inside games
+    stageHost,
+  ]);
+  app.append(shell);
+
   const realBack = history.back.bind(history);
   history.back = () => {
     location.hash = '#/';
   };
-  unmount = () => {
-    history.back = realBack;
-    gameUnmount?.();
-  };
-  const gameUnmount = game.mount(stageHost);
+
+  // Wait a frame so flex layout assigns height before canvas measure
+  let gameUnmount = null;
+  requestAnimationFrame(() => {
+    gameUnmount = game.mount(stageHost);
+  });
+
   unmount = () => {
     history.back = realBack;
     if (typeof gameUnmount === 'function') gameUnmount();

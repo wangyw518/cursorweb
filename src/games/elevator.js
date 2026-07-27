@@ -28,8 +28,8 @@ export function mountElevator(root) {
   let over;
   let ui = {};
 
-  const stage = el('div', { className: 'stage' });
-  root.append(stage);
+  const stage = root;
+  clear(stage);
 
   function pickPeople() {
     const pool = CAST.filter((c) => c.id !== 'you').sort(() => Math.random() - 0.5).slice(0, 5);

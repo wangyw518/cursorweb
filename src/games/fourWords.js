@@ -51,8 +51,8 @@ export function mountFourWords(root) {
   let hp;
   let turn;
   let custom;
-  const stage = el('div', { className: 'stage' });
-  root.append(stage);
+  const stage = root;
+  clear(stage);
 
   function scoreCustom(text) {
     const t = text.replace(/\s/g, '');
@@ -72,7 +72,7 @@ export function mountFourWords(root) {
 
     const card = el('div', {
       style:
-        'margin:56px 16px 0;padding:18px;border-radius:16px;background:rgba(12,20,16,.88);border:1px solid rgba(214,255,63,.25)',
+        'position:absolute;top:48px;left:16px;right:16px;padding:18px;border-radius:16px;background:rgba(12,20,16,.88);border:1px solid rgba(214,255,63,.25);z-index:3',
     });
     card.append(el('p', { text: scene.prompt, style: 'margin:0 0 12px;font-size:16px;font-weight:800' }));
     const barBg = el('div', { style: 'height:10px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden' });
