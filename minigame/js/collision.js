@@ -1,5 +1,5 @@
 /**
- * Player vs terrain only (M0). Ghost / near-miss queries come later.
+ * Player vs terrain (M0) and player vs active ghosts (M1).
  */
 
 function aabbOverlap(a, b) {
@@ -105,6 +105,35 @@ function collidePlayerTerrain(player, terrain, options) {
   return next;
 }
 
+function ghostBody(ghost) {
+  return ghost && ghost.body ? ghost.body : ghost;
+}
+
+function hitGhost(player, ghosts) {
+  if (!ghosts || !ghosts.length) {
+    return null;
+  }
+  var body = playerAabb(player);
+  for (var i = 0; i < ghosts.length; i++) {
+    var other = ghostBody(ghosts[i]);
+    if (!other) {
+      continue;
+    }
+    if (aabbOverlap(body, playerAabb(other))) {
+      return ghosts[i];
+    }
+  }
+  return null;
+}
+
+function collidePlayerGhosts(player, ghosts) {
+  var hit = hitGhost(player, ghosts);
+  if (!hit) {
+    return { dead: false, reason: null, ghost: null };
+  }
+  return { dead: true, reason: 'ghost', ghost: hit };
+}
+
 module.exports = {
   aabbOverlap,
   playerAabb,
@@ -113,5 +142,7 @@ module.exports = {
   resolveGround,
   hitObstacle,
   fellInGap,
-  collidePlayerTerrain
+  collidePlayerTerrain,
+  hitGhost,
+  collidePlayerGhosts
 };

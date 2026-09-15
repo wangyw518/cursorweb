@@ -1,9 +1,17 @@
 /**
- * Records local jump/dash timestamps for future ghost recording (M1).
- * quietMs is accepted but ignored until ghost spawn rules land.
+ * Session-time jump/dash log: { t, type }.
+ * quietMs gates ghost eligibility only; play is always allowed.
  */
+function quietSec(quietMs) {
+  return (quietMs == null ? 0 : quietMs) / 1000;
+}
+
+function isEligible(t, quietMs) {
+  return t >= quietSec(quietMs);
+}
+
 function createInputTimeline() {
-  const events = [];
+  var events = [];
 
   return {
     record: function (t, type) {
@@ -15,13 +23,17 @@ function createInputTimeline() {
     clear: function () {
       events.length = 0;
     },
-    // Placeholder for M1: gaps of quietMs will gate ghost emission.
-    shouldEmitGhost: function (/* now, quietMs */) {
-      return false;
+    isEligible: function (t, quietMs) {
+      return isEligible(t, quietMs);
+    },
+    shouldEmitGhost: function (t, quietMs) {
+      return isEligible(t, quietMs);
     }
   };
 }
 
 module.exports = {
-  createInputTimeline
+  createInputTimeline,
+  isEligible,
+  quietSec
 };

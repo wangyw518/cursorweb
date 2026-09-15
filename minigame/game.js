@@ -1,5 +1,5 @@
 /**
- * 晚一步 M0 — WeChat native mini-game entry.
+ * 晚一步 M0/M1 — WeChat native mini-game entry.
  * Cold-starts into the runner. No lobby.
  */
 

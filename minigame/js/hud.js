@@ -173,7 +173,12 @@ function drawHud(ctx, model, layout, config) {
     ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var title = model.deathReason === 'gap' ? '掉下去了' : '撞上了';
+    var title = '撞上了';
+    if (model.deathReason === 'gap') {
+      title = '掉下去了';
+    } else if (model.deathReason === 'ghost') {
+      title = '晚了一步';
+    }
     ctx.fillText(title, card.x + card.w / 2, card.y + 36);
     ctx.restore();
 
