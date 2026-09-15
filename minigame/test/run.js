@@ -73,6 +73,7 @@ check('config freeze keys', function () {
   assert.strictEqual(config.nearMissPx, 12);
   almost(config.fixedDt, 1 / 60, 1e-12, 'fixedDt');
   assert.strictEqual(config.physics.jumpVy, 620);
+  assert.strictEqual(config.physics.dashLift, 0);
   assert.strictEqual(config.highHeight, 78);
   assert.strictEqual(config.firstHazardX, 750);
   assert.strictEqual(config.halfScreenInput, false);

@@ -23,7 +23,7 @@
     "gravity": 2400,
     "jumpVy": 620,
     "dashBoost": 220,
-    "dashLift": 240,
+    "dashLift": 0,
     "dashDurationMs": 160,
     "playerW": 16,
     "playerH": 28,
