@@ -33,6 +33,12 @@
   "ghostTrailFrames": 2,
   "feetInset": 0.28,
   "controlSplitX": 0.5,
+  "surviveScorePerSec": 10,
+  "nearMissScore": 30,
+  "nearMissComboCount": 3,
+  "nearMissComboWindowMs": 3000,
+  "scoreMultiplier": 1.5,
+  "scoreMultiplierMs": 2000,
   "colors": {
     "bg": "#0B1020",
     "player": "#5CE1E6",

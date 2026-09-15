@@ -1,5 +1,5 @@
 /**
- * 晚一步 M0/M1 — WeChat native mini-game entry.
+ * 晚一步 M0–M2 — WeChat native mini-game entry.
  * Cold-starts into the runner. No lobby.
  */
 
@@ -7,7 +7,7 @@ var config = require('./js/config.json');
 var { createSession, restartSession } = require('./js/session');
 var { createRunner } = require('./js/runner');
 var hud = require('./js/hud');
-var { installShareHandlers } = require('./js/share');
+var share = require('./js/share');
 
 function getWx() {
   return typeof wx !== 'undefined' ? wx : null;
@@ -89,7 +89,7 @@ function createGame() {
     return null;
   }
 
-  installShareHandlers();
+  share.installShareHandlers();
 
   var canvas = api.createCanvas();
   var ctx = canvas.getContext('2d');
@@ -110,6 +110,8 @@ function createGame() {
   var raf = bindRaf(api);
   var lastTs = null;
   var running = true;
+  var toast = null;
+  var toastUntil = 0;
 
   function refreshView() {
     info = systemInfo(api);
@@ -125,6 +127,8 @@ function createGame() {
     session = restartSession();
     runner.restart(session.seed);
     lastTs = null;
+    toast = null;
+    toastUntil = 0;
   }
 
   function onPointer(x, y) {
@@ -132,6 +136,12 @@ function createGame() {
     var action = hud.hitTest(x, y, layout, model.dead);
     if (action === 'restart') {
       restart();
+      return;
+    }
+    if (action === 'share') {
+      share.share(model, config);
+      toast = '分享已模拟（未调起微信）';
+      toastUntil = Date.now() + 2200;
       return;
     }
     if (action === 'jump') {
@@ -185,6 +195,11 @@ function createGame() {
     runner.render(ctx);
     var model = runner.getHudModel();
     model.menuLeft = view.menuLeft;
+    if (toast && Date.now() < toastUntil) {
+      model.toast = toast;
+    } else {
+      toast = null;
+    }
     hud.drawHud(ctx, model, layout, config);
 
     raf(loop);

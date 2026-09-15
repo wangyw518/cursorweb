@@ -35,16 +35,22 @@ function computeLayout(view) {
     jumpBtn: { x: pad, y: btnY, w: btnW, h: btnH },
     dashBtn: { x: width - pad - btnW, y: btnY, w: btnW, h: btnH },
     deathCard: {
-      x: width / 2 - 118,
-      y: height / 2 - 72,
-      w: 236,
-      h: 132
+      x: width / 2 - 140,
+      y: height / 2 - 118,
+      w: 280,
+      h: 228
     },
     restartBtn: {
-      x: width / 2 - 72,
-      y: height / 2 + 8,
-      w: 144,
+      x: width / 2 - 86,
+      y: height / 2 + 36,
+      w: 172,
       h: 40
+    },
+    shareBtn: {
+      x: width / 2 - 86,
+      y: height / 2 + 84,
+      w: 172,
+      h: 36
     },
     controlSplitX: view.controlSplitX
   };
@@ -58,6 +64,9 @@ function hitTest(x, y, layout, dead) {
   if (dead) {
     if (pointInRect(x, y, layout.restartBtn)) {
       return 'restart';
+    }
+    if (layout.shareBtn && pointInRect(x, y, layout.shareBtn)) {
+      return 'share';
     }
     return null;
   }
@@ -124,7 +133,14 @@ function drawHud(ctx, model, layout, config) {
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#E8EEF8';
-  ctx.fillText('分数  ' + (model.score == null ? 0 : model.score), 16, layout.hudTop);
+  var liveScore = model.score == null ? 0 : model.score;
+  ctx.fillText('分数  ' + liveScore, 16, layout.hudTop);
+  if (model.multiplierRemain > 0) {
+    ctx.fillStyle = nearMiss;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('1.5×', 16, layout.hudTop + 18);
+    ctx.font = 'bold 15px sans-serif';
+  }
 
   ctx.textAlign = 'center';
   ctx.fillText('存活  ' + formatTime(model.surviveSec), layout.width / 2, layout.hudTop);
@@ -171,8 +187,7 @@ function drawHud(ctx, model, layout, config) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.fillStyle = '#E8EEF8';
-    ctx.font = 'bold 20px sans-serif';
+    var cx = card.x + card.w / 2;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     var title = '撞上了';
@@ -181,10 +196,41 @@ function drawHud(ctx, model, layout, config) {
     } else if (model.deathReason === 'ghost') {
       title = '晚了一步';
     }
-    ctx.fillText(title, card.x + card.w / 2, card.y + 36);
+    ctx.fillStyle = '#A4ABC0';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(title, cx, card.y + 22);
+
+    ctx.fillStyle = '#E8EEF8';
+    ctx.font = 'bold 42px sans-serif';
+    ctx.fillText(String(liveScore), cx, card.y + 62);
+
+    ctx.font = '15px sans-serif';
+    ctx.fillText('存活  ' + formatTime(model.surviveSec), cx, card.y + 96);
+
+    ctx.fillStyle = nearMiss;
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(model.recordCopy || (model.isNewRecord ? '新纪录' : '还差 ' + (model.gap || 0) + ' 分破纪录'), cx, card.y + 120);
     ctx.restore();
 
     drawButton(ctx, layout.restartBtn, '再来一局', 'rgba(92,225,230,0.22)', player);
+    drawButton(ctx, layout.shareBtn, '分享战绩', 'rgba(255,230,109,0.12)', nearMiss);
+  }
+
+  if (model.toast) {
+    ctx.save();
+    var tw = Math.min(layout.width - 40, 280);
+    var th = 32;
+    var tx = (layout.width - tw) / 2;
+    var ty = layout.height - 88;
+    roundRect(ctx, tx, ty, tw, th, 8);
+    ctx.fillStyle = 'rgba(11,16,32,0.88)';
+    ctx.fill();
+    ctx.fillStyle = '#E8EEF8';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(model.toast, tx + tw / 2, ty + th / 2);
+    ctx.restore();
   }
 }
 

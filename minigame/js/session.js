@@ -1,3 +1,5 @@
+var { setLastSeed } = require('./storage');
+
 function generateSeed() {
   const timeBits = Date.now() & 0xffffffff;
   const randBits = Math.floor(Math.random() * 0x100000000);
@@ -6,6 +8,7 @@ function generateSeed() {
 
 function createSession(seed) {
   const resolved = seed == null ? generateSeed() : (seed >>> 0);
+  setLastSeed(resolved);
   return {
     seed: resolved,
     startedAtMs: Date.now()

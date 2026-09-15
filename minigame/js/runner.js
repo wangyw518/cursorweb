@@ -9,6 +9,7 @@ var { collidePlayerTerrain, collidePlayerGhosts } = require('./collision');
 var { createInputTimeline } = require('./inputTimeline');
 var { createGhostReplay } = require('./ghostReplay');
 var { createScore } = require('./score');
+var storage = require('./storage');
 
 function resolvePhys(phys) {
   if (phys && typeof phys === 'object' && phys.runSpeed != null) {
@@ -184,12 +185,13 @@ function createRunner(options) {
   var terrain = null;
   var timeline = null;
   var ghosts = null;
-  var score = createScore();
+  var score = createScore(cfg);
   var player = null;
   var acc = 0;
   var simTime = 0;
   var cameraX = 0;
   var deathReason = null;
+  var settlement = null;
 
   function physicsWorld() {
     return {
@@ -220,7 +222,32 @@ function createRunner(options) {
     simTime = 0;
     cameraX = 0;
     deathReason = null;
+    settlement = null;
+    storage.setLastSeed(seed);
     terrain.ensureCoverage(player.x + view.width);
+  }
+
+  function finalizeDeath(reason) {
+    player.alive = false;
+    deathReason = reason;
+    var sc = score.get();
+    var prevHigh = storage.getHighScore();
+    var isNew = sc > prevHigh;
+    if (isNew) {
+      storage.setHighScore(sc);
+    }
+    storage.setLastSeed(seed);
+    var gap = isNew ? 0 : Math.max(0, prevHigh - sc);
+    settlement = {
+      score: sc,
+      surviveSec: player.surviveSec,
+      highScore: isNew ? sc : prevHigh,
+      prevHigh: prevHigh,
+      isNewRecord: isNew,
+      gap: gap,
+      seed: seed,
+      recordCopy: isNew ? '新纪录' : '还差 ' + gap + ' 分破纪录'
+    };
   }
 
   function doJump() {
@@ -278,20 +305,20 @@ function createRunner(options) {
 
     var hit = stepKinematics(player, dt, terrain, phys);
     if (hit.dead) {
-      player.alive = false;
-      deathReason = hit.reason;
+      finalizeDeath(hit.reason);
       return;
     }
 
     simTime += dt;
     player.surviveSec = simTime;
+    score.update(dt);
     ghosts.update(simTime, dt, physicsWorld());
+    score.probeGhosts(player, ghosts.list(), simTime);
 
     var ghostHit = collidePlayerGhosts(player, ghosts.list());
     if (ghostHit.dead) {
-      player.alive = false;
-      deathReason = 'ghost';
       ghosts.markHit(ghostHit.ghost);
+      finalizeDeath('ghost');
     }
   }
 
@@ -408,15 +435,26 @@ function createRunner(options) {
   }
 
   function getHudModel() {
-    return {
-      score: score.get(),
+    var sc = score.get();
+    var model = {
+      score: sc,
       surviveSec: player.surviveSec,
       dashCdRemainMs: Math.ceil(player.dashCdRemain * 1000),
       dashReady: player.dashCdRemain <= 0 && player.alive,
       dead: !player.alive,
       deathReason: deathReason,
-      seed: seed
+      seed: seed,
+      multiplierRemain: score.getMultiplierRemain(),
+      nearMissCount: score.getNearMissCount()
     };
+    if (settlement) {
+      model.gap = settlement.gap;
+      model.isNewRecord = settlement.isNewRecord;
+      model.highScore = settlement.highScore;
+      model.prevHigh = settlement.prevHigh;
+      model.recordCopy = settlement.recordCopy;
+    }
+    return model;
   }
 
   function resize(width, height) {
@@ -482,8 +520,15 @@ function createRunner(options) {
             grounded: g.body.grounded
           };
         }),
-        pendingGhosts: ghosts.pendingCount()
+        pendingGhosts: ghosts.pendingCount(),
+        score: score.get(),
+        nearMissCount: score.getNearMissCount(),
+        multiplierRemain: score.getMultiplierRemain(),
+        settlement: settlement
       };
+    },
+    getScore: function () {
+      return score;
     },
     isDead: function () {
       return !player.alive;

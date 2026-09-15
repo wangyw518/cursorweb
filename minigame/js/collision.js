@@ -8,6 +8,22 @@ function aabbOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+function aabbDistance(a, b) {
+  var dx = 0;
+  if (a.x + a.w < b.x) {
+    dx = b.x - (a.x + a.w);
+  } else if (b.x + b.w < a.x) {
+    dx = a.x - (b.x + b.w);
+  }
+  var dy = 0;
+  if (a.y + a.h < b.y) {
+    dy = b.y - (a.y + a.h);
+  } else if (b.y + b.h < a.y) {
+    dy = a.y - (b.y + b.h);
+  }
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function playerAabb(player) {
   return {
     x: player.x,
@@ -142,6 +158,7 @@ function collidePlayerGhosts(player, ghosts) {
 
 module.exports = {
   aabbOverlap,
+  aabbDistance,
   playerAabb,
   obstacleHitbox,
   hasGroundSupport,

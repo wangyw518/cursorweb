@@ -24,6 +24,7 @@ function createGhostReplay(options) {
 
   var pending = [];
   var active = [];
+  var nextId = 1;
 
   function dropOldestOverCap() {
     while (active.length > cap) {
@@ -43,6 +44,7 @@ function createGhostReplay(options) {
       world.stepKinematics(body, world.fixedDt, world.terrain, world.deathY);
     }
     var ghost = {
+      id: nextId++,
       body: body,
       type: ev.type,
       sourceT: ev.t,
@@ -145,6 +147,7 @@ function createGhostReplay(options) {
     reset: function () {
       pending.length = 0;
       active.length = 0;
+      nextId = 1;
     },
     list: function () {
       return active.slice();
