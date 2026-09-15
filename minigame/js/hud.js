@@ -45,7 +45,8 @@ function computeLayout(view) {
       y: height / 2 + 8,
       w: 144,
       h: 40
-    }
+    },
+    controlSplitX: view.controlSplitX
   };
 }
 
@@ -66,7 +67,8 @@ function hitTest(x, y, layout, dead) {
   if (pointInRect(x, y, layout.dashBtn)) {
     return 'dash';
   }
-  if (x < layout.width * 0.5) {
+  var split = layout.controlSplitX == null ? 0.5 : layout.controlSplitX;
+  if (x < layout.width * split) {
     return 'jump';
   }
   return 'dash';

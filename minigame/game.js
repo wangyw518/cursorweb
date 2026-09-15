@@ -96,6 +96,7 @@ function createGame() {
   var info = systemInfo(api);
   var menu = menuButtonRect(api);
   var view = viewFromInfo(info, menu);
+  view.controlSplitX = config.controlSplitX;
   applyCanvasSize(canvas, view);
 
   var session = createSession();
@@ -114,6 +115,7 @@ function createGame() {
     info = systemInfo(api);
     menu = menuButtonRect(api);
     view = viewFromInfo(info, menu);
+    view.controlSplitX = config.controlSplitX;
     applyCanvasSize(canvas, view);
     runner.resize(view.width, view.height);
     layout = hud.computeLayout(view);

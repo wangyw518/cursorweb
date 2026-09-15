@@ -1,7 +1,9 @@
 /**
  * Seeded side-view terrain: flat ground, gaps, low crates, high crates.
- * Same seed always yields the same layout.
+ * Same seed always yields the same layout. Heights / first-hazard from config.
  */
+
+var defaultConfig = require('./config.json');
 
 function mulberry32(seed) {
   var a = seed >>> 0;
@@ -14,12 +16,15 @@ function mulberry32(seed) {
   };
 }
 
-var FIRST_HAZARD_X = 620;
-var LOOKAHEAD = 900;
-var LOW_HEIGHT = 36;
-var HIGH_HEIGHT = 52;
+function createTerrain(seed, cfg) {
+  var config = cfg || defaultConfig;
+  var firstHazardX = config.firstHazardX;
+  var lookahead = config.terrainLookahead;
+  var lowHeight = config.lowHeight;
+  var highHeight = config.highHeight;
+  var groundY = config.groundY;
+  var feetInset = config.feetInset;
 
-function createTerrain(seed) {
   var rng = mulberry32(seed >>> 0);
   var grounds = [];
   var gaps = [];
@@ -35,7 +40,7 @@ function createTerrain(seed) {
       last.w += w;
       return;
     }
-    grounds.push({ type: 'ground', x: x, y: 0, w: w, h: 0 });
+    grounds.push({ type: 'ground', x: x, y: groundY, w: w, h: 0 });
   }
 
   function addGap(x, w) {
@@ -47,7 +52,7 @@ function createTerrain(seed) {
       type: 'obstacle',
       kind: kind,
       x: x,
-      y: 0,
+      y: groundY,
       w: w,
       h: h
     });
@@ -55,9 +60,9 @@ function createTerrain(seed) {
 
   function generateUntil(untilX) {
     while (cursor < untilX) {
-      if (cursor < FIRST_HAZARD_X) {
-        addGround(cursor, FIRST_HAZARD_X - cursor);
-        cursor = FIRST_HAZARD_X;
+      if (cursor < firstHazardX) {
+        addGround(cursor, firstHazardX - cursor);
+        cursor = firstHazardX;
         continue;
       }
 
@@ -74,14 +79,14 @@ function createTerrain(seed) {
         var lowW = 28 + rng() * 10;
         var lowPost = 220 + rng() * 80;
         addGround(cursor, lowPre + lowW + lowPost);
-        addObstacle('low', cursor + lowPre, lowW, LOW_HEIGHT);
+        addObstacle('low', cursor + lowPre, lowW, lowHeight);
         cursor += lowPre + lowW + lowPost;
       } else {
         var highPre = 28;
         var highW = 22 + rng() * 8;
         var highPost = 240 + rng() * 90;
         addGround(cursor, highPre + highW + highPost);
-        addObstacle('high', cursor + highPre, highW, HIGH_HEIGHT);
+        addObstacle('high', cursor + highPre, highW, highHeight);
         cursor += highPre + highW + highPost;
       }
     }
@@ -101,11 +106,11 @@ function createTerrain(seed) {
     return out;
   }
 
-  generateUntil(FIRST_HAZARD_X + 400);
+  generateUntil(firstHazardX + 400);
 
   return {
     ensureCoverage: function (maxX) {
-      generateUntil(maxX + LOOKAHEAD);
+      generateUntil(maxX + lookahead);
     },
     getGroundSegments: function (minX, maxX) {
       return filterRange(grounds, minX, maxX);
@@ -117,12 +122,12 @@ function createTerrain(seed) {
       return filterRange(obstacles, minX, maxX);
     },
     supportAt: function (x, w) {
-      var feetL = x + w * 0.28;
-      var feetR = x + w * 0.72;
+      var feetL = x + w * feetInset;
+      var feetR = x + w * (1 - feetInset);
       for (var i = 0; i < grounds.length; i++) {
         var g = grounds[i];
         if (g.x < feetR && g.x + g.w > feetL) {
-          return 0;
+          return groundY;
         }
       }
       return null;
@@ -134,8 +139,5 @@ function createTerrain(seed) {
 }
 
 module.exports = {
-  createTerrain,
-  FIRST_HAZARD_X,
-  LOW_HEIGHT,
-  HIGH_HEIGHT
+  createTerrain
 };

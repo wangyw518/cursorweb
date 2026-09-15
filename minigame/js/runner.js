@@ -1,5 +1,5 @@
 /**
- * Fixed-timestep side-view runner. Physics only steps with config.fixedDt.
+ * Fixed-timestep side-view runner. All feel knobs live in config.json.
  * Player and ghosts share applyJump / applyDash / stepKinematics.
  */
 
@@ -10,35 +10,59 @@ var { createInputTimeline } = require('./inputTimeline');
 var { createGhostReplay } = require('./ghostReplay');
 var { createScore } = require('./score');
 
-var PLAYER_W = 30;
-var PLAYER_H = 42;
-var RUN_SPEED = 270;
-var DASH_SPEED = 500;
-var DASH_DURATION = 0.18;
-var JUMP_VY = 580;
-var DASH_HOP_VY = 600;
-var GRAVITY = 1550;
-var DEATH_Y = -140;
-var COYOTE_S = 0.08;
-var JUMP_BUFFER_S = 0.08;
-var START_X = 80;
+function resolvePhys(phys) {
+  if (phys && typeof phys === 'object' && phys.runSpeed != null) {
+    return phys;
+  }
+  return physicsOf();
+}
+
+function physicsOf(cfg) {
+  var c = cfg || config;
+  return {
+    runSpeed: c.runSpeed,
+    jumpVy: c.jumpVy,
+    dashBoost: c.dashBoost,
+    dashHopVy: c.dashHopVy,
+    dashDuration: c.dashDuration,
+    dashCdS: (c.dashCdMs || 0) / 1000,
+    gravity: c.gravity,
+    groundY: c.groundY,
+    deathY: c.deathY,
+    playerW: c.playerW,
+    playerH: c.playerH,
+    startX: c.startX,
+    coyoteS: c.coyoteS,
+    jumpBufferS: c.jumpBufferS,
+    groundSnapY: c.groundSnapY,
+    obstacleInsetTop: c.obstacleInsetTop,
+    obstacleQueryPad: c.obstacleQueryPad,
+    terrainLookahead: c.terrainLookahead,
+    groundScreenRatio: c.groundScreenRatio,
+    cameraFocus: c.cameraFocus,
+    maxFrameDt: c.maxFrameDt,
+    maxPhysicsSteps: c.maxPhysicsSteps,
+    fixedDt: c.fixedDt
+  };
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function createBody() {
+function createBody(phys) {
+  var p = resolvePhys(phys);
   return {
-    x: START_X,
-    y: 0,
-    w: PLAYER_W,
-    h: PLAYER_H,
-    vx: RUN_SPEED,
+    x: p.startX,
+    y: p.groundY,
+    w: p.playerW,
+    h: p.playerH,
+    vx: p.runSpeed,
     vy: 0,
     grounded: true,
     dashRemain: 0,
     dashCdRemain: 0,
-    coyote: COYOTE_S,
+    coyote: p.coyoteS,
     jumpBuffer: 0,
     alive: true,
     surviveSec: 0
@@ -63,67 +87,79 @@ function cloneBody(body) {
   };
 }
 
-function applyJump(body) {
+function applyJump(body, phys) {
+  var p = resolvePhys(phys);
   if (!body.alive) {
     return false;
   }
   if (!body.grounded && body.coyote <= 0) {
     return false;
   }
-  body.vy = JUMP_VY;
+  body.vy = p.jumpVy;
   body.grounded = false;
   body.coyote = 0;
   body.jumpBuffer = 0;
   return true;
 }
 
-function applyDash(body, dashCdS) {
+function applyDash(body, phys) {
+  var p = resolvePhys(phys);
   if (!body.alive) {
     return false;
   }
   if (body.dashCdRemain > 0) {
     return false;
   }
-  var cd = dashCdS == null ? 0.8 : dashCdS;
-  body.dashRemain = DASH_DURATION;
-  body.dashCdRemain = cd;
-  if (body.vy < DASH_HOP_VY) {
-    body.vy = DASH_HOP_VY;
+  body.dashRemain = p.dashDuration;
+  body.dashCdRemain = p.dashCdS;
+  if (body.vy < p.dashHopVy) {
+    body.vy = p.dashHopVy;
   }
   body.grounded = false;
   return true;
 }
 
-function stepKinematics(body, dt, terrain, deathY) {
+function collideOpts(phys) {
+  return {
+    deathY: phys.deathY,
+    groundY: phys.groundY,
+    maxSnap: phys.groundSnapY,
+    insetTop: phys.obstacleInsetTop,
+    queryPad: phys.obstacleQueryPad
+  };
+}
+
+function stepKinematics(body, dt, terrain, phys) {
+  var p = resolvePhys(phys);
   if (!body.alive) {
     return { dead: false, reason: null, grounded: body.grounded, y: body.y, vy: body.vy };
   }
 
   if (body.grounded) {
-    body.coyote = COYOTE_S;
+    body.coyote = p.coyoteS;
   } else {
     body.coyote = Math.max(0, body.coyote - dt);
   }
 
   if (body.dashRemain > 0) {
-    body.vx = DASH_SPEED;
+    body.vx = p.dashBoost;
     body.dashRemain = Math.max(0, body.dashRemain - dt);
   } else {
-    body.vx = RUN_SPEED;
+    body.vx = p.runSpeed;
   }
   if (body.dashCdRemain > 0) {
     body.dashCdRemain = Math.max(0, body.dashCdRemain - dt);
   }
 
-  body.vy -= GRAVITY * dt;
+  body.vy -= p.gravity * dt;
   body.x += body.vx * dt;
   body.y += body.vy * dt;
 
   if (terrain && typeof terrain.ensureCoverage === 'function') {
-    terrain.ensureCoverage(body.x + 900);
+    terrain.ensureCoverage(body.x + p.terrainLookahead);
   }
 
-  var hit = collidePlayerTerrain(body, terrain, { deathY: deathY == null ? DEATH_Y : deathY });
+  var hit = collidePlayerTerrain(body, terrain, collideOpts(p));
   body.y = hit.y;
   body.vy = hit.vy;
   body.grounded = hit.grounded;
@@ -136,8 +172,7 @@ function stepKinematics(body, dt, terrain, deathY) {
 function createRunner(options) {
   var opts = options || {};
   var cfg = opts.config || config;
-  var fixedDt = cfg.fixedDt;
-  var dashCdS = (cfg.dashCdMs || 800) / 1000;
+  var phys = physicsOf(cfg);
   var colors = cfg.colors || {};
 
   var view = {
@@ -159,24 +194,28 @@ function createRunner(options) {
   function physicsWorld() {
     return {
       cloneBody: cloneBody,
-      applyJump: applyJump,
-      applyDash: function (body) {
-        return applyDash(body, dashCdS);
+      applyJump: function (body) {
+        return applyJump(body, phys);
       },
-      stepKinematics: stepKinematics,
+      applyDash: function (body) {
+        return applyDash(body, phys);
+      },
+      stepKinematics: function (body, dt, nextTerrain, deathY) {
+        return stepKinematics(body, dt, nextTerrain, phys);
+      },
       terrain: terrain,
-      deathY: DEATH_Y,
-      fixedDt: fixedDt
+      deathY: phys.deathY,
+      fixedDt: phys.fixedDt
     };
   }
 
   function resetWorld(nextSeed) {
     seed = nextSeed >>> 0;
-    terrain = createTerrain(seed);
+    terrain = createTerrain(seed, cfg);
     timeline = createInputTimeline();
     ghosts = createGhostReplay({ config: cfg });
     score.reset();
-    player = createBody();
+    player = createBody(phys);
     acc = 0;
     simTime = 0;
     cameraX = 0;
@@ -189,7 +228,7 @@ function createRunner(options) {
       return false;
     }
     var snap = cloneBody(player);
-    if (!applyJump(player)) {
+    if (!applyJump(player, phys)) {
       return false;
     }
     timeline.record(simTime, 'jump');
@@ -202,7 +241,7 @@ function createRunner(options) {
       return false;
     }
     var snap = cloneBody(player);
-    if (!applyDash(player, dashCdS)) {
+    if (!applyDash(player, phys)) {
       return false;
     }
     timeline.record(simTime, 'dash');
@@ -217,7 +256,7 @@ function createRunner(options) {
     if (player.grounded || player.coyote > 0) {
       return doJump();
     }
-    player.jumpBuffer = JUMP_BUFFER_S;
+    player.jumpBuffer = phys.jumpBufferS;
     return false;
   }
 
@@ -237,7 +276,7 @@ function createRunner(options) {
       }
     }
 
-    var hit = stepKinematics(player, dt, terrain, DEATH_Y);
+    var hit = stepKinematics(player, dt, terrain, phys);
     if (hit.dead) {
       player.alive = false;
       deathReason = hit.reason;
@@ -264,33 +303,32 @@ function createRunner(options) {
     if (!isFinite(raw) || raw < 0) {
       raw = 0;
     }
-    raw = Math.min(raw, 0.25);
+    raw = Math.min(raw, phys.maxFrameDt);
     acc += raw;
     var steps = 0;
-    var maxSteps = 5;
-    while (acc >= fixedDt && steps < maxSteps) {
-      step(fixedDt);
-      acc -= fixedDt;
+    while (acc >= phys.fixedDt && steps < phys.maxPhysicsSteps) {
+      step(phys.fixedDt);
+      acc -= phys.fixedDt;
       steps += 1;
     }
-    if (steps === maxSteps) {
+    if (steps === phys.maxPhysicsSteps) {
       acc = 0;
     }
   }
 
   function groundScreenY() {
-    return view.height * 0.72;
+    return view.height * phys.groundScreenRatio;
   }
 
   function worldToScreen(wx, wy) {
     return {
       x: wx - cameraX,
-      y: groundScreenY() - wy
+      y: groundScreenY() - (wy - phys.groundY)
     };
   }
 
   function updateCamera() {
-    var focus = view.width * 0.28;
+    var focus = view.width * phys.cameraFocus;
     cameraX = player.x - focus;
     if (cameraX < 0) {
       cameraX = 0;
@@ -334,7 +372,7 @@ function createRunner(options) {
     ctx.fillStyle = colors.terrain || '#8B93A7';
     for (g = 0; g < grounds.length; g++) {
       var seg = grounds[g];
-      var left = worldToScreen(seg.x, 0).x;
+      var left = worldToScreen(seg.x, phys.groundY).x;
       ctx.fillRect(left, gy, seg.w, view.height - gy + 4);
       ctx.fillStyle = '#A4ABC0';
       ctx.fillRect(left, gy, seg.w, 4);
@@ -343,7 +381,7 @@ function createRunner(options) {
 
     for (g = 0; g < obstacles.length; g++) {
       var obs = obstacles[g];
-      var p = worldToScreen(obs.x, obs.h);
+      var p = worldToScreen(obs.x, obs.y + obs.h);
       ctx.fillStyle = obs.kind === 'high' ? '#6F768A' : '#8B93A7';
       ctx.fillRect(p.x, p.y, obs.w, obs.h);
       ctx.fillStyle = 'rgba(232,238,248,0.12)';
@@ -457,14 +495,14 @@ function createRunner(options) {
       return timeline;
     },
     constants: {
-      RUN_SPEED: RUN_SPEED,
-      DASH_SPEED: DASH_SPEED,
-      JUMP_VY: JUMP_VY,
-      DASH_HOP_VY: DASH_HOP_VY,
-      GRAVITY: GRAVITY,
-      PLAYER_W: PLAYER_W,
-      PLAYER_H: PLAYER_H,
-      DEATH_Y: DEATH_Y
+      RUN_SPEED: phys.runSpeed,
+      DASH_SPEED: phys.dashBoost,
+      JUMP_VY: phys.jumpVy,
+      DASH_HOP_VY: phys.dashHopVy,
+      GRAVITY: phys.gravity,
+      PLAYER_W: phys.playerW,
+      PLAYER_H: phys.playerH,
+      DEATH_Y: phys.deathY
     }
   };
 }
@@ -472,6 +510,7 @@ function createRunner(options) {
 module.exports = {
   createRunner,
   clamp,
+  physicsOf,
   createBody,
   cloneBody,
   applyJump,

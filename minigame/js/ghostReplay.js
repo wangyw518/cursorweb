@@ -62,7 +62,8 @@ function createGhostReplay(options) {
       w: ghost.body.w,
       h: ghost.body.h
     });
-    if (ghost.trail.length > 2) {
+    var trailCap = cfg.ghostTrailFrames == null ? 2 : cfg.ghostTrailFrames;
+    if (ghost.trail.length > trailCap) {
       ghost.trail.shift();
     }
   }

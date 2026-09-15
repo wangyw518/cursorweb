@@ -34,7 +34,15 @@ M2（擦肩得分、本地最高分 UI、分享卡片）仍为 stub。
 
 ## 物理
 
-`game.js` 用 `requestAnimationFrame` 累加真实帧间隔，只以 `config.fixedDt`（`0.0166666667`）步进 `runner.step`。不要用裸 rAF delta 做积分。残影用同一套 `stepKinematics`。
+`game.js` 用 `requestAnimationFrame` 累加真实帧间隔，只以 `config.fixedDt` 步进 `runner.step`。不要用裸 rAF delta 做积分。残影用同一套 `stepKinematics`。
+
+跑速 / 跳速 / 冲刺 / 重力 / 角色尺寸 / 地面高度等手感参数全部在 `js/config.json`（`runSpeed`、`jumpVy`、`dashBoost`、`dashHopVy`、`gravity`、`groundY`、`playerW` / `playerH` 等）。幽灵延迟键保持冻结。调手感只改 config，不要改 `runner.js` 里的魔法数。
+
+## DevTools 手感三项
+
+1. **箱子**：矮箱单跳能过；高箱只跳不稳，冲刺（或冲+跳）才稳。
+2. **开局**：前约 3 秒不应因出生点不公连续秒死（前 2 秒 `quietMs` 无残影）。
+3. **误触**：左半屏跳、右半屏冲（`controlSplitX`），看半屏点按误触率；也可用左下「跳」/ 右下「冲」。
 
 ## M1 残影：如何在开发者工具里验证「死于刚才那一下」
 

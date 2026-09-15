@@ -2,6 +2,8 @@
  * Player vs terrain (M0) and player vs active ghosts (M1).
  */
 
+var defaultConfig = require('./config.json');
+
 function aabbOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
@@ -16,7 +18,7 @@ function playerAabb(player) {
 }
 
 function obstacleHitbox(obstacle, insetTop) {
-  var pad = insetTop == null ? 2 : insetTop;
+  var pad = insetTop == null ? 0 : insetTop;
   return {
     x: obstacle.x,
     y: obstacle.y,
@@ -33,11 +35,13 @@ function hasGroundSupport(player, terrain) {
 }
 
 function resolveGround(player, terrain, options) {
+  var opts = options || {};
   var supported = hasGroundSupport(player, terrain);
-  var maxSnap = options && options.maxSnap != null ? options.maxSnap : 28;
-  if (supported && player.y <= 0 && player.vy <= 0 && player.y >= -maxSnap) {
+  var groundY = opts.groundY == null ? defaultConfig.groundY : opts.groundY;
+  var maxSnap = opts.maxSnap == null ? defaultConfig.groundSnapY : opts.maxSnap;
+  if (supported && player.y <= groundY && player.vy <= 0 && player.y >= groundY - maxSnap) {
     return {
-      y: 0,
+      y: groundY,
       vy: 0,
       grounded: true
     };
@@ -49,14 +53,16 @@ function resolveGround(player, terrain, options) {
   };
 }
 
-function hitObstacle(player, terrain) {
+function hitObstacle(player, terrain, options) {
   if (!terrain || typeof terrain.getObstacles !== 'function') {
     return null;
   }
+  var opts = options || {};
+  var pad = opts.queryPad == null ? defaultConfig.obstacleQueryPad : opts.queryPad;
   var body = playerAabb(player);
-  var list = terrain.getObstacles(player.x - 8, player.x + player.w + 8);
+  var list = terrain.getObstacles(player.x - pad, player.x + player.w + pad);
   for (var i = 0; i < list.length; i++) {
-    if (aabbOverlap(body, obstacleHitbox(list[i]))) {
+    if (aabbOverlap(body, obstacleHitbox(list[i], opts.insetTop == null ? defaultConfig.obstacleInsetTop : opts.insetTop))) {
       return list[i];
     }
   }
@@ -64,7 +70,7 @@ function hitObstacle(player, terrain) {
 }
 
 function fellInGap(player, deathY) {
-  var floor = deathY == null ? -140 : deathY;
+  var floor = deathY == null ? defaultConfig.deathY : deathY;
   return player.y < floor;
 }
 
@@ -90,7 +96,7 @@ function collidePlayerTerrain(player, terrain, options) {
     vy: next.vy
   };
 
-  var obstacle = hitObstacle(probe, terrain);
+  var obstacle = hitObstacle(probe, terrain, opts);
   if (obstacle) {
     next.dead = true;
     next.reason = 'obstacle';
