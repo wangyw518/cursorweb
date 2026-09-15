@@ -9,6 +9,7 @@ var { createBody, stepBody, cloneBody, createGame } = require('../js/runner.js')
 var { createHeadless } = require('../js/platform.js');
 var sessionMod = require('../js/session.js');
 var share = require('../js/share.js');
+var batch = require('./batch.js');
 
 var failed = 0;
 var passed = 0;
@@ -254,6 +255,23 @@ check('settle records gap to high score', function () {
   sessionMod.kill(session, 'terrain', { score: 120, surviveSec: 8 }, 100);
   assert.strictEqual(session.settle.isRecord, true);
   assert.strictEqual(session.settle.gap, 0);
+});
+
+check('jump-low and dash-under-high still required', function () {
+  var smoke = batch.smokeNarrative(config);
+  assert.strictEqual(smoke.walkLowDies, true);
+  assert.strictEqual(smoke.jumpLowLives, true);
+  assert.strictEqual(smoke.walkHighDies, true);
+  assert.strictEqual(smoke.jumpHighDies, true);
+  assert.strictEqual(smoke.dashHighLives, true);
+});
+
+check('80-run median survive >= 12s', function () {
+  var result = batch.runBatch(80, config);
+  assert.ok(
+    result.stats.median >= 12,
+    'median ' + result.stats.median + ' causes ' + JSON.stringify(result.stats.causes)
+  );
 });
 
 check('share fields are mocked', function () {

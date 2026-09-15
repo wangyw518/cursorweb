@@ -386,6 +386,8 @@ function createGame(platform, config) {
       score: score.snapshot(session.simTimeMs),
       highScore: highScore,
       seed: session.seed,
+      terrain: terrain,
+      dashReady: dashReady(),
       settleLayout: lastSettleLayout,
       hudMode: session.alive ? 'run' : session.settle ? 'settle' : 'idle'
     };
