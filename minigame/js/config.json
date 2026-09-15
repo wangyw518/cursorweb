@@ -1,0 +1,35 @@
+{
+  "ghostDelayMs": 1500,
+  "ghostTtlMs": 4000,
+  "ghostCap": 8,
+  "dashCdMs": 800,
+  "quietMs": 2000,
+  "nearMissPx": 12,
+  "fixedDt": 0.016666666666666666,
+  "firstHazardX": 1500,
+  "hazardGapMin": 320,
+  "hazardPostMin": 300,
+  "highHeight": 78,
+  "halfScreenInput": false,
+  "colors": {
+    "bg": "#0B1020",
+    "player": "#5CE1E6",
+    "ghostAlpha": 0.45,
+    "ghostStroke": "#A8F7FA",
+    "ghostStrokeAlpha": 0.75,
+    "terrain": "#8B93A7",
+    "nearMissFlash": "#FFE66D"
+  },
+  "physics": {
+    "baseSpeed": 180,
+    "gravity": 2400,
+    "jumpVy": 620,
+    "dashBoost": 220,
+    "dashLift": 0,
+    "dashDurationMs": 160,
+    "playerW": 16,
+    "playerH": 28,
+    "slideHeight": 14,
+    "startX": 0
+  }
+}

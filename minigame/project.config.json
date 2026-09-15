@@ -1,0 +1,31 @@
+{
+  "description": "晚一步 Late Step — WeChat native Canvas 2D mini-game",
+  "packOptions": {
+    "ignore": [
+      {
+        "value": "dev",
+        "type": "folder"
+      },
+      {
+        "value": "test",
+        "type": "folder"
+      }
+    ]
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true,
+    "enhance": true,
+    "compileHotReLoad": false
+  },
+  "compileType": "game",
+  "libVersion": "3.5.5",
+  "appid": "wxc8683bd9c1599d7d",
+  "projectname": "晚一步",
+  "condition": {},
+  "simulatorType": "wechat",
+  "isGameTourist": false
+}
