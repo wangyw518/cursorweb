@@ -105,7 +105,12 @@ function createBrowser() {
       ev.preventDefault();
       emit(logical.w * 0.75, logical.h * 0.5);
     } else if (ev.code === 'Enter' || ev.code === 'KeyR') {
-      emit(logical.w * 0.5, logical.h * 0.78);
+      if (globalThis.__lateStep && globalThis.__lateStep.game &&
+          !globalThis.__lateStep.game.getDebugState().session.alive) {
+        globalThis.__lateStep.game.replay();
+      } else {
+        emit(logical.w * 0.5, logical.h * 0.78);
+      }
     }
   });
 

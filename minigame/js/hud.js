@@ -90,11 +90,11 @@ function hitRect(rect, p) {
 
 function layoutSettle(view, shareHint) {
   var cardW = Math.min(320, view.w - 32);
-  var cardH = shareHint ? 268 : 236;
+  var cardH = shareHint ? 292 : 248;
   var x = (view.w - cardW) / 2;
-  var y = view.h * 0.28;
-  var replay = { x: x + 20, y: y + cardH - 84, w: cardW - 40, h: 44, label: '再跑一次' };
-  var share = { x: x + 20, y: y + cardH - 32, w: cardW - 40, h: 22, label: '分享成绩' };
+  var y = view.h * 0.26;
+  var replay = { x: x + 20, y: y + cardH - 100, w: cardW - 40, h: 44, label: '再跑一次' };
+  var share = { x: x + 20, y: y + cardH - 48, w: cardW - 40, h: 36, label: '分享成绩' };
   return { x: x, y: y, w: cardW, h: cardH, replay: replay, share: share };
 }
 
@@ -139,15 +139,20 @@ function drawSettle(ctx, view, settle, shareHint, colors) {
   ctx.textBaseline = 'middle';
   ctx.fillText(layout.replay.label, layout.replay.x + layout.replay.w / 2, layout.replay.y + layout.replay.h / 2);
 
-  ctx.fillStyle = '#8B93A7';
-  ctx.font = '12px sans-serif';
+  ctx.strokeStyle = '#8B93A7';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, layout.share.x, layout.share.y, layout.share.w, layout.share.h, 10);
+  ctx.stroke();
+  ctx.fillStyle = '#c5cde0';
+  ctx.font = '13px sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.fillText(layout.share.label, layout.share.x + layout.share.w / 2, layout.share.y + 8);
+  ctx.fillText(layout.share.label, layout.share.x + layout.share.w / 2, layout.share.y + layout.share.h / 2);
 
   if (shareHint) {
     ctx.font = '10px sans-serif';
-    ctx.fillStyle = '#FFE66D';
-    wrapText(ctx, shareHint, layout.x + layout.w / 2, layout.y + 140, layout.w - 28, 13);
+    ctx.fillStyle = colors.nearMissFlash;
+    ctx.textBaseline = 'top';
+    wrapText(ctx, shareHint, layout.x + layout.w / 2, layout.y + 136, layout.w - 28, 13);
   }
   ctx.restore();
   return layout;
@@ -170,15 +175,18 @@ function wrapText(ctx, text, cx, y, maxW, lh) {
   if (line) ctx.fillText(line, cx, yy);
 }
 
-function drawHint(ctx, view, text, alpha) {
+function drawHint(ctx, view, lines, alpha) {
   if (alpha <= 0) return;
+  var list = Array.isArray(lines) ? lines : [lines];
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#c5cde0';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(text, view.w / 2, 54);
+  for (var i = 0; i < list.length; i++) {
+    ctx.fillText(list[i], view.w / 2, 52 + i * 16);
+  }
   ctx.restore();
 }
 

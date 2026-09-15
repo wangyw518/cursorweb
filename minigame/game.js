@@ -25,3 +25,7 @@ platform.loop(function (dt) {
   game.tick(dt);
   game.draw(platform.ctx);
 });
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.__lateStep = { game: game, platform: platform, config: config };
+}

@@ -257,17 +257,24 @@ function createGame(platform, config) {
   function drawTerrain(ctx, view) {
     var cam = camX(view);
     var gy = groundScreenY(view);
+    ctx.fillStyle = '#070b14';
+    ctx.fillRect(0, gy, view.w, view.h - gy);
     ctx.fillStyle = colors.terrain;
     for (var i = 0; i < terrain.grounds.length; i++) {
       var g = terrain.grounds[i];
       var x = g.x1 - cam;
       var w = g.x2 - g.x1;
       if (x + w < -20 || x > view.w + 20) continue;
-      ctx.fillRect(x, gy, w, view.h - gy);
-      ctx.fillRect(x, gy, w, 6);
+      ctx.fillRect(x, gy, w, 26);
     }
-    ctx.fillStyle = '#6f768a';
-    ctx.fillRect(0, gy + 6, view.w, 3);
+    ctx.fillStyle = '#a8b0c2';
+    for (var j = 0; j < terrain.grounds.length; j++) {
+      var s = terrain.grounds[j];
+      var sx = s.x1 - cam;
+      var sw = s.x2 - s.x1;
+      if (sx + sw < -20 || sx > view.w + 20) continue;
+      ctx.fillRect(sx, gy, sw, 3);
+    }
 
     for (var k = 0; k < terrain.obstacles.length; k++) {
       var o = terrain.obstacles[k];
@@ -279,15 +286,21 @@ function createGame(platform, config) {
     }
   }
 
-  function drawActor(ctx, box, view, alpha, fill) {
+  function drawActor(ctx, box, view, alpha, fill, outline) {
     var scr = worldToScreen(box.x, box.y, box.h, view);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = fill;
     ctx.fillRect(scr.x, scr.y, box.w, box.h);
+    if (outline) {
+      ctx.globalAlpha = Math.min(1, alpha + 0.2);
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(scr.x + 0.5, scr.y + 0.5, box.w - 1, box.h - 1);
+    }
     ctx.fillStyle = '#ffffff';
     ctx.globalAlpha = alpha * 0.35;
-    ctx.fillRect(scr.x + 2, scr.y + 2, box.w - 4, 4);
+    ctx.fillRect(scr.x + 2, scr.y + 2, Math.max(1, box.w - 4), 4);
     ctx.restore();
   }
 
@@ -301,7 +314,7 @@ function createGame(platform, config) {
     var ghostFill = 'rgba(' + playerRgb.r + ',' + playerRgb.g + ',' + playerRgb.b + ',' + colors.ghostAlpha + ')';
     for (var i = 0; i < list.length; i++) {
       var gBox = collision.alignedGhostBox(list[i].body, player, config);
-      drawActor(ctx, gBox, view, 1, ghostFill);
+      drawActor(ctx, gBox, view, 1, ghostFill, colors.player);
     }
 
     var pBox = collision.worldBox(player, config);
@@ -313,8 +326,8 @@ function createGame(platform, config) {
     hud.drawHint(
       ctx,
       view,
-      '左跳 · 右冲   残影晚 1.5 秒回来',
-      session.alive ? Math.min(1, titleAlpha + (session.simTimeMs < config.quietMs ? 0.6 : 0)) : 0
+      ['左跳  ·  右冲', '残影会晚 1.5 秒沿同样轨迹回来'],
+      session.alive ? Math.min(1, titleAlpha + (session.simTimeMs < config.quietMs ? 0.55 : 0)) : 0
     );
 
     if (session.alive) {
@@ -335,7 +348,7 @@ function createGame(platform, config) {
         replay();
         return;
       }
-      if (hud.hitRect(layout.share, p) || (p.y > layout.share.y - 8 && p.y < layout.share.y + 28)) {
+      if (hud.hitRect(layout.share, p)) {
         var fields = share.shareSettle(session.settle);
         shareHint = '分享已模拟：' + fields.title;
         return;
@@ -371,7 +384,8 @@ function createGame(platform, config) {
       timeline: timeline,
       score: score.snapshot(session.simTimeMs),
       highScore: highScore,
-      seed: session.seed
+      seed: session.seed,
+      settleLayout: lastSettleLayout
     };
   }
 
