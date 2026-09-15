@@ -17,7 +17,7 @@ function mulberry32(seed) {
 var FIRST_HAZARD_X = 620;
 var LOOKAHEAD = 900;
 var LOW_HEIGHT = 36;
-var HIGH_HEIGHT = 70;
+var HIGH_HEIGHT = 52;
 
 function createTerrain(seed) {
   var rng = mulberry32(seed >>> 0);
@@ -63,7 +63,7 @@ function createTerrain(seed) {
 
       var roll = rng();
       if (roll < 0.3) {
-        var gapW = 74 + rng() * 54;
+        var gapW = 70 + rng() * 22;
         addGap(cursor, gapW);
         cursor += gapW;
         var afterGap = 210 + rng() * 90;
@@ -78,7 +78,7 @@ function createTerrain(seed) {
         cursor += lowPre + lowW + lowPost;
       } else {
         var highPre = 28;
-        var highW = 26 + rng() * 10;
+        var highW = 22 + rng() * 8;
         var highPost = 240 + rng() * 90;
         addGround(cursor, highPre + highW + highPost);
         addObstacle('high', cursor + highPre, highW, HIGH_HEIGHT);
