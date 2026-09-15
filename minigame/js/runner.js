@@ -96,7 +96,9 @@ function applyJump(body, phys) {
   if (!body.grounded && body.coyote <= 0) {
     return false;
   }
-  body.vy = p.jumpVy;
+  if (body.vy < p.jumpVy) {
+    body.vy = p.jumpVy;
+  }
   body.grounded = false;
   body.coyote = 0;
   body.jumpBuffer = 0;

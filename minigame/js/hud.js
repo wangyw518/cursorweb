@@ -52,7 +52,8 @@ function computeLayout(view) {
       w: 172,
       h: 36
     },
-    controlSplitX: view.controlSplitX
+    controlSplitX: view.controlSplitX,
+    halfScreenInput: !!view.halfScreenInput
   };
 }
 
@@ -75,6 +76,9 @@ function hitTest(x, y, layout, dead) {
   }
   if (pointInRect(x, y, layout.dashBtn)) {
     return 'dash';
+  }
+  if (!layout.halfScreenInput) {
+    return null;
   }
   var split = layout.controlSplitX == null ? 0.5 : layout.controlSplitX;
   if (x < layout.width * split) {
