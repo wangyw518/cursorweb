@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>晚一步 Late Step</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0B1020; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <script>
+    (function () {
+      var cache = {};
+      var sources = {};
+
+      function normalize(from, request) {
+        if (request.charAt(0) !== '.') return request;
+        var base = from.split('/').slice(0, -1);
+        var parts = request.split('/');
+        for (var i = 0; i < parts.length; i++) {
+          if (parts[i] === '.' || parts[i] === '') continue;
+          if (parts[i] === '..') base.pop();
+          else base.push(parts[i]);
+        }
+        var path = base.join('/');
+        if (path.charAt(0) !== '.') path = './' + path;
+        return path;
+      }
+
+      function requireFrom(from, request) {
+        var key = normalize(from, request);
+        if (!/\.(js|json)$/.test(key)) key += '.js';
+        if (cache[key]) return cache[key].exports;
+        if (sources[key] == null) {
+          throw new Error('Module not found: ' + key + ' from ' + from);
+        }
+        var module = { exports: {} };
+        cache[key] = module;
+        if (/\.json$/.test(key)) {
+          module.exports = JSON.parse(sources[key]);
+          return module.exports;
+        }
+        var fn = new Function('require', 'module', 'exports', sources[key]);
+        fn(function (next) { return requireFrom(key, next); }, module, module.exports);
+        return module.exports;
+      }
+
+      var files = [
+        './js/config.json',
+        './js/inputTimeline.js',
+        './js/storage.js',
+        './js/share.js',
+        './js/session.js',
+        './js/score.js',
+        './js/terrain.js',
+        './js/collision.js',
+        './js/ghostReplay.js',
+        './js/hud.js',
+        './js/platform.js',
+        './js/runner.js',
+        './game.js'
+      ];
+
+      Promise.all(files.map(function (path) {
+        var url = path.replace(/^\.\//, '../');
+        return fetch(url).then(function (res) {
+          if (!res.ok) throw new Error('Failed to load ' + url);
+          return res.text().then(function (text) { sources[path] = text; });
+        });
+      })).then(function () {
+        requireFrom('.', './game.js');
+      }).catch(function (err) {
+        document.body.innerHTML = '<pre style="color:#FFE66D;padding:16px">' + err.message + '</pre>';
+      });
+    })();
+  </script>
+</body>
+</html>
