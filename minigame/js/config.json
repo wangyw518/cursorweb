@@ -1,0 +1,17 @@
+{
+  "ghostDelayMs": 1500,
+  "ghostTtlMs": 4000,
+  "ghostCap": 8,
+  "dashCdMs": 800,
+  "quietMs": 2000,
+  "nearMissPx": 12,
+  "fixedDt": 0.0166666667,
+  "colors": {
+    "bg": "#0B1020",
+    "player": "#5CE1E6",
+    "ghost": "#5CE1E6",
+    "ghostAlpha": 0.35,
+    "terrain": "#8B93A7",
+    "nearMiss": "#FFE66D"
+  }
+}
