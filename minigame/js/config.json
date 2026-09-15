@@ -44,7 +44,9 @@
     "bg": "#0B1020",
     "player": "#5CE1E6",
     "ghost": "#5CE1E6",
-    "ghostAlpha": 0.35,
+    "ghostAlpha": 0.45,
+    "ghostStroke": "#A8F7FA",
+    "ghostStrokeAlpha": 0.75,
     "terrain": "#8B93A7",
     "nearMiss": "#FFE66D"
   }

@@ -29,6 +29,7 @@ function buildPayload(model, cfg) {
       player: colors.player,
       ghost: colors.ghost,
       ghostAlpha: colors.ghostAlpha,
+      ghostStroke: colors.ghostStroke,
       terrain: colors.terrain,
       nearMiss: colors.nearMiss
     },

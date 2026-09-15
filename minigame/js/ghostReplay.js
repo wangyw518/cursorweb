@@ -116,9 +116,11 @@ function createGhostReplay(options) {
       if (!ctx || !view || typeof view.worldToScreen !== 'function') {
         return;
       }
-      var fill = hexToRgba(colors.ghost || colors.player || '#5CE1E6', colors.ghostAlpha == null ? 0.35 : colors.ghostAlpha);
-      var trailFill = hexToRgba(colors.ghost || colors.player || '#5CE1E6', (colors.ghostAlpha == null ? 0.35 : colors.ghostAlpha) * 0.4);
-      var stroke = colors.nearMiss || '#FFE66D';
+      var fillAlpha = colors.ghostAlpha == null ? 0.45 : colors.ghostAlpha;
+      var fill = hexToRgba(colors.ghost || colors.player || '#5CE1E6', fillAlpha);
+      var trailFill = hexToRgba(colors.ghost || colors.player || '#5CE1E6', fillAlpha * 0.4);
+      var outline = hexToRgba(colors.ghostStroke || '#A8F7FA', colors.ghostStrokeAlpha == null ? 0.75 : colors.ghostStrokeAlpha);
+      var flashStroke = colors.nearMiss || '#FFE66D';
       var i;
       var k;
       for (i = 0; i < active.length; i++) {
@@ -132,8 +134,11 @@ function createGhostReplay(options) {
         var p = view.worldToScreen(ghost.body.x, ghost.body.y + ghost.body.h);
         ctx.fillStyle = fill;
         ctx.fillRect(p.x, p.y, ghost.body.w, ghost.body.h);
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(p.x + 0.5, p.y + 0.5, ghost.body.w - 1, ghost.body.h - 1);
         if (ghost.flash > 0) {
-          ctx.strokeStyle = stroke;
+          ctx.strokeStyle = flashStroke;
           ctx.lineWidth = 4;
           ctx.strokeRect(p.x - 1, p.y - 1, ghost.body.w + 2, ghost.body.h + 2);
         }
