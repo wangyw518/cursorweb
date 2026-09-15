@@ -7,8 +7,8 @@
   "nearMissPx": 12,
   "fixedDt": 0.016666666666666666,
   "firstHazardX": 1500,
-  "hazardGapMin": 360,
-  "hazardPostMin": 220,
+  "hazardGapMin": 320,
+  "hazardPostMin": 300,
   "highHeight": 78,
   "halfScreenInput": false,
   "colors": {
