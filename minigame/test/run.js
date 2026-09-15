@@ -72,7 +72,7 @@ check('config freeze keys', function () {
   assert.strictEqual(config.quietMs, 2000);
   assert.strictEqual(config.nearMissPx, 12);
   almost(config.fixedDt, 1 / 60, 1e-12, 'fixedDt');
-  assert.strictEqual(config.physics.jumpVy, 480);
+  assert.strictEqual(config.physics.jumpVy, 620);
   assert.strictEqual(config.highHeight, 78);
   assert.strictEqual(config.firstHazardX, 750);
   assert.strictEqual(config.halfScreenInput, false);
@@ -204,6 +204,7 @@ check('full loop: die then replay', function () {
   var platform = createHeadless();
   var game = createGame(platform, config);
   for (var i = 0; i < 30; i++) game.stepOnce();
+  assert.strictEqual(game.getDebugState().hudMode, 'run');
   game.requestJump();
   for (var j = 0; j < 900; j++) {
     if (j % 45 === 0) game.requestJump();
@@ -214,9 +215,11 @@ check('full loop: die then replay', function () {
   assert.strictEqual(dead.session.alive, false);
   assert.ok(dead.session.settle, 'expected settle');
   assert.ok(dead.session.settle.score >= 0);
+  assert.strictEqual(dead.hudMode, 'settle');
   game.replay();
   var again = game.getDebugState();
   assert.strictEqual(again.session.alive, true);
+  assert.strictEqual(again.hudMode, 'run');
   assert.strictEqual(again.session.simStep, 0);
   assert.strictEqual(again.player.x, config.physics.startX);
 });

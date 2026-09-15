@@ -321,16 +321,15 @@ function createGame(platform, config) {
     var playerFill = flash > 0 ? colors.nearMissFlash : colors.player;
     drawActor(ctx, pBox, view, 1, playerFill);
 
-    var snap = score.snapshot(session.simTimeMs);
-    hud.drawTopBar(ctx, view, snap, dashCdLeft(), flash, colors);
-    hud.drawHint(
-      ctx,
-      view,
-      ['点「跳」/「冲」', '残影会晚 1.5 秒沿同样轨迹回来'],
-      session.alive ? Math.min(1, titleAlpha + (session.simTimeMs < config.quietMs ? 0.55 : 0)) : 0
-    );
-
     if (session.alive) {
+      var snap = score.snapshot(session.simTimeMs);
+      hud.drawTopBar(ctx, view, snap, dashCdLeft(), flash, colors);
+      hud.drawHint(
+        ctx,
+        view,
+        ['点「跳」/「冲」', '残影会晚 1.5 秒沿同样轨迹回来'],
+        Math.min(1, titleAlpha + (session.simTimeMs < config.quietMs ? 0.55 : 0))
+      );
       lastControls = hud.layoutControls(view);
       hud.drawControls(ctx, lastControls, colors, dashReady());
       lastSettleLayout = null;
@@ -387,7 +386,8 @@ function createGame(platform, config) {
       score: score.snapshot(session.simTimeMs),
       highScore: highScore,
       seed: session.seed,
-      settleLayout: lastSettleLayout
+      settleLayout: lastSettleLayout,
+      hudMode: session.alive ? 'run' : session.settle ? 'settle' : 'idle'
     };
   }
 

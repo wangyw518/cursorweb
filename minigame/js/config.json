@@ -21,7 +21,7 @@
   "physics": {
     "baseSpeed": 180,
     "gravity": 2400,
-    "jumpVy": 480,
+    "jumpVy": 620,
     "dashBoost": 220,
     "dashLift": 240,
     "dashDurationMs": 160,
