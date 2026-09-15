@@ -121,7 +121,7 @@ function createGame(platform, config) {
   function boot(seed) {
     session = sessionMod.createSession(seed);
     timeline = createTimeline();
-    terrain = createTerrain(session.seed);
+    terrain = createTerrain(session.seed, config);
     score = createScore(config);
     player = createBody(config);
     acc = 0;
@@ -293,7 +293,7 @@ function createGame(platform, config) {
     ctx.fillStyle = fill;
     ctx.fillRect(scr.x, scr.y, box.w, box.h);
     if (outline) {
-      ctx.globalAlpha = Math.min(1, alpha + 0.2);
+      ctx.globalAlpha = colors.ghostStrokeAlpha != null ? colors.ghostStrokeAlpha : 0.75;
       ctx.strokeStyle = outline;
       ctx.lineWidth = 1;
       ctx.strokeRect(scr.x + 0.5, scr.y + 0.5, box.w - 1, box.h - 1);
@@ -314,7 +314,7 @@ function createGame(platform, config) {
     var ghostFill = 'rgba(' + playerRgb.r + ',' + playerRgb.g + ',' + playerRgb.b + ',' + colors.ghostAlpha + ')';
     for (var i = 0; i < list.length; i++) {
       var gBox = collision.alignedGhostBox(list[i].body, player, config);
-      drawActor(ctx, gBox, view, 1, ghostFill, colors.player);
+      drawActor(ctx, gBox, view, 1, ghostFill, colors.ghostStroke);
     }
 
     var pBox = collision.worldBox(player, config);
@@ -326,7 +326,7 @@ function createGame(platform, config) {
     hud.drawHint(
       ctx,
       view,
-      ['左跳  ·  右冲', '残影会晚 1.5 秒沿同样轨迹回来'],
+      ['点「跳」/「冲」', '残影会晚 1.5 秒沿同样轨迹回来'],
       session.alive ? Math.min(1, titleAlpha + (session.simTimeMs < config.quietMs ? 0.55 : 0)) : 0
     );
 
@@ -364,8 +364,10 @@ function createGame(platform, config) {
       requestDash();
       return;
     }
-    if (p.x < view.w * 0.5) requestJump();
-    else requestDash();
+    if (config.halfScreenInput) {
+      if (p.x < view.w * 0.5) requestJump();
+      else requestDash();
+    }
   }
 
   function replay() {

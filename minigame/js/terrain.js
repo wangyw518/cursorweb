@@ -1,3 +1,5 @@
+var defaultConfig = require('./config.json');
+
 function mulberry32(seed) {
   var a = seed >>> 0;
   return function next() {
@@ -13,8 +15,11 @@ function chunkSeed(sessionSeed, index) {
   return (sessionSeed + Math.imul(index + 1, 0x9e3779b9)) >>> 0;
 }
 
-function createTerrain(sessionSeed) {
+function createTerrain(sessionSeed, cfg) {
+  var config = cfg || defaultConfig;
   var chunkW = 220;
+  var firstHazardX = config.firstHazardX;
+  var highHeight = config.highHeight;
   var grounds = [];
   var obstacles = [];
   var generatedThrough = -1;
@@ -30,37 +35,41 @@ function createTerrain(sessionSeed) {
     var x1 = x0 + chunkW;
     var rng = mulberry32(chunkSeed(sessionSeed, index));
 
-    if (index <= 2) {
+    if (x1 <= firstHazardX) {
       addGround(x0, x1);
       worldEnd = Math.max(worldEnd, x1);
       return;
     }
 
+    var hazardStart = Math.max(x0, firstHazardX);
+    if (hazardStart > x0) addGround(x0, hazardStart);
+
     var roll = rng();
     if (roll < 0.42) {
-      addGround(x0, x1);
+      addGround(hazardStart, x1);
     } else if (roll < 0.62) {
-      var gapW = 68 + rng() * 28;
-      var gapX = x0 + 40 + rng() * 50;
-      addGround(x0, gapX);
+      var gapW = 50 + rng() * 14;
+      var gapX = hazardStart + 24 + rng() * 36;
+      if (gapX + gapW > x1 - 16) gapX = Math.max(hazardStart, x1 - 16 - gapW);
+      addGround(hazardStart, gapX);
       addGround(gapX + gapW, x1);
     } else if (roll < 0.82) {
-      addGround(x0, x1);
+      addGround(hazardStart, x1);
       obstacles.push({
         kind: 'low',
-        x: x0 + 70 + rng() * 70,
+        x: Math.max(hazardStart + 16, x0 + 70 + rng() * 70),
         y: 0,
         w: 20,
         h: 24
       });
     } else {
-      addGround(x0, x1);
+      addGround(hazardStart, x1);
       obstacles.push({
         kind: 'high',
-        x: x0 + 70 + rng() * 70,
-        y: 18,
+        x: Math.max(hazardStart + 16, x0 + 70 + rng() * 70),
+        y: 16,
         w: 30,
-        h: 56
+        h: highHeight
       });
     }
     worldEnd = Math.max(worldEnd, x1);
@@ -98,7 +107,7 @@ function createTerrain(sessionSeed) {
     return out;
   }
 
-  ensureUpTo(chunkW * 3);
+  ensureUpTo(firstHazardX + chunkW);
 
   return {
     chunkW: chunkW,

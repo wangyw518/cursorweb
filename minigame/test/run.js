@@ -72,9 +72,14 @@ check('config freeze keys', function () {
   assert.strictEqual(config.quietMs, 2000);
   assert.strictEqual(config.nearMissPx, 12);
   almost(config.fixedDt, 1 / 60, 1e-12, 'fixedDt');
+  assert.strictEqual(config.physics.jumpVy, 480);
+  assert.strictEqual(config.highHeight, 78);
+  assert.strictEqual(config.firstHazardX, 750);
+  assert.strictEqual(config.halfScreenInput, false);
   assert.strictEqual(config.colors.bg, '#0B1020');
   assert.strictEqual(config.colors.player, '#5CE1E6');
-  assert.strictEqual(config.colors.ghostAlpha, 0.35);
+  assert.strictEqual(config.colors.ghostAlpha, 0.45);
+  assert.strictEqual(config.colors.ghostStroke, '#A8F7FA');
   assert.strictEqual(config.colors.terrain, '#8B93A7');
   assert.strictEqual(config.colors.nearMissFlash, '#FFE66D');
 });
@@ -84,6 +89,29 @@ check('delay/ttl/quiet are integer steps at 1/60', function () {
   assert.strictEqual(stepsFromMs(4000, config.fixedDt), 240);
   assert.strictEqual(stepsFromMs(2000, config.fixedDt), 120);
   assert.strictEqual(stepsFromMs(800, config.fixedDt), 48);
+});
+
+check('firstHazardX keeps the opening stretch safe', function () {
+  var terrain = createTerrain(7, config);
+  terrain.ensureUpTo(config.firstHazardX + 800);
+  for (var i = 0; i < terrain.obstacles.length; i++) {
+    assert.ok(
+      terrain.obstacles[i].x >= config.firstHazardX,
+      'obstacle at ' + terrain.obstacles[i].x
+    );
+  }
+  var high = terrain.obstacles.filter(function (o) { return o.kind === 'high'; });
+  if (high.length) {
+    assert.strictEqual(high[0].h, config.highHeight);
+  }
+  var cover = 0;
+  for (var g = 0; g < terrain.grounds.length; g++) {
+    var seg = terrain.grounds[g];
+    var a = Math.max(0, seg.x1);
+    var b = Math.min(config.firstHazardX, seg.x2);
+    if (b > a) cover += b - a;
+  }
+  assert.ok(cover >= config.firstHazardX - 1, 'safe ground cover ' + cover);
 });
 
 check('quiet window does not spawn ghosts', function () {

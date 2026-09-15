@@ -100,10 +100,18 @@ function createBrowser() {
     if (ev.repeat) return;
     if (ev.code === 'Space' || ev.code === 'ArrowUp' || ev.code === 'KeyJ') {
       ev.preventDefault();
-      emit(logical.w * 0.25, logical.h * 0.5);
+      if (globalThis.__lateStep && globalThis.__lateStep.game) {
+        globalThis.__lateStep.game.requestJump();
+      } else {
+        emit(logical.w * 0.25, logical.h * 0.92);
+      }
     } else if (ev.code === 'ShiftRight' || ev.code === 'ShiftLeft' || ev.code === 'ArrowRight' || ev.code === 'KeyK') {
       ev.preventDefault();
-      emit(logical.w * 0.75, logical.h * 0.5);
+      if (globalThis.__lateStep && globalThis.__lateStep.game) {
+        globalThis.__lateStep.game.requestDash();
+      } else {
+        emit(logical.w * 0.75, logical.h * 0.92);
+      }
     } else if (ev.code === 'Enter' || ev.code === 'KeyR') {
       if (globalThis.__lateStep && globalThis.__lateStep.game &&
           !globalThis.__lateStep.game.getDebugState().session.alive) {
