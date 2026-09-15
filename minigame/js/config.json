@@ -6,7 +6,7 @@
   "quietMs": 2000,
   "nearMissPx": 12,
   "fixedDt": 0.016666666666666666,
-  "firstHazardX": 750,
+  "firstHazardX": 1500,
   "highHeight": 78,
   "halfScreenInput": false,
   "colors": {

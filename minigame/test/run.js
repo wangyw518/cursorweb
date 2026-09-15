@@ -75,7 +75,7 @@ check('config freeze keys', function () {
   assert.strictEqual(config.physics.jumpVy, 620);
   assert.strictEqual(config.physics.dashLift, 0);
   assert.strictEqual(config.highHeight, 78);
-  assert.strictEqual(config.firstHazardX, 750);
+  assert.strictEqual(config.firstHazardX, 1500);
   assert.strictEqual(config.halfScreenInput, false);
   assert.strictEqual(config.colors.bg, '#0B1020');
   assert.strictEqual(config.colors.player, '#5CE1E6');
