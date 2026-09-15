@@ -76,6 +76,8 @@ check('config freeze keys', function () {
   assert.strictEqual(config.physics.dashLift, 0);
   assert.strictEqual(config.highHeight, 78);
   assert.strictEqual(config.firstHazardX, 1500);
+  assert.strictEqual(config.hazardGapMin, 360);
+  assert.strictEqual(config.hazardPostMin, 220);
   assert.strictEqual(config.halfScreenInput, false);
   assert.strictEqual(config.colors.bg, '#0B1020');
   assert.strictEqual(config.colors.player, '#5CE1E6');
@@ -113,6 +115,66 @@ check('firstHazardX keeps the opening stretch safe', function () {
     if (b > a) cover += b - a;
   }
   assert.ok(cover >= config.firstHazardX - 1, 'safe ground cover ' + cover);
+});
+
+function collectHazards(terrain) {
+  var hazards = [];
+  for (var i = 0; i < terrain.obstacles.length; i++) {
+    var o = terrain.obstacles[i];
+    hazards.push({ x: o.x, end: o.x + o.w, kind: o.kind });
+  }
+  var segs = terrain.grounds.slice().sort(function (a, b) { return a.x1 - b.x1; });
+  for (var g = 0; g < segs.length - 1; g++) {
+    if (segs[g].x2 < segs[g + 1].x1) {
+      hazards.push({ x: segs[g].x2, end: segs[g + 1].x1, kind: 'gap' });
+    }
+  }
+  hazards.sort(function (a, b) { return a.x - b.x; });
+  return hazards;
+}
+
+function assertHazardSpacing(hazards, gapMin, postMin) {
+  for (var i = 1; i < hazards.length; i++) {
+    var prev = hazards[i - 1];
+    var next = hazards[i];
+    assert.ok(
+      next.x - prev.x >= gapMin - 1e-6,
+      'hazardGapMin ' + gapMin + ' got ' + (next.x - prev.x)
+    );
+    assert.ok(
+      next.x - prev.end >= postMin - 1e-6,
+      'hazardPostMin ' + postMin + ' got ' + (next.x - prev.end)
+    );
+  }
+}
+
+check('same seed yields the same layout', function () {
+  var a = createTerrain(42, config);
+  var b = createTerrain(42, config);
+  a.ensureUpTo(config.firstHazardX + 4000);
+  b.ensureUpTo(config.firstHazardX + 4000);
+  assert.deepStrictEqual(a.obstacles, b.obstacles);
+  assert.deepStrictEqual(a.grounds, b.grounds);
+});
+
+check('hazardGapMin and hazardPostMin space consecutive hazards', function () {
+  var terrain = createTerrain(11, config);
+  terrain.ensureUpTo(config.firstHazardX + 6000);
+  var hazards = collectHazards(terrain);
+  assert.ok(hazards.length >= 3, 'expected several hazards, got ' + hazards.length);
+  var kinds = {};
+  for (var i = 0; i < hazards.length; i++) kinds[hazards[i].kind] = true;
+  assert.ok(kinds.low && kinds.high && kinds.gap, 'expected low, high, and gap kinds');
+  assertHazardSpacing(hazards, config.hazardGapMin, config.hazardPostMin);
+});
+
+check('terrain reads density keys instead of magic spacing', function () {
+  var custom = Object.assign({}, config, { hazardGapMin: 520, hazardPostMin: 300 });
+  var terrain = createTerrain(3, custom);
+  terrain.ensureUpTo(custom.firstHazardX + 8000);
+  var hazards = collectHazards(terrain);
+  assert.ok(hazards.length >= 2, 'expected hazards under custom density');
+  assertHazardSpacing(hazards, 520, 300);
 });
 
 check('quiet window does not spawn ghosts', function () {

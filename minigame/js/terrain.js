@@ -19,15 +19,36 @@ function createTerrain(sessionSeed, cfg) {
   var config = cfg || defaultConfig;
   var chunkW = 220;
   var firstHazardX = config.firstHazardX;
+  var hazardGapMin = config.hazardGapMin;
+  var hazardPostMin = config.hazardPostMin;
   var highHeight = config.highHeight;
+  var chunkEdge = 16;
   var grounds = [];
   var obstacles = [];
   var generatedThrough = -1;
   var worldEnd = 0;
+  var lastHazardX = null;
+  var lastHazardEnd = null;
 
   function addGround(x1, x2) {
     if (x2 <= x1) return;
     grounds.push({ x1: x1, x2: x2 });
+  }
+
+  function nextAllowedX() {
+    if (lastHazardX == null) return firstHazardX;
+    return Math.max(lastHazardX + hazardGapMin, lastHazardEnd + hazardPostMin);
+  }
+
+  function markHazard(x, end) {
+    lastHazardX = x;
+    lastHazardEnd = end;
+  }
+
+  function placeX(rng, minX, width, x1) {
+    var maxX = x1 - chunkEdge - width;
+    if (maxX < minX) return null;
+    return minX + rng() * (maxX - minX);
   }
 
   function generateChunk(index) {
@@ -44,33 +65,50 @@ function createTerrain(sessionSeed, cfg) {
     var hazardStart = Math.max(x0, firstHazardX);
     if (hazardStart > x0) addGround(x0, hazardStart);
 
+    var allowed = nextAllowedX();
+    var placeFrom = Math.max(hazardStart, allowed);
     var roll = rng();
-    if (roll < 0.42) {
+
+    if (roll < 0.42 || placeFrom >= x1) {
       addGround(hazardStart, x1);
     } else if (roll < 0.62) {
       var gapW = 50 + rng() * 14;
-      var gapX = hazardStart + 24 + rng() * 36;
-      if (gapX + gapW > x1 - 16) gapX = Math.max(hazardStart, x1 - 16 - gapW);
-      addGround(hazardStart, gapX);
-      addGround(gapX + gapW, x1);
+      var gapX = placeX(rng, placeFrom, gapW, x1);
+      if (gapX == null) {
+        addGround(hazardStart, x1);
+      } else {
+        addGround(hazardStart, gapX);
+        addGround(gapX + gapW, x1);
+        markHazard(gapX, gapX + gapW);
+      }
     } else if (roll < 0.82) {
       addGround(hazardStart, x1);
-      obstacles.push({
-        kind: 'low',
-        x: Math.max(hazardStart + 16, x0 + 70 + rng() * 70),
-        y: 0,
-        w: 20,
-        h: 24
-      });
+      var lowW = 20;
+      var ox = placeX(rng, placeFrom, lowW, x1);
+      if (ox != null) {
+        obstacles.push({
+          kind: 'low',
+          x: ox,
+          y: 0,
+          w: lowW,
+          h: 24
+        });
+        markHazard(ox, ox + lowW);
+      }
     } else {
       addGround(hazardStart, x1);
-      obstacles.push({
-        kind: 'high',
-        x: Math.max(hazardStart + 16, x0 + 70 + rng() * 70),
-        y: 16,
-        w: 30,
-        h: highHeight
-      });
+      var highW = 30;
+      var hx = placeX(rng, placeFrom, highW, x1);
+      if (hx != null) {
+        obstacles.push({
+          kind: 'high',
+          x: hx,
+          y: 16,
+          w: highW,
+          h: highHeight
+        });
+        markHazard(hx, hx + highW);
+      }
     }
     worldEnd = Math.max(worldEnd, x1);
   }
