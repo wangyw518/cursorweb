@@ -55,7 +55,7 @@ platform.bindInput(view, {
 });
 
 if (typeof window !== 'undefined') {
-  window.__xinggui = { session: session, view: view };
+  window.__xinggui = { session: session, view: view, sessionLib: sessionLib };
 }
 
 if (shotMode) {
