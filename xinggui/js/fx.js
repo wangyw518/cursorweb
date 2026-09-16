@@ -166,17 +166,17 @@
     var colors = (config && config.colors) || {};
     var cap = (config && (config.burstParticleCap || config.particleCap)) || 120;
     var life = ((config && config.burstLifeMs) || 420) / 1000;
-    var n = 16;
+    var n = 18;
     var out = [];
     for (var i = 0; i < n && i < cap; i++) {
-      var a = (Math.PI * 2 * i) / n + Math.random() * 0.35;
-      var spd = 42 + Math.random() * 140;
+      var a = (Math.PI * 2 * i) / n + Math.random() * 0.28;
+      var spd = 28 + Math.random() * 120;
       out.push({
         x: x,
         y: y,
         vx: Math.cos(a) * spd,
         vy: Math.sin(a) * spd,
-        r: 1.1 + Math.random() * 2.4,
+        r: 1.6 + Math.random() * 2.8,
         hex: hex || colors.scorePop || '#FDE68A',
         life: life,
         maxLife: life
@@ -189,7 +189,7 @@
     if (!(amount > 0.004)) return;
     ctx.save();
     ctx.globalAlpha = amount;
-    ctx.fillStyle = hex || 'rgba(236, 244, 255, 0.55)';
+    ctx.fillStyle = hex ? rgba(hex, 0.5) : 'rgba(236, 244, 255, 0.55)';
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }

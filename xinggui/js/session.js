@@ -258,7 +258,7 @@
         fx.starHex(ring.vertices[i], session.config.colors)
       );
     }
-    session.flash = awarded.perfect ? 0.42 : 0.22;
+    session.flash = awarded.perfect ? 0.28 : 0.16;
     session.pulse = 1;
     session.popups = [];
     session.popups.push({
