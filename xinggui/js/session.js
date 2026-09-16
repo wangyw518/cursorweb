@@ -76,6 +76,7 @@
       flash: 0,
       pulse: 0,
       popups: [],
+      closeFx: null,
       best: saved && saved.best ? saved.best : 0,
       combo: emptyCombo(),
       lastAward: null,
@@ -101,6 +102,7 @@
       session.field = starField.create(viewport, session.config, session.ui.playRect);
       inputPath.clear(session.path);
       session.particles.length = 0;
+      session.closeFx = null;
     }
   }
 
@@ -120,6 +122,7 @@
     session.flash = 0;
     session.pulse = 0;
     session.popups = [];
+    session.closeFx = null;
     session.best = saved && saved.best ? saved.best : 0;
     session.combo = emptyCombo();
     session.lastAward = null;
@@ -194,12 +197,59 @@
     session.popups = next;
   }
 
-  function pushBurst(session, x, y, hex) {
+  function copyRingPoints(vertices) {
+    var pts = [];
+    var i;
+    for (i = 0; i < (vertices || []).length; i++) {
+      pts.push({ x: vertices[i].x, y: vertices[i].y });
+    }
+    if (pts.length >= 2) {
+      var a = pts[0];
+      var b = pts[pts.length - 1];
+      if (a.x !== b.x || a.y !== b.y) pts.push({ x: a.x, y: a.y });
+    }
+    return pts;
+  }
+
+  function pushBurst(session, x, y, hex, opts) {
     var cap = session.config.burstParticleCap || session.config.particleCap || 120;
-    var burst = fx.spawnBurst(x, y, session.config, hex);
+    var burst = fx.spawnBurst(x, y, session.config, hex, opts);
     for (var i = 0; i < burst.length; i++) {
       if (session.particles.length >= cap) session.particles.shift();
       session.particles.push(burst[i]);
+    }
+  }
+
+  function emitCloseBursts(session) {
+    var closeFx = session.closeFx;
+    if (!closeFx || !closeFx.pendingBurst) return;
+    var pending = closeFx.pendingBurst;
+    closeFx.pendingBurst = null;
+    pushBurst(session, pending.cx, pending.cy, pending.hex, { kind: 'center' });
+    for (var i = 0; i < pending.vertices.length; i++) {
+      pushBurst(
+        session,
+        pending.vertices[i].x,
+        pending.vertices[i].y,
+        fx.starHex(pending.vertices[i], session.config.colors),
+        { kind: 'vertex' }
+      );
+    }
+  }
+
+  function tickCloseFx(session, dt) {
+    var closeFx = session.closeFx;
+    if (!closeFx) return;
+    if (closeFx.flashFrames > 0) {
+      closeFx.flashFrames -= 1;
+      if (closeFx.flashFrames <= 0) {
+        emitCloseBursts(session);
+        session.flash = 0;
+      }
+    }
+    closeFx.life -= dt;
+    if (closeFx.life <= 0 && !closeFx.pendingBurst && closeFx.flashFrames <= 0) {
+      session.closeFx = null;
     }
   }
 
@@ -249,15 +299,19 @@
     var burstHex = awarded.perfect
       ? (session.config.perfectFlashColor || session.config.colors.perfect)
       : session.config.colors.scorePop;
-    pushBurst(session, cx, cy, burstHex);
-    for (i = 0; i < ring.vertices.length; i++) {
-      pushBurst(
-        session,
-        ring.vertices[i].x,
-        ring.vertices[i].y,
-        fx.starHex(ring.vertices[i], session.config.colors)
-      );
-    }
+    // Thicken → 1-frame white ring flash → then particles.
+    // Mid-tier may cut outer glow / half particles, never flash or hit-stop.
+    session.closeFx = {
+      points: copyRingPoints(ring.vertices),
+      life: 0.42,
+      flashFrames: 2,
+      pendingBurst: {
+        cx: cx,
+        cy: cy,
+        hex: burstHex,
+        vertices: ring.vertices.slice()
+      }
+    };
     session.flash = awarded.perfect ? 0.28 : 0.16;
     session.pulse = 1;
     session.popups = [];
@@ -266,24 +320,27 @@
       y: cy - 12,
       text: '+' + awarded.score,
       life: 1,
-      hex: session.config.colors.scorePop
+      hex: session.config.colors.scorePop,
+      kind: 'score'
     });
     if (awarded.multiplier > 1) {
       session.popups.push({
         x: cx,
-        y: cy + 14,
+        y: cy + 18,
         text: '×' + awarded.multiplier,
         life: 1,
-        hex: session.config.colors.combo
+        hex: session.config.colors.combo,
+        kind: 'combo'
       });
     }
     if (awarded.perfect) {
       session.popups.push({
         x: cx,
-        y: cy + (awarded.multiplier > 1 ? 32 : 16),
+        y: cy + (awarded.multiplier > 1 ? 40 : 20),
         text: '完美',
         life: 1.1,
-        hex: session.config.perfectFlashColor || session.config.colors.perfect
+        hex: session.config.perfectFlashColor || session.config.colors.perfect,
+        kind: 'perfect'
       });
     }
     session.hitStop = session.config.hitStopFrames || 0;
@@ -297,7 +354,10 @@
 
   function update(session, dt) {
     session.now += dt;
-    if (session.flash > 0) session.flash = Math.max(0, session.flash - dt * 2.8);
+    tickCloseFx(session, dt);
+    if (session.flash > 0 && !(session.closeFx && session.closeFx.flashFrames > 0)) {
+      session.flash = Math.max(0, session.flash - dt * 2.8);
+    }
     if (session.pulse > 0) session.pulse = Math.max(0, session.pulse - dt * 3.4);
     updatePopups(session, dt);
     if (session.phase === 'play') {
@@ -454,6 +514,16 @@
     var pts = starField.pointsForIds(session.field, ids);
     fx.drawNeonPath(ctx, pts, session.config);
 
+    var closeFx = session.closeFx;
+    var flashing = !!(closeFx && closeFx.flashFrames > 0);
+    if (closeFx && closeFx.points && closeFx.points.length >= 2) {
+      fx.drawNeonPath(ctx, closeFx.points, session.config, {
+        thicken: true,
+        closed: true,
+        whiteFlash: flashing
+      });
+    }
+
     if (session.path.reject) {
       fx.drawRejectSegment(
         ctx,
@@ -464,21 +534,17 @@
       );
     }
 
-    fx.drawParticles(ctx, session.particles);
+    if (!closeFx || !closeFx.pendingBurst) {
+      fx.drawParticles(ctx, session.particles);
+    }
     for (i = 0; i < (session.popups || []).length; i++) {
       fx.drawPopup(ctx, session.popups[i], colors);
     }
     ctx.restore();
 
-    fx.drawFlash(
-      ctx,
-      vp.width,
-      vp.height,
-      session.flash || 0,
-      session.lastAward && session.lastAward.perfect
-        ? session.config.perfectFlashColor
-        : null
-    );
+    if (flashing) {
+      fx.drawFlash(ctx, vp.width, vp.height, session.flash || 0.2, '#FFFFFF');
+    }
 
     hud.draw(ctx, session.ui, {
       timer: session.timer,

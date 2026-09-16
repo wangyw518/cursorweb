@@ -42,6 +42,41 @@
     ctx.restore();
   }
 
+  function fxQuality(config) {
+    return (config && config.fxQuality) || 'high';
+  }
+
+  function degradeMid(config) {
+    var q = fxQuality(config);
+    return q === 'mid' || q === 'low';
+  }
+
+  var CENTER_BURST_MIN = 48;
+  var CENTER_BURST_MAX = 64;
+  var VERTEX_BURST_MIN = 8;
+  var VERTEX_BURST_MAX = 12;
+  var SCORE_POP_SIZE = 27;
+  var TAG_POP_SIZE = 20;
+
+  function burstCountFor(config, kind) {
+    var n;
+    if (kind === 'vertex') {
+      n = VERTEX_BURST_MIN + Math.floor(Math.random() * (VERTEX_BURST_MAX - VERTEX_BURST_MIN + 1));
+    } else {
+      n = CENTER_BURST_MIN + Math.floor(Math.random() * (CENTER_BURST_MAX - CENTER_BURST_MIN + 1));
+    }
+    if (degradeMid(config)) n = Math.max(1, Math.floor(n / 2));
+    return n;
+  }
+
+  function popupStyle(popup) {
+    var kind = (popup && popup.kind) || 'score';
+    if (kind === 'combo' || kind === 'perfect') {
+      return { size: TAG_POP_SIZE, weight: 'bold', stroke: false };
+    }
+    return { size: SCORE_POP_SIZE, weight: 'bold', stroke: true };
+  }
+
   function drawStarGlow(ctx, star, config, time, selected) {
     var colors = config.colors || config;
     var pulse = 1 + Math.sin((time || 0) * 2.1 + star.phase) * (star.tier ? 0.12 : 0.06);
@@ -51,14 +86,16 @@
     var outer = (config.glowOuterR || 14) * (star.tier ? 1.2 : 0.9) * pulse;
 
     ctx.save();
-    var g = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, outer);
-    g.addColorStop(0, rgba(hex, star.tier ? 1 : 0.82));
-    g.addColorStop(0.22, rgba(glowHex, star.tier ? 0.5 : 0.28));
-    g.addColorStop(1, rgba(glowHex, 0));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, outer, 0, Math.PI * 2);
-    ctx.fill();
+    if (!degradeMid(config)) {
+      var g = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, outer);
+      g.addColorStop(0, rgba(hex, star.tier ? 1 : 0.82));
+      g.addColorStop(0.22, rgba(glowHex, star.tier ? 0.5 : 0.28));
+      g.addColorStop(1, rgba(glowHex, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, outer, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.fillStyle = selected
       ? (colors.selectedCore || '#FFFFFF')
@@ -69,40 +106,59 @@
     ctx.restore();
   }
 
-  function strokePoly(ctx, points) {
+  function strokePoly(ctx, points, closed) {
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (var i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    if (closed) ctx.closePath();
     ctx.stroke();
   }
 
-  function drawNeonPath(ctx, points, config) {
+  function drawNeonPath(ctx, points, config, opts) {
     if (!points || points.length < 2) return;
+    opts = opts || {};
     var colors = config.colors || config;
     var trailA = config.trailAlpha0 == null ? 0.55 : config.trailAlpha0;
+    var thicken = !!opts.thicken;
+    var whiteFlash = !!opts.whiteFlash;
+    var closed = !!opts.closed;
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
     ctx.strokeStyle = colors.path || '#A78BFA';
-    ctx.globalAlpha = Math.max(0.18, trailA * 0.4);
-    ctx.lineWidth = 12;
-    strokePoly(ctx, points);
+    ctx.globalAlpha = Math.max(0.18, trailA * (thicken ? 0.7 : 0.4));
+    ctx.lineWidth = thicken ? 22 : 12;
+    strokePoly(ctx, points, closed);
 
     ctx.strokeStyle = colors.path || '#A78BFA';
-    ctx.globalAlpha = trailA;
-    ctx.lineWidth = 5;
-    strokePoly(ctx, points);
+    ctx.globalAlpha = thicken ? Math.min(1, trailA + 0.25) : trailA;
+    ctx.lineWidth = thicken ? 9 : 5;
+    strokePoly(ctx, points, closed);
 
-    var headFrom = points[points.length - 2];
-    var headTo = points[points.length - 1];
-    ctx.strokeStyle = colors.pathHead || '#22D3EE';
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(headFrom.x, headFrom.y);
-    ctx.lineTo(headTo.x, headTo.y);
-    ctx.stroke();
+    if (whiteFlash) {
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = thicken ? 14 : 8;
+      strokePoly(ctx, points, closed);
+      ctx.globalAlpha = 0.88;
+      ctx.lineWidth = thicken ? 6 : 3;
+      strokePoly(ctx, points, closed);
+    } else {
+      var headFrom = points[points.length - 2];
+      var headTo = points[points.length - 1];
+      ctx.strokeStyle = colors.pathHead || '#22D3EE';
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = thicken ? 3.4 : 2.2;
+      if (closed) {
+        strokePoly(ctx, points, true);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(headFrom.x, headFrom.y);
+        ctx.lineTo(headTo.x, headTo.y);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
@@ -161,12 +217,14 @@
     ctx.restore();
   }
 
-  function spawnBurst(x, y, config, hex) {
+  function spawnBurst(x, y, config, hex, opts) {
     if (x == null || y == null) return [];
+    opts = opts || {};
     var colors = (config && config.colors) || {};
     var cap = (config && (config.burstParticleCap || config.particleCap)) || 120;
     var life = ((config && config.burstLifeMs) || 420) / 1000;
-    var n = 18;
+    var kind = opts.kind || 'center';
+    var n = opts.count != null ? opts.count : burstCountFor(config, kind);
     var out = [];
     for (var i = 0; i < n && i < cap; i++) {
       var a = (Math.PI * 2 * i) / n + Math.random() * 0.28;
@@ -196,12 +254,18 @@
 
   function drawPopup(ctx, popup, colors) {
     if (!popup) return;
+    var style = popupStyle(popup);
     ctx.save();
     ctx.globalAlpha = Math.min(1, popup.life * 1.6);
-    ctx.fillStyle = popup.hex || (colors && colors.scorePop) || '#FDE68A';
-    ctx.font = '16px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
+    ctx.font = style.weight + ' ' + style.size + 'px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    if (style.stroke) {
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = 'rgba(232, 243, 255, 0.38)';
+      ctx.strokeText(popup.text, popup.x, popup.y);
+    }
+    ctx.fillStyle = popup.hex || (colors && colors.scorePop) || '#FDE68A';
     ctx.fillText(popup.text, popup.x, popup.y);
     ctx.restore();
   }
@@ -220,6 +284,15 @@
     drawParticles: drawParticles,
     spawnBurst: spawnBurst,
     drawFlash: drawFlash,
-    drawPopup: drawPopup
+    drawPopup: drawPopup,
+    popupStyle: popupStyle,
+    burstCountFor: burstCountFor,
+    fxQuality: fxQuality,
+    CENTER_BURST_MIN: CENTER_BURST_MIN,
+    CENTER_BURST_MAX: CENTER_BURST_MAX,
+    VERTEX_BURST_MIN: VERTEX_BURST_MIN,
+    VERTEX_BURST_MAX: VERTEX_BURST_MAX,
+    SCORE_POP_SIZE: SCORE_POP_SIZE,
+    TAG_POP_SIZE: TAG_POP_SIZE
   };
 });
