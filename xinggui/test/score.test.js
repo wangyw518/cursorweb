@@ -4,12 +4,22 @@ const assert = require('assert');
 const score = require('../js/score.js');
 const cfg = require('../config.json');
 
-exports.loopScoreGrowsWithSizeAndCombo = function () {
-  const a = score.scoreLoop(4, 0, 0, cfg);
-  const b = score.scoreLoop(6, 2, 0, cfg);
-  const c = score.scoreLoop(6, 2, 4, cfg);
-  assert.ok(b > a);
-  assert.ok(c > b);
+exports.gddFormulaNodesAndInside = function () {
+  const a = score.scoreLoop(4, 0, 1, 0, false, cfg);
+  const b = score.scoreLoop(4, 3, 1, 0, false, cfg);
+  assert.strictEqual(a, 80);
+  assert.strictEqual(b, 80 + 45);
+};
+
+exports.comboTiersAndPerfect = function () {
+  assert.strictEqual(score.comboMult(0, cfg), 1);
+  assert.strictEqual(score.comboMult(1, cfg), 1.5);
+  assert.strictEqual(score.comboMult(3, cfg), 2.5);
+  const plain = score.scoreLoop(8, 6, 1, 0, false, cfg);
+  const perf = score.scoreLoop(8, 6, 1, 0, true, cfg);
+  assert.strictEqual(perf, plain + 200);
+  assert.ok(score.isPerfect(6, false, cfg));
+  assert.strictEqual(score.isPerfect(6, true, cfg), false);
   assert.strictEqual(score.nextCombo(2), 3);
 };
 

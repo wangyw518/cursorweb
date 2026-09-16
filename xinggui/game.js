@@ -15,12 +15,23 @@ const storage = storageLib.createStorage(platform, config.storageKey);
 const timed = parseInt(query.t, 10);
 if (timed > 0 && timed < 600) config.sessionSeconds = timed;
 
+function detectLowEnd() {
+  try {
+    if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
+      const s = wx.getSystemInfoSync();
+      if (typeof s.benchmarkLevel === 'number' && s.benchmarkLevel >= 0 && s.benchmarkLevel < 18) return true;
+    }
+  } catch (e) {}
+  return view.dpr <= 1 && view.w * view.h < 280000;
+}
+
 const session = sessionLib.createSession({
   config: config,
   w: view.w,
   h: view.h,
   rng: rng,
-  storage: storage
+  storage: storage,
+  quality: { low: detectLowEnd() }
 });
 const sky = skyLib.createSky(view.w, view.h, rng);
 

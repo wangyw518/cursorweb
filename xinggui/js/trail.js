@@ -14,6 +14,17 @@ function reset(trail) {
   trail.live = true;
 }
 
+function pop(trail, starsById) {
+  const id = trail.ids.pop();
+  if (id == null) return null;
+  const star = starsById[id];
+  if (star) {
+    star.selected = false;
+    star.selIndex = -1;
+  }
+  return star;
+}
+
 function has(trail, id) {
   return trail.ids.indexOf(id) !== -1;
 }
@@ -95,6 +106,7 @@ function closedPoints(trail, starsById) {
 module.exports = {
   createTrail: createTrail,
   reset: reset,
+  pop: pop,
   has: has,
   firstId: firstId,
   lastId: lastId,

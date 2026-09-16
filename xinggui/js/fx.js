@@ -2,7 +2,7 @@
 
 const math = require('./math.js');
 
-const MAX_PARTICLES = 140;
+const MAX_PARTICLES = 120;
 
 function createFx() {
   return {
@@ -19,10 +19,13 @@ function createFx() {
   };
 }
 
-function burst(fx, x, y, color, n) {
+function burst(fx, x, y, color, n, cfg) {
+  const cap = (cfg && cfg.burstParticleCap) || MAX_PARTICLES;
+  const lifeMs = (cfg && cfg.burstLifeMs) || 420;
+  const decay = 1000 / lifeMs;
   const count = n || 16;
   for (let i = 0; i < count; i++) {
-    if (fx.particles.length >= MAX_PARTICLES) fx.particles.shift();
+    if (fx.particles.length >= cap) fx.particles.shift();
     const a = Math.random() * Math.PI * 2;
     const spd = 28 + Math.random() * 140;
     fx.particles.push({
@@ -31,7 +34,7 @@ function burst(fx, x, y, color, n) {
       vx: Math.cos(a) * spd,
       vy: Math.sin(a) * spd,
       life: 1,
-      decay: 1.15 + Math.random() * 1.4,
+      decay: decay,
       r: 1.1 + Math.random() * 2.4,
       color: color || '#E8F2FF'
     });

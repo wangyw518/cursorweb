@@ -37,8 +37,31 @@ function createSession(opts) {
     settle: null,
     toast: '',
     toastAge: 0,
-    buttons: {}
+    buttons: {},
+    lastBlankAt: -10,
+    comboAt: -99,
+    justClosed: false,
+    quality: opts.quality || { low: false }
   };
+}
+
+function linkMax(session) {
+  return session.w * (session.cfg.linkMaxRatio || 0.22);
+}
+
+function warnLink(session) {
+  return session.w * (session.cfg.warnLinkRatio || 0.175);
+}
+
+function closeR(session) {
+  return session.w * (session.cfg.closeThresholdRatio || 0.16);
+}
+
+function clearPath(session) {
+  const byId = starsLib.indexById(session.stars);
+  while (session.trail.ids.length) trailLib.pop(session.trail, byId);
+  session.hint = hud.COPY.hint;
+  session.hintAge = 0;
 }
 
 function resize(session, w, h) {
@@ -61,6 +84,9 @@ function startPlay(session) {
   session.stars = field.stars;
   session.nextId = field.nextId;
   session.fx = fxLib.createFx();
+  session.lastBlankAt = -10;
+  session.comboAt = -99;
+  session.justClosed = false;
 }
 
 function pointerDown(session, x, y) {
@@ -84,7 +110,7 @@ function pointerDown(session, x, y) {
     return null;
   }
   if (session.phase === 'play') {
-    trySelect(session, x, y);
+    trySelect(session, x, y, true);
   }
   return null;
 }
@@ -92,31 +118,49 @@ function pointerDown(session, x, y) {
 function pointerMove(session, x, y) {
   session.finger.x = x;
   session.finger.y = y;
-  if (session.phase === 'play' && session.finger.active) trySelect(session, x, y);
+  if (session.phase === 'play' && session.finger.active) trySelect(session, x, y, false);
 }
 
 function pointerUp(session) {
   session.finger.active = false;
+  session.justClosed = false;
 }
 
-function trySelect(session, x, y) {
-  if (session.phase !== 'play' || !session.trail.live) return;
+function trySelect(session, x, y, isDown) {
+  if (session.phase !== 'play' || !session.trail.live || session.justClosed) return;
   const cfg = session.cfg;
   const byId = starsLib.indexById(session.stars);
   const pts = trailLib.toPoints(session.trail, byId);
+  const maxLink = linkMax(session);
   const closable = pts.length >= cfg.minLoopStars;
   const first = byId[trailLib.firstId(session.trail)];
 
-  if (closable && first && math.dist(x, y, first.x, first.y) <= cfg.closeThreshold) {
+  if (closable && first && math.dist(x, y, first.x, first.y) <= closeR(session)) {
     closeLoop(session, byId);
+    return;
+  }
+
+  const last = byId[trailLib.lastId(session.trail)];
+  if (isDown && last && math.dist(x, y, last.x, last.y) <= cfg.hitRadius * 0.75 && pts.length) {
+    trailLib.pop(session.trail, byId);
     return;
   }
 
   const star = starsLib.findNearest(session.stars, x, y, cfg.hitRadius, function (s) {
     return !s.selected;
   });
-  if (!star) return;
-  if (!trailLib.canAdd(session.trail, star, cfg.maxLinkDistance, byId)) {
+  if (!star) {
+    if (isDown && session.trail.ids.length) {
+      if (session.clock - session.lastBlankAt < 0.38) {
+        clearPath(session);
+        session.toast = '轨迹已抹去';
+        session.toastAge = 0;
+      }
+      session.lastBlankAt = session.clock;
+    }
+    return;
+  }
+  if (!trailLib.canAdd(session.trail, star, maxLink, byId)) {
     if (session.trail.ids.length) {
       session.toast = '再近一些';
       session.toastAge = 0;
@@ -132,7 +176,7 @@ function trySelect(session, x, y) {
   }
   const origin = starsLib.indexById(session.stars)[trailLib.firstId(session.trail)];
   if (session.trail.ids.length >= cfg.minLoopStars && origin &&
-      math.dist(star.x, star.y, origin.x, origin.y) <= cfg.closeThreshold) {
+      math.dist(star.x, star.y, origin.x, origin.y) <= closeR(session)) {
     closeLoop(session, starsLib.indexById(session.stars));
   }
 }
@@ -147,23 +191,25 @@ function closeLoop(session, byId) {
   for (let i = 0; i < trail.ids.length; i++) trailSet[trail.ids[i]] = true;
 
   const cleared = [];
+  let enclosed = 0;
   for (let i = 0; i < session.stars.length; i++) {
     const s = session.stars[i];
     if (s.dead) continue;
     const onTrail = !!trailSet[s.id];
-    const inside = math.pointInPolygon(s.x, s.y, loopPts);
-    const near = math.distToPolyline(s.x, s.y, loopPts) <= cfg.nearTrailClear;
-    if (onTrail || inside || near) cleared.push(s);
+    const inside = !onTrail && math.pointInPolygon(s.x, s.y, loopPts);
+    if (onTrail || inside) {
+      cleared.push(s);
+      if (inside) enclosed++;
+    }
   }
 
-  let enclosed = 0;
-  for (let i = 0; i < cleared.length; i++) {
-    if (!trailSet[cleared[i].id]) enclosed++;
-  }
-
-  const gained = scoreLib.scoreLoop(trail.ids.length, enclosed, session.combo, cfg);
+  const openPts = trailLib.toPoints(trail, byId);
+  const areaFac = scoreLib.areaFactor(math.polygonArea(loopPts), session.w, session.h, cfg);
+  const perfect = scoreLib.isPerfect(enclosed, math.polylineSelfIntersects(openPts), cfg);
+  const gained = scoreLib.scoreLoop(trail.ids.length, enclosed, areaFac, session.combo, perfect, cfg);
   session.score += gained;
   session.combo = scoreLib.nextCombo(session.combo);
+  session.comboAt = session.clock;
   session.loops += 1;
 
   let cx = 0;
@@ -172,15 +218,18 @@ function closeLoop(session, byId) {
   cx /= loopPts.length;
   cy /= loopPts.length;
 
+  const low = session.quality && session.quality.low;
   fxLib.hitStop(session.fx, cfg.hitStopFrames);
   fxLib.flash(session.fx, 0.26);
   fxLib.pulse(session.fx, 1);
-  fxLib.ring(session.fx, cx, cy, '#E8F2FF');
-  fxLib.popup(session.fx, cx, cy - 12, '+' + gained, '#F4F7FF');
+  fxLib.ring(session.fx, cx, cy, perfect ? cfg.comboColor : '#E8F2FF');
+  fxLib.popup(session.fx, cx, cy - 12, '+' + gained, cfg.scorePop || '#FDE68A');
+  if (perfect) fxLib.popup(session.fx, cx, cy + 16, '完美', cfg.comboColor || '#F472B6');
 
+  const burstN = low ? 8 : 14;
   for (let i = 0; i < cleared.length; i++) {
     const s = cleared[i];
-    fxLib.burst(session.fx, s.x, s.y, s.color, 14);
+    fxLib.burst(session.fx, s.x, s.y, s.color, burstN, cfg);
     s.dead = true;
     s.selected = false;
   }
@@ -192,6 +241,7 @@ function closeLoop(session, byId) {
   );
   trailLib.reset(trail);
   session.hint = '';
+  session.justClosed = true;
 }
 
 function endSession(session, reason) {
@@ -223,6 +273,9 @@ function step(session, dt) {
   session.hintAge += dt;
   session.displayScore = math.lerp(session.displayScore, session.score, Math.min(1, dt * 7));
   if (Math.abs(session.displayScore - session.score) < 0.5) session.displayScore = session.score;
+  if (session.combo > 0 && session.clock - session.comboAt > (session.cfg.comboWindow || 8)) {
+    session.combo = 0;
+  }
 
   if (session.fx.hitStop > 0) {
     session.fx.hitStop -= 1;
@@ -242,7 +295,8 @@ function step(session, dt) {
 
   const byId = starsLib.indexById(session.stars);
   const pts = trailLib.toPoints(session.trail, byId);
-  if (session.phase === 'play' && pts.length >= 2) {
+  const attractOn = session.cfg.attractEnabled !== false && !(session.quality && session.quality.low);
+  if (session.phase === 'play' && pts.length >= 2 && attractOn) {
     attract.applyAttraction(
       session.stars, pts,
       session.cfg.attractRadius,
@@ -262,7 +316,7 @@ function step(session, dt) {
     return;
   }
 
-  if (trailLib.isBroken(session.trail, byId, session.cfg.maxLinkDistance)) {
+  if (trailLib.isBroken(session.trail, byId, linkMax(session))) {
     fxLib.shatterTrail(session.fx, pts);
     endSession(session, 'break');
   }
@@ -286,12 +340,12 @@ function draw(session, ctx, sky, view, time) {
   const byId = starsLib.indexById(session.stars);
   const pts = trailLib.toPoints(session.trail, byId);
   const first = byId[trailLib.firstId(session.trail)];
-  const stretch = trailLib.stretchT(session.trail, byId, session.cfg.warnLinkDistance, session.cfg.maxLinkDistance);
+  const stretch = trailLib.stretchT(session.trail, byId, warnLink(session), linkMax(session));
   const closable = pts.length >= session.cfg.minLoopStars;
   const finger = session.phase === 'play' ? session.finger : null;
 
   if (session.phase !== 'settle') {
-    starsLib.drawTrail(ctx, pts, finger, stretch, closable, first, time);
+    starsLib.drawTrail(ctx, pts, finger, stretch, closable, first, time, session.cfg, session.quality);
   }
 
   const nearR = session.cfg.hitRadius * 1.6;
@@ -303,7 +357,10 @@ function draw(session, ctx, sky, view, time) {
     starsLib.drawStar(ctx, s, time, {
       near: near,
       origin: first && s.id === first.id && session.phase === 'play',
-      closeable: closable && first && s.id === first.id && session.phase === 'play'
+      closeable: closable && first && s.id === first.id && session.phase === 'play',
+      glowInnerR: session.cfg.glowInnerR,
+      glowOuterR: session.cfg.glowOuterR,
+      low: session.quality && session.quality.low
     });
   }
 

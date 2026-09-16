@@ -77,18 +77,48 @@ function distToPolyline(px, py, points) {
   return best;
 }
 
-function pointInPolygon(px, py, points) {
-  if (!points || points.length < 3) return false;
-  let inside = false;
+function isLeft(x0, y0, x1, y1, x, y) {
+  return (x1 - x0) * (y - y0) - (x - x0) * (y1 - y0);
+}
+
+function windingNumber(px, py, points) {
+  if (!points || points.length < 3) return 0;
+  let wn = 0;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const xi = points[i].x;
     const yi = points[i].y;
     const xj = points[j].x;
     const yj = points[j].y;
-    const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi + 0) + xi;
-    if ((yj - yi === 0 && yi === py) === false && intersect) inside = !inside;
+    if (yj <= py) {
+      if (yi > py && isLeft(xj, yj, xi, yi, px, py) > 0) wn += 1;
+    } else if (yi <= py && isLeft(xj, yj, xi, yi, px, py) < 0) {
+      wn -= 1;
+    }
   }
-  return inside;
+  return wn;
+}
+
+function pointInPolygon(px, py, points) {
+  return windingNumber(px, py, points) !== 0;
+}
+
+function segmentsIntersect(a, b, c, d) {
+  const ab = isLeft(a.x, a.y, b.x, b.y, c.x, c.y) * isLeft(a.x, a.y, b.x, b.y, d.x, d.y);
+  const cd = isLeft(c.x, c.y, d.x, d.y, a.x, a.y) * isLeft(c.x, c.y, d.x, d.y, b.x, b.y);
+  if (ab > 0 || cd > 0) return false;
+  if (ab < 0 && cd < 0) return true;
+  return false;
+}
+
+function polylineSelfIntersects(points) {
+  if (!points || points.length < 4) return false;
+  for (let i = 1; i < points.length; i++) {
+    for (let k = i + 2; k < points.length; k++) {
+      if (i === 1 && k === points.length - 1) continue;
+      if (segmentsIntersect(points[i - 1], points[i], points[k - 1], points[k])) return true;
+    }
+  }
+  return false;
 }
 
 function polygonArea(points) {
@@ -146,7 +176,10 @@ module.exports = {
   rgba: rgba,
   closestPointOnSegment: closestPointOnSegment,
   distToPolyline: distToPolyline,
+  windingNumber: windingNumber,
   pointInPolygon: pointInPolygon,
+  segmentsIntersect: segmentsIntersect,
+  polylineSelfIntersects: polylineSelfIntersects,
   polygonArea: polygonArea,
   smoothstep: smoothstep,
   mulberry32: mulberry32,

@@ -8,7 +8,7 @@ const COPY = {
   title: '星轨',
   subtitle: '夜空之中，连星成轨',
   hint: '点星成线，闭合为环',
-  closeHint: '回到第一颗星，织成一环',
+  closeHint: '回到第一颗星，织成一环 · 点空白两下可抹去',
   play: '轻点入夜',
   cta: '再织一轨',
   share: '分享这次夜航',
@@ -61,12 +61,13 @@ function drawPlayHud(ctx, session, view) {
   const top = view.safeTop;
   ctx.save();
   ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(232,238,248,0.94)';
+  const comboHex = (session.cfg && session.cfg.comboColor) || '#F472B6';
+  ctx.fillStyle = comboHex;
   ctx.font = '13px ' + FONT;
   ctx.textAlign = 'left';
   ctx.fillText(COPY.combo, 22, top);
   ctx.font = '22px ' + FONT;
-  ctx.fillText('×' + Math.max(1, session.combo), 22, top + 18);
+  ctx.fillText('×' + scoreLib.comboMult(session.combo, session.cfg), 22, top + 18);
 
   ctx.textAlign = 'center';
   ctx.font = '34px ' + FONT;

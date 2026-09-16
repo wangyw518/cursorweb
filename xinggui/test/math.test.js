@@ -19,6 +19,8 @@ exports.pointInSquarePolygon = function () {
   const sq = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
   assert.strictEqual(math.pointInPolygon(5, 5, sq), true);
   assert.strictEqual(math.pointInPolygon(20, 5, sq), false);
+  assert.ok(math.windingNumber(5, 5, sq) !== 0);
+  assert.strictEqual(math.windingNumber(20, 5, sq), 0);
   assert.ok(math.polygonArea(sq) > 99 && math.polygonArea(sq) < 101);
 };
 

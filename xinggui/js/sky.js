@@ -45,12 +45,9 @@ function updateSky(sky, dt, w) {
 
 function drawSky(ctx, sky, w, h, time, urgency) {
   ctx.save();
-  ctx.fillStyle = '#070B18';
-  ctx.fillRect(0, 0, w, h);
-
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, 'rgba(10, 16, 36, 0.0)');
-  g.addColorStop(1, 'rgba(4, 6, 14, 0.55)');
+  g.addColorStop(0, '#070B18');
+  g.addColorStop(1, '#12183A');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 

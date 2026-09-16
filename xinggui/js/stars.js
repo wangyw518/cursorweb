@@ -151,7 +151,8 @@ function drawStar(ctx, star, time, opts) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  const bloomR = r * 6.4;
+  const glowOut = (opts && opts.glowOuterR) || 14;
+  const bloomR = r * 3.1 + glowOut * (opts && opts.low ? 1.1 : 2.2);
   const bloom = ctx.createRadialGradient(x, y, 0, x, y, bloomR);
   bloom.addColorStop(0, math.rgba('#FFFFFF', 0.95 * a));
   bloom.addColorStop(0.08, math.rgba(star.color, 0.85 * a));
@@ -164,7 +165,8 @@ function drawStar(ctx, star, time, opts) {
   ctx.arc(x, y, bloomR, 0, Math.PI * 2);
   ctx.fill();
 
-  fillCircle(ctx, x, y, r * 1.85, star.color, 0.42 * a);
+  const glowIn = (opts && opts.glowInnerR) || 6;
+  fillCircle(ctx, x, y, Math.max(r * 1.2, glowIn), star.color, 0.42 * a);
   fillCircle(ctx, x, y, r * 0.85, '#FFFFFF', 0.9 * a);
   fillCircle(ctx, x, y, r * 0.32, '#FFFFFF', 1 * a);
 
@@ -203,15 +205,33 @@ function strokeCircle(ctx, x, y, r, color, width) {
   ctx.stroke();
 }
 
-function drawTrail(ctx, points, finger, stretch, closable, first, time) {
-  if (!points.length) return;
-  const pts = points.slice();
-  if (finger && finger.active) pts.push({ x: finger.x, y: finger.y });
+function densify(points, perNode) {
+  if (!points || points.length < 2 || perNode <= 1) return points;
+  const out = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    out.push(a);
+    for (let k = 1; k < perNode; k++) {
+      const t = k / perNode;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}
 
+function drawTrail(ctx, points, finger, stretch, closable, first, time, cfg, quality) {
+  if (!points.length) return;
+  const raw = points.slice();
+  if (finger && finger.active) raw.push({ x: finger.x, y: finger.y });
+  const per = (cfg && cfg.trailPointsPerNode) || 2;
+  const pts = densify(raw, per);
+  const from = (cfg && cfg.trailFrom) || '#A78BFA';
+  const to = (cfg && cfg.trailTo) || '#22D3EE';
+  const a0 = (cfg && cfg.trailAlpha0) || 0.55;
   const danger = stretch;
-  const outer = math.rgba(math.mixHex('#8EB8FF', '#FF8B7A', danger), 0.16 + danger * 0.1);
-  const mid = math.rgba(math.mixHex('#C8E0FF', '#FFC4B0', danger), 0.38);
-  const core = math.rgba(math.mixHex('#F7FBFF', '#FFE8E0', danger), 0.92);
+  const low = quality && quality.low;
 
   ctx.save();
   ctx.lineCap = 'round';
@@ -221,7 +241,7 @@ function drawTrail(ctx, points, finger, stretch, closable, first, time) {
   if (closable && first && points.length >= 3) {
     const fillPts = points.concat([{ x: first.x, y: first.y }]);
     ctx.globalAlpha = 0.10 + 0.04 * Math.sin(time * 4);
-    ctx.fillStyle = '#B8D4FF';
+    ctx.fillStyle = from;
     ctx.beginPath();
     ctx.moveTo(fillPts[0].x, fillPts[0].y);
     for (let i = 1; i < fillPts.length; i++) ctx.lineTo(fillPts[i].x, fillPts[i].y);
@@ -229,13 +249,39 @@ function drawTrail(ctx, points, finger, stretch, closable, first, time) {
     ctx.fill();
     ctx.globalAlpha = 0.45 + 0.2 * Math.sin(time * 4);
     ctx.setLineDash([5, 7]);
-    strokePoly(ctx, [points[points.length - 1], { x: first.x, y: first.y }], 1.6, 'rgba(255,226,168,0.85)');
+    strokePoly(ctx, [points[points.length - 1], { x: first.x, y: first.y }], 1.6, math.rgba('#F472B6', 0.85));
     ctx.setLineDash([]);
   }
 
-  strokePoly(ctx, pts, 20, outer);
-  strokePoly(ctx, pts, 10, mid);
-  strokePoly(ctx, pts, 2.4, core);
+  if (pts.length >= 2) {
+    const last = pts[pts.length - 1];
+    const firstP = pts[0];
+    const grad = ctx.createLinearGradient(firstP.x, firstP.y, last.x, last.y);
+    grad.addColorStop(0, math.rgba(math.mixHex(from, '#FF8B7A', danger), a0));
+    grad.addColorStop(1, math.rgba(math.mixHex(to, '#FF8B7A', danger), Math.min(1, a0 + 0.25)));
+    if (!low) {
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 18;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = low ? 3.2 : 2.4;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    ctx.strokeStyle = math.rgba('#FFFFFF', 0.85);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }

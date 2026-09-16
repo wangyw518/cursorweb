@@ -42,18 +42,18 @@ exports.closeSquareLoopScoresAndClears = function () {
   const s = make();
   sessionLib.startPlay(s);
   s.stars = [
-    liveStar(1, 120, 260),
-    liveStar(2, 240, 260),
-    liveStar(3, 240, 380),
-    liveStar(4, 120, 380),
-    liveStar(5, 180, 320)
+    liveStar(1, 140, 300),
+    liveStar(2, 200, 300),
+    liveStar(3, 200, 360),
+    liveStar(4, 140, 360),
+    liveStar(5, 170, 330)
   ];
   s.nextId = 6;
-  sessionLib.pointerDown(s, 120, 260);
-  sessionLib.pointerMove(s, 240, 260);
-  sessionLib.pointerMove(s, 240, 380);
-  sessionLib.pointerMove(s, 120, 380);
-  sessionLib.pointerMove(s, 122, 262);
+  sessionLib.pointerDown(s, 140, 300);
+  sessionLib.pointerMove(s, 200, 300);
+  sessionLib.pointerMove(s, 200, 360);
+  sessionLib.pointerMove(s, 140, 360);
+  sessionLib.pointerMove(s, 142, 302);
   sessionLib.pointerUp(s);
   assert.ok(s.score > 0, 'loop should score');
   assert.strictEqual(s.loops, 1);
@@ -78,10 +78,28 @@ exports.stretchedTrailBreaks = function () {
   s.stars = [liveStar(1, 80, 300), liveStar(2, 140, 300)];
   sessionLib.pointerDown(s, 80, 300);
   sessionLib.pointerMove(s, 140, 300);
-  s.stars[1].x = 80 + cfg.maxLinkDistance + 40;
+  s.stars[1].x = 80 + s.w * cfg.linkMaxRatio + 40;
   sessionLib.step(s, 1 / 60);
   assert.strictEqual(s.phase, 'settle');
   assert.strictEqual(s.settle.reason, 'break');
+};
+
+exports.undoLastAndDoubleTapClear = function () {
+  const s = make();
+  sessionLib.startPlay(s);
+  s.stars = [liveStar(1, 80, 300), liveStar(2, 140, 300), liveStar(3, 200, 300)];
+  sessionLib.pointerDown(s, 80, 300);
+  sessionLib.pointerMove(s, 140, 300);
+  sessionLib.pointerUp(s);
+  assert.strictEqual(s.trail.ids.length, 2);
+  sessionLib.pointerDown(s, 140, 300);
+  sessionLib.pointerUp(s);
+  assert.strictEqual(s.trail.ids.length, 1);
+  s.clock = 1;
+  sessionLib.pointerDown(s, 20, 20);
+  s.clock = 1.2;
+  sessionLib.pointerDown(s, 22, 24);
+  assert.strictEqual(s.trail.ids.length, 0);
 };
 
 exports.replayFromSettle = function () {
