@@ -18,22 +18,16 @@
   }
 
   function fillDeepSpace(ctx, w, h, colors) {
-    var g = ctx.createLinearGradient(0, 0, w * 0.15, h);
-    g.addColorStop(0, colors.deepSpace || '#0a0e1a');
-    g.addColorStop(0.52, colors.deepSpaceMid || '#10182c');
-    g.addColorStop(1, colors.nebula || '#160e24');
+    var g = ctx.createRadialGradient(w * 0.5, h * 0.38, 16, w * 0.5, h * 0.48, Math.max(w, h) * 0.78);
+    g.addColorStop(0, colors.bgInner || '#12183A');
+    g.addColorStop(1, colors.bgOuter || '#070B18');
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-
-    var vg = ctx.createRadialGradient(w * 0.5, h * 0.42, h * 0.1, w * 0.5, h * 0.5, h * 0.78);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.38)');
-    ctx.fillStyle = vg;
     ctx.fillRect(0, 0, w, h);
   }
 
   function starHex(star, colors) {
-    return star.hue === 'magenta' ? colors.starMagenta : colors.starCyan;
+    if (star.tier === 1) return colors.starHigh || '#E8F3FF';
+    return colors.starLow || '#7EC8FF';
   }
 
   function drawDust(ctx, dust, colors) {
@@ -48,26 +42,29 @@
     ctx.restore();
   }
 
-  function drawStarGlow(ctx, star, colors, time) {
-    var pulse = 1 + Math.sin((time || 0) * 2.1 + star.phase) * (star.tier ? 0.14 : 0.07);
+  function drawStarGlow(ctx, star, config, time, selected) {
+    var colors = config.colors || config;
+    var pulse = 1 + Math.sin((time || 0) * 2.1 + star.phase) * (star.tier ? 0.12 : 0.06);
     var hex = starHex(star, colors);
-    var r = star.radius * pulse;
-    var glowR = r * (star.tier ? 5.4 : 3.7);
-    var coreA = star.tier ? 1 : 0.78;
+    var glowHex = colors.glow || '#5B8CFF';
+    var inner = (config.glowInnerR || 6) * (star.tier ? 1.15 : 0.85) * pulse;
+    var outer = (config.glowOuterR || 14) * (star.tier ? 1.2 : 0.9) * pulse;
 
     ctx.save();
-    var g = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, glowR);
-    g.addColorStop(0, rgba(hex, coreA));
-    g.addColorStop(0.28, rgba(hex, star.tier ? 0.42 : 0.22));
-    g.addColorStop(1, rgba(hex, 0));
+    var g = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, outer);
+    g.addColorStop(0, rgba(hex, star.tier ? 1 : 0.82));
+    g.addColorStop(0.22, rgba(glowHex, star.tier ? 0.5 : 0.28));
+    g.addColorStop(1, rgba(glowHex, 0));
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(star.x, star.y, glowR, 0, Math.PI * 2);
+    ctx.arc(star.x, star.y, outer, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255,255,255,' + (star.tier ? 0.92 : 0.55) + ')';
+    ctx.fillStyle = selected
+      ? (colors.selectedCore || '#FFFFFF')
+      : rgba(hex, star.tier ? 0.95 : 0.7);
     ctx.beginPath();
-    ctx.arc(star.x, star.y, Math.max(1.2, r * 0.38), 0, Math.PI * 2);
+    ctx.arc(star.x, star.y, Math.max(1.4, inner * 0.42), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -79,26 +76,33 @@
     ctx.stroke();
   }
 
-  function drawNeonPath(ctx, points, colors) {
+  function drawNeonPath(ctx, points, config) {
     if (!points || points.length < 2) return;
+    var colors = config.colors || config;
+    var trailA = config.trailAlpha0 == null ? 0.55 : config.trailAlpha0;
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
-    ctx.strokeStyle = colors.neonTrail || '#c86bff';
-    ctx.globalAlpha = 0.2;
-    ctx.lineWidth = 13;
+    ctx.strokeStyle = colors.path || '#A78BFA';
+    ctx.globalAlpha = Math.max(0.18, trailA * 0.4);
+    ctx.lineWidth = 12;
     strokePoly(ctx, points);
 
-    ctx.strokeStyle = colors.neonPath || '#7af0ff';
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 5.5;
+    ctx.strokeStyle = colors.path || '#A78BFA';
+    ctx.globalAlpha = trailA;
+    ctx.lineWidth = 5;
     strokePoly(ctx, points);
 
-    ctx.strokeStyle = '#f2ffff';
+    var headFrom = points[points.length - 2];
+    var headTo = points[points.length - 1];
+    ctx.strokeStyle = colors.pathHead || '#22D3EE';
     ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 1.6;
-    strokePoly(ctx, points);
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(headFrom.x, headFrom.y);
+    ctx.lineTo(headTo.x, headTo.y);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -108,7 +112,7 @@
     ctx.save();
     ctx.lineCap = 'round';
     ctx.setLineDash([5, 6]);
-    ctx.strokeStyle = colors.reject || '#ff5a6a';
+    ctx.strokeStyle = colors.reject || colors.perfect || '#F472B6';
     ctx.globalAlpha = 0.25 + 0.55 * alpha;
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -123,7 +127,7 @@
     ctx.save();
     ctx.beginPath();
     ctx.arc(star.x, star.y, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = colors.neonPath || '#7af0ff';
+    ctx.strokeStyle = colors.pathHead || '#22D3EE';
     ctx.globalAlpha = 0.18;
     ctx.lineWidth = 1.15;
     if (ctx.setLineDash) ctx.setLineDash([3, 7]);

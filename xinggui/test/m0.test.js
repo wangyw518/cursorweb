@@ -48,14 +48,28 @@ check('config freeze keys', function () {
   assert.strictEqual(config.starCountMin, 18);
   assert.strictEqual(config.starCountMax, 28);
   assert.strictEqual(config.comboWindowMs, 8000);
+  assert.strictEqual(config.sessionMs, 60000);
   assert.ok(typeof config.attractRadius === 'number');
   assert.strictEqual(config.hitStopFrames, 3);
   assert.strictEqual(config.particleCap, 120);
+  assert.strictEqual(config.burstParticleCap, 120);
+  assert.strictEqual(config.burstLifeMs, 420);
+  assert.strictEqual(config.glowInnerR, 6);
+  assert.strictEqual(config.glowOuterR, 14);
+  assert.strictEqual(config.trailPointsPerNode, 2);
+  assert.strictEqual(config.trailAlpha0, 0.55);
+  assert.strictEqual(config.perfectFlashColor, '#F472B6');
   assert.ok(Math.abs(config.fixedDt - 1 / 60) < 1e-12);
-  assert.ok(config.colors.deepSpace);
-  assert.ok(config.colors.starCyan);
-  assert.ok(config.colors.starMagenta);
-  assert.ok(config.colors.neonPath);
+  assert.strictEqual(config.colors.bgOuter, '#070B18');
+  assert.strictEqual(config.colors.bgInner, '#12183A');
+  assert.strictEqual(config.colors.starLow, '#7EC8FF');
+  assert.strictEqual(config.colors.starHigh, '#E8F3FF');
+  assert.strictEqual(config.colors.selectedCore, '#FFFFFF');
+  assert.strictEqual(config.colors.glow, '#5B8CFF');
+  assert.strictEqual(config.colors.path, '#A78BFA');
+  assert.strictEqual(config.colors.pathHead, '#22D3EE');
+  assert.strictEqual(config.colors.combo, '#F472B6');
+  assert.strictEqual(config.colors.scorePop, '#FDE68A');
 });
 
 check('star field count and two tiers', function () {
@@ -153,6 +167,14 @@ check('double-tap empty clears path', function () {
   var second = sessionMod.handlePointer(session, empty.x + 2, empty.y + 2);
   assert.strictEqual(second.kind, 'double-clear');
   assert.deepStrictEqual(session.path.starIds, []);
+});
+
+check('session instance methods are bound for game.js', function () {
+  var session = sessionMod.create(viewport(), config, 2);
+  assert.strictEqual(typeof session.update, 'function');
+  assert.strictEqual(typeof session.render, 'function');
+  assert.strictEqual(typeof session.handlePointer, 'function');
+  assert.strictEqual(typeof session.resize, 'function');
 });
 
 check('HUD stub values and M0 stubs', function () {

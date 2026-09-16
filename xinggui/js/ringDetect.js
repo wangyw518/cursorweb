@@ -6,7 +6,7 @@
   'use strict';
 
   /**
-   * M0 stub. Closed-ring / perfect-ring scoring lands in a later milestone.
+   * M0 stub. M1 will detect closed rings with a winding-number test.
    */
   function detectClosedRing(/* starIds, stars */) {
     return {

@@ -55,13 +55,20 @@ xinggui/
 | `linkMaxPxRatio` | `0.22` | `linkMaxPx = width × ratio` |
 | `starCountMin` / `starCountMax` | `18` / `28` | Two brightness tiers |
 | `comboWindowMs` | `8000` | Reserved |
-| `attractRadius` | `36` | Reserved |
+| `sessionMs` | `60000` | HUD timer stub shows 60 |
+| `attractRadius` | `40` | Reserved |
 | `hitStopFrames` | `3` | Reserved |
-| `particleCap` | `120` | Simple link trail cap |
+| `particleCap` / `burstParticleCap` | `120` | Trail / future burst cap |
+| `burstLifeMs` | `420` | Reserved for M2 burst |
+| `glowInnerR` / `glowOuterR` | `6` / `14` | Soft star glow |
+| `trailPointsPerNode` / `trailAlpha0` | `2` / `0.55` | Simple path trail |
+| `perfectFlashColor` | `#F472B6` | Reserved |
 | `fixedDt` | `1/60` | Accumulator in `game.js` |
-| `colors.deepSpace` | `#0a0e1a` | Deep-space background |
-| `colors.starCyan` / `starMagenta` | neon stars | Radial glow |
-| `colors.neonPath` / `neonTrail` | path stroke | |
+| `colors.bgOuter` → `bgInner` | `#070B18` → `#12183A` | Radial deep space |
+| `colors.starLow` / `starHigh` | `#7EC8FF` / `#E8F3FF` | Dim / bright stars |
+| `colors.selectedCore` / `glow` | `#FFFFFF` / `#5B8CFF` | Selection + halo |
+| `colors.path` → `pathHead` | `#A78BFA` → `#22D3EE` | Neon path |
+| `colors.combo` / `scorePop` | `#F472B6` / `#FDE68A` | Reserved |
 
 ## Out of scope (later milestones)
 

@@ -7,7 +7,7 @@
 
   /**
    * M0 stub. Nearby-star attraction is reserved for a later milestone.
-   * applyAttract is exported so the key/API stays frozen; session does not use it.
+   * applyAttract stays unused in M0. `attractRadius` is frozen in config.json.
    */
   function applyAttract(/* stars, focus, radius, dt */) {
     return null;

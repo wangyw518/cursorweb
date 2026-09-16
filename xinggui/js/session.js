@@ -40,7 +40,7 @@
     var field = starField.create(viewport, config, ui.playRect, seed);
     var path = inputPath.create();
     var saved = storage.load();
-    return {
+    var session = {
       viewport: viewport,
       config: config,
       ui: ui,
@@ -53,7 +53,7 @@
       lastEmptyX: 0,
       lastEmptyY: 0,
       score: score.getScore(null),
-      timer: config.timerPlaceholder == null ? 60 : config.timerPlaceholder,
+      timer: config.sessionMs ? Math.round(config.sessionMs / 1000) : 60,
       pressed: null,
       best: saved && saved.best ? saved.best : 0,
       ring: ringDetect.detectClosedRing([], field.stars),
@@ -77,9 +77,9 @@
 
   function spawnTrail(session, from, to) {
     if (!from || !to) return;
-    var cap = session.config.particleCap || 120;
-    var hex = fx.starHex(to, session.config.colors);
-    var steps = 10;
+    var cap = session.config.particleCap || session.config.burstParticleCap || 120;
+    var hex = session.config.colors.pathHead || fx.starHex(to, session.config.colors);
+    var steps = Math.max(2, (session.config.trailPointsPerNode || 2) * 4);
     for (var i = 0; i < steps; i++) {
       if (session.particles.length >= cap) session.particles.shift();
       var t = i / (steps - 1);
@@ -201,11 +201,12 @@
 
     var i;
     for (i = 0; i < session.field.stars.length; i++) {
-      fx.drawStarGlow(ctx, session.field.stars[i], colors, session.field.time);
+      var star = session.field.stars[i];
+      fx.drawStarGlow(ctx, star, session.config, session.field.time, !!(tip && star.id === tip.id));
     }
 
     var pts = starField.pointsForIds(session.field, ids);
-    fx.drawNeonPath(ctx, pts, colors);
+    fx.drawNeonPath(ctx, pts, session.config);
 
     if (session.path.reject) {
       fx.drawRejectSegment(
