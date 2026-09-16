@@ -1,5 +1,5 @@
 /**
- * 星轨 Xinggui — M0 entry.
+ * 星轨 Xinggui — M0/M1 entry.
  * WeChat native Canvas 2D. Pure client. No engine.
  */
 (function () {

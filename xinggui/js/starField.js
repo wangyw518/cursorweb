@@ -236,12 +236,61 @@
     return pts;
   }
 
+  function nextStarId(field) {
+    var max = -1;
+    for (var i = 0; i < field.stars.length; i++) {
+      if (field.stars[i].id > max) max = field.stars[i].id;
+    }
+    return max + 1;
+  }
+
+  function removeByIds(field, ids) {
+    if (!ids || !ids.length) return 0;
+    var ban = {};
+    var i;
+    for (i = 0; i < ids.length; i++) ban[ids[i]] = true;
+    var kept = [];
+    var removed = 0;
+    for (i = 0; i < field.stars.length; i++) {
+      if (ban[field.stars[i].id]) removed++;
+      else kept.push(field.stars[i]);
+    }
+    field.stars = kept;
+    return removed;
+  }
+
+  function refill(field, viewport, config, rejectPoint) {
+    var min = config.starCountMin || 18;
+    if (field.stars.length >= min) return 0;
+    var rng = mulberry32((Date.now() + field.stars.length * 997) >>> 0);
+    var rect = field.playRect;
+    var pad = 10;
+    var id = nextStarId(field);
+    var added = 0;
+    var guard = 0;
+    while (field.stars.length < min && guard < 240) {
+      guard++;
+      var x = rect.x + pad + rng() * Math.max(1, rect.w - pad * 2);
+      var y = rect.y + pad + rng() * Math.max(1, rect.h - pad * 2);
+      var p = { x: x, y: y };
+      if (rejectPoint && rejectPoint(p)) continue;
+      if (!farEnough(field.stars, p, 36)) continue;
+      field.stars.push(makeStar(id, x, y, rng, 0.36));
+      id += 1;
+      added += 1;
+    }
+    return added;
+  }
+
   return {
     create: create,
     update: update,
     hitTest: hitTest,
     getStar: getStar,
     pointsForIds: pointsForIds,
+    removeByIds: removeByIds,
+    refill: refill,
+    nextStarId: nextStarId,
     dist: dist,
     neighborCount: neighborCount,
     mulberry32: mulberry32

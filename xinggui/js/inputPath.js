@@ -8,7 +8,8 @@
   function create() {
     return {
       starIds: [],
-      reject: null
+      reject: null,
+      hadUndo: false
     };
   }
 
@@ -35,6 +36,7 @@
     if (path.starIds.length !== 0) return { ok: false, reason: 'already-started' };
     path.starIds.push(starId);
     path.reject = null;
+    path.hadUndo = false;
     return { ok: true, reason: 'started' };
   }
 
@@ -43,7 +45,12 @@
     if (path.starIds.length === 0) return tryStart(path, toStar.id);
     if (fromStar.id !== lastId(path)) return { ok: false, reason: 'not-from-tip' };
     if (toStar.id === fromStar.id) return { ok: false, reason: 'same-star' };
-    if (has(path, toStar.id)) return { ok: false, reason: 'already-used' };
+    if (has(path, toStar.id)) {
+      if (toStar.id === path.starIds[0] && path.starIds.length >= 4) {
+        return tryClose(path, fromStar, toStar, linkMaxPx);
+      }
+      return { ok: false, reason: 'already-used' };
+    }
     var dist = distance(fromStar, toStar);
     if (dist > linkMaxPx) {
       path.reject = {
@@ -59,10 +66,32 @@
     return { ok: true, reason: 'linked', dist: dist };
   }
 
+  function tryClose(path, fromStar, startStar, linkMaxPx) {
+    if (!fromStar || !startStar) return { ok: false, reason: 'missing-star' };
+    if (path.starIds.length < 4) return { ok: false, reason: 'too-few-nodes' };
+    if (path.starIds[0] !== startStar.id) return { ok: false, reason: 'not-start' };
+    if (fromStar.id !== lastId(path)) return { ok: false, reason: 'not-from-tip' };
+    if (fromStar.id === startStar.id) return { ok: false, reason: 'same-star' };
+    var dist = distance(fromStar, startStar);
+    if (dist > linkMaxPx) {
+      path.reject = {
+        fromId: fromStar.id,
+        toId: startStar.id,
+        dist: dist,
+        ttl: 0.32
+      };
+      return { ok: false, reason: 'too-far', dist: dist };
+    }
+    path.starIds.push(startStar.id);
+    path.reject = null;
+    return { ok: true, reason: 'closed', dist: dist };
+  }
+
   function undo(path) {
     if (path.starIds.length === 0) return { ok: false, reason: 'empty' };
     var removed = path.starIds.pop();
     path.reject = null;
+    path.hadUndo = true;
     return { ok: true, reason: 'undone', removed: removed };
   }
 
@@ -70,6 +99,7 @@
     var had = path.starIds.length > 0 || !!path.reject;
     path.starIds.length = 0;
     path.reject = null;
+    path.hadUndo = false;
     return { ok: had, reason: 'cleared' };
   }
 
@@ -94,6 +124,9 @@
     if (path.starIds.length >= 2 && path.starIds[path.starIds.length - 2] === starId) {
       return undo(path);
     }
+    if (starId === path.starIds[0] && path.starIds.length >= 4) {
+      return tryClose(path, byId[lastId(path)], star, linkMaxPx);
+    }
     return tryLink(path, byId[lastId(path)], star, linkMaxPx);
   }
 
@@ -105,6 +138,7 @@
     distance: distance,
     tryStart: tryStart,
     tryLink: tryLink,
+    tryClose: tryClose,
     undo: undo,
     clear: clear,
     tickReject: tickReject,

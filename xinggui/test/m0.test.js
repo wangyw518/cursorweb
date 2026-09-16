@@ -185,9 +185,10 @@ check('HUD stub values and M0 stubs', function () {
   assert.strictEqual(session.score, 0);
   assert.strictEqual(score.getScore(null), 0);
   assert.strictEqual(ringDetect.detectClosedRing([], []).closed, false);
-  assert.strictEqual(attract.applyAttract(), null);
+  assert.strictEqual(attract.applyAttract([], [], 40, 1 / 60), 0);
   assert.strictEqual(storage.load().best, 0);
-  assert.strictEqual(share.share(), false);
+  assert.strictEqual(share.share().mock, true);
+  assert.deepStrictEqual(fx.spawnBurst(), []);
 });
 
 check('no abandoned-game directory references in xinggui source', function () {
