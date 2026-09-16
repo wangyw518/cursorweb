@@ -104,7 +104,32 @@
           files.forEach(function (src) {
             chain = chain.then(function () { return addScript(src); });
           });
-          return chain;
+          return chain.then(function () {
+            if (location.search.indexOf('demo=close') === -1) return;
+            return new Promise(function (resolve) {
+              function wait() {
+                var g = window.__xinggui;
+                if (!g || !g.session) {
+                  setTimeout(wait, 40);
+                  return;
+                }
+                function s(id, x, y, tier) {
+                  return {
+                    id: id, x: x, y: y, vx: 0, vy: 0,
+                    tier: tier || 0, phase: id, radius: tier ? 6 : 4, hue: 'cyan'
+                  };
+                }
+                g.session.field.stars = [
+                  s(0, 120, 220, 1), s(1, 190, 220, 1),
+                  s(2, 190, 290, 0), s(3, 120, 290, 0),
+                  s(4, 140, 238), s(5, 155, 242), s(6, 170, 248),
+                  s(7, 145, 260), s(8, 162, 265), s(9, 150, 252)
+                ];
+                resolve();
+              }
+              wait();
+            });
+          });
         })
         .catch(function (err) {
           document.getElementById('meta').textContent = String(err);
