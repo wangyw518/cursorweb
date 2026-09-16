@@ -1,8 +1,10 @@
 (function (root, factory) {
-  var api = factory();
+  var api = factory(
+    typeof require === 'function' ? require('./ringDetect') : root.XingguiRingDetect
+  );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.XingguiInputPath = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (ringDetect) {
   'use strict';
 
   function create() {
@@ -40,51 +42,58 @@
     return { ok: true, reason: 'started' };
   }
 
-  function tryLink(path, fromStar, toStar, linkMaxPx) {
+  function rejectDistance(path, fromStar, toStar, dist) {
+    path.reject = {
+      fromId: fromStar.id,
+      toId: toStar.id,
+      dist: dist,
+      ttl: 0.32
+    };
+    return { ok: false, reason: 'too-far', dist: dist };
+  }
+
+  /**
+   * Already-used stars are rejected by default.
+   * Only exception: toId === path[0] && path.length >= 4, then RingDetect (winding).
+   */
+  function tryLink(path, fromStar, toStar, linkMaxPx, stars, opts) {
     if (!fromStar || !toStar) return { ok: false, reason: 'missing-star' };
     if (path.starIds.length === 0) return tryStart(path, toStar.id);
     if (fromStar.id !== lastId(path)) return { ok: false, reason: 'not-from-tip' };
     if (toStar.id === fromStar.id) return { ok: false, reason: 'same-star' };
-    if (has(path, toStar.id)) {
-      if (toStar.id === path.starIds[0] && path.starIds.length >= 4) {
-        return tryClose(path, fromStar, toStar, linkMaxPx);
-      }
+
+    var closing = toStar.id === path.starIds[0] && path.starIds.length >= 4;
+    if (has(path, toStar.id) && !closing) {
       return { ok: false, reason: 'already-used' };
     }
+
     var dist = distance(fromStar, toStar);
-    if (dist > linkMaxPx) {
-      path.reject = {
-        fromId: fromStar.id,
-        toId: toStar.id,
-        dist: dist,
-        ttl: 0.32
-      };
-      return { ok: false, reason: 'too-far', dist: dist };
-    }
+    if (dist > linkMaxPx) return rejectDistance(path, fromStar, toStar, dist);
+
+    if (closing) return tryClose(path, fromStar, toStar, linkMaxPx, stars, opts);
+
     path.starIds.push(toStar.id);
     path.reject = null;
     return { ok: true, reason: 'linked', dist: dist };
   }
 
-  function tryClose(path, fromStar, startStar, linkMaxPx) {
+  function tryClose(path, fromStar, startStar, linkMaxPx, stars, opts) {
     if (!fromStar || !startStar) return { ok: false, reason: 'missing-star' };
     if (path.starIds.length < 4) return { ok: false, reason: 'too-few-nodes' };
     if (path.starIds[0] !== startStar.id) return { ok: false, reason: 'not-start' };
     if (fromStar.id !== lastId(path)) return { ok: false, reason: 'not-from-tip' };
     if (fromStar.id === startStar.id) return { ok: false, reason: 'same-star' };
     var dist = distance(fromStar, startStar);
-    if (dist > linkMaxPx) {
-      path.reject = {
-        fromId: fromStar.id,
-        toId: startStar.id,
-        dist: dist,
-        ttl: 0.32
-      };
-      return { ok: false, reason: 'too-far', dist: dist };
-    }
+    if (dist > linkMaxPx) return rejectDistance(path, fromStar, startStar, dist);
+
     path.starIds.push(startStar.id);
     path.reject = null;
-    return { ok: true, reason: 'closed', dist: dist };
+    var ring = ringDetect.detectClosedRing(path.starIds, stars, opts || {});
+    if (!ring.closed) {
+      path.starIds.pop();
+      return { ok: false, reason: 'not-closed', ring: ring };
+    }
+    return { ok: true, reason: 'closed', dist: dist, ring: ring };
   }
 
   function undo(path) {
@@ -115,19 +124,16 @@
     return map;
   }
 
-  function handleStarTap(path, starsOrMap, starId, linkMaxPx) {
-    var byId = Array.isArray(starsOrMap) ? indexStars(starsOrMap) : starsOrMap;
+  function handleStarTap(path, starsOrMap, starId, linkMaxPx, opts) {
+    var stars = Array.isArray(starsOrMap) ? starsOrMap : null;
+    var byId = stars ? indexStars(stars) : starsOrMap;
     var star = byId[starId];
     if (!star) return { ok: false, reason: 'unknown-star' };
     if (path.starIds.length === 0) return tryStart(path, starId);
     if (starId === lastId(path)) return { ok: false, reason: 'same-star' };
-    if (path.starIds.length >= 2 && path.starIds[path.starIds.length - 2] === starId) {
-      return undo(path);
-    }
-    if (starId === path.starIds[0] && path.starIds.length >= 4) {
-      return tryClose(path, byId[lastId(path)], star, linkMaxPx);
-    }
-    return tryLink(path, byId[lastId(path)], star, linkMaxPx);
+    return tryLink(path, byId[lastId(path)], star, linkMaxPx, stars || Object.keys(byId).map(function (k) {
+      return byId[k];
+    }), opts);
   }
 
   return {

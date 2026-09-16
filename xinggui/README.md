@@ -20,11 +20,12 @@ Do not import the repository root. The playable project root is `xinggui/`.
 - Tap a star to start a path.
 - Tap a nearby star to add a segment if it is within `linkMaxPx` (default `0.22 × screen width`).
 - Illegal long links are rejected (`距离过远`).
-- **撤销** undoes the last segment (or the starting star). Tapping the previous star also undoes.
+- **撤销** undoes the last segment (or the starting star). Already-used stars cannot be relinked, except closing back to the start.
 - **清除**, or a double-tap on empty space, cancels the whole path.
 
 ## M1
 
+- `InputPath` rejects already-used stars by default. The only exception is `toId === path[0] && path.length >= 4`, which is handed to `RingDetect` (winding). Self-link when `length < 4`, other reused stars, and over-distance links stay rejected.
 - Close a ring by returning to the start star when the path has **≥4 nodes**. Detection is a signed **winding number** (not even-odd ray casting). Area and the in-ring set share that same vertex list.
 - On close: interior stars are cleared (boundary nodes stay); score is `nodes×20 + floor(areaFactor × inRingCount × 15)`, then the combo multiplier.
 - Combo window `8000ms`, multipliers `1 / 1.5 / 2 / 2.5` (cap).

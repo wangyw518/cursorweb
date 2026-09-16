@@ -82,6 +82,54 @@ function closeSquare(session) {
   return tap(session, stars[0]);
 }
 
+function linkMax() {
+  return 200;
+}
+
+function walk(path, stars, ids) {
+  for (var i = 0; i < ids.length; i++) {
+    var r = inputPath.handleStarTap(path, stars, ids[i], linkMax());
+    assert.ok(r.ok, 'walk ' + ids[i] + ' -> ' + r.reason);
+  }
+}
+
+check('reconnect to start with >=4 nodes closes via winding', function () {
+  var stars = squareRingStars();
+  var path = inputPath.create();
+  walk(path, stars, [0, 1, 2, 3]);
+  assert.deepStrictEqual(path.starIds, [0, 1, 2, 3]);
+  var close = inputPath.handleStarTap(path, stars, 0, linkMax());
+  assert.strictEqual(close.ok, true);
+  assert.strictEqual(close.reason, 'closed');
+  assert.ok(close.ring && close.ring.closed);
+  assert.strictEqual(close.ring.kind, 'winding');
+  assert.deepStrictEqual(path.starIds, [0, 1, 2, 3, 0]);
+});
+
+check('reconnect to a non-start already-used star is rejected', function () {
+  var stars = squareRingStars();
+  var path = inputPath.create();
+  walk(path, stars, [0, 1, 2, 3]);
+  var mid = inputPath.handleStarTap(path, stars, 1, linkMax());
+  assert.strictEqual(mid.ok, false);
+  assert.strictEqual(mid.reason, 'already-used');
+  assert.deepStrictEqual(path.starIds, [0, 1, 2, 3]);
+});
+
+check('self-link when length < 4 is rejected', function () {
+  var stars = squareRingStars();
+  var path = inputPath.create();
+  walk(path, stars, [0]);
+  var self = inputPath.handleStarTap(path, stars, 0, linkMax());
+  assert.strictEqual(self.ok, false);
+  assert.strictEqual(self.reason, 'same-star');
+  walk(path, stars, [1, 2]);
+  var early = inputPath.handleStarTap(path, stars, 0, linkMax());
+  assert.strictEqual(early.ok, false);
+  assert.strictEqual(early.reason, 'already-used');
+  assert.deepStrictEqual(path.starIds, [0, 1, 2]);
+});
+
 check('winding number is signed, not even-odd ray cast', function () {
   var ccw = [
     { x: 0, y: 0, id: 0 },
