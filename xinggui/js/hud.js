@@ -61,7 +61,7 @@
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = colors.buttonText || '#e8f0ff';
-    ctx.font = '16px sans-serif';
+    ctx.font = '16px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(btn.label, btn.x + btn.w * 0.5, btn.y + btn.h * 0.5 + 1);
@@ -73,11 +73,11 @@
     ctx.textBaseline = 'alphabetic';
 
     ctx.fillStyle = colors.hud || '#c8d4f0';
-    ctx.font = '700 22px sans-serif';
+    ctx.font = '700 22px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('星轨', ui.title.x, ui.title.y);
 
-    ctx.font = '13px sans-serif';
+    ctx.font = '13px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
     ctx.fillStyle = colors.hudDim || '#7b88a6';
     ctx.textAlign = 'right';
     ctx.fillText('时间  ' + (state.timer == null ? 60 : state.timer), ui.timer.x, ui.timer.y);
@@ -86,7 +86,7 @@
     drawButton(ctx, ui.undo, colors, state.pressed === 'undo');
     drawButton(ctx, ui.clear, colors, state.pressed === 'clear');
 
-    ctx.font = '12px sans-serif';
+    ctx.font = '12px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = colors.hudDim || '#7b88a6';
     ctx.fillText(state.hint || '点亮一颗星，连接附近的星', ui.hint.x, ui.hint.y);
@@ -94,7 +94,7 @@
     if (state.toast && state.toast.ttl > 0) {
       ctx.globalAlpha = Math.min(1, state.toast.ttl / 0.25);
       ctx.fillStyle = colors.reject || '#ff5a6a';
-      ctx.font = '14px sans-serif';
+      ctx.font = '14px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
       ctx.fillText(state.toast.text, ui.toast.x, ui.toast.y);
     }
 

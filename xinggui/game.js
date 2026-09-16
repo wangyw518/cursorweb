@@ -74,11 +74,11 @@
       acc += elapsed;
       var steps = 0;
       while (acc >= fixedDt && steps < 5) {
-        session.update(fixedDt);
+        sessionMod.update(session, fixedDt);
         acc -= fixedDt;
         steps++;
       }
-      session.render(ctx);
+      sessionMod.render(session, ctx);
       requestAnimationFrame(frame);
     }
 
@@ -86,19 +86,24 @@
       var t = (ev.touches && ev.touches[0]) ||
         (ev.changedTouches && ev.changedTouches[0]);
       if (!t) return;
-      session.handlePointer(t.clientX, t.clientY);
+      sessionMod.handlePointer(session, t.clientX, t.clientY);
     });
 
     if (wx.onWindowResize) {
       wx.onWindowResize(function () {
         viewport = getViewport();
         applyCanvasSize(canvas, ctx, viewport);
-        session.resize(viewport);
+        sessionMod.resize(session, viewport);
       });
     }
 
     var g = typeof globalThis !== 'undefined' ? globalThis : window;
-    g.__xinggui = { session: session, canvas: canvas, config: config };
+    g.__xinggui = {
+      session: session,
+      sessionMod: sessionMod,
+      canvas: canvas,
+      config: config
+    };
 
     requestAnimationFrame(frame);
   }

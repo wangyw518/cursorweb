@@ -60,6 +60,11 @@
       _attract: attract,
       _share: share
     };
+    session.update = function (dt) { update(session, dt); };
+    session.render = function (ctx) { render(session, ctx); };
+    session.handlePointer = function (x, y) { return handlePointer(session, x, y); };
+    session.resize = function (nextViewport) { resize(session, nextViewport); };
+    return session;
   }
 
   function resize(session, viewport) {

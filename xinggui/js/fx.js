@@ -53,7 +53,7 @@
     var hex = starHex(star, colors);
     var r = star.radius * pulse;
     var glowR = r * (star.tier ? 5.4 : 3.7);
-    var coreA = star.tier ? 1 : 0.6;
+    var coreA = star.tier ? 1 : 0.78;
 
     ctx.save();
     var g = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, glowR);
