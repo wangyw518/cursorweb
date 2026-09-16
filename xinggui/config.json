@@ -1,0 +1,33 @@
+{
+  "title": "星轨",
+  "sessionSeconds": 60,
+  "minLoopStars": 4,
+  "closeThreshold": 38,
+  "hitRadius": 34,
+  "maxLinkDistance": 176,
+  "warnLinkDistance": 138,
+  "starCount": 24,
+  "starMinR": 4.8,
+  "starMaxR": 8.6,
+  "driftSpeed": 11,
+  "turnRate": 0.55,
+  "edgePadding": 36,
+  "attractRadius": 78,
+  "attractStrength": 22,
+  "nearTrailClear": 10,
+  "comboStep": 1,
+  "basePerTrailStar": 12,
+  "basePerEnclosed": 18,
+  "sizeBonus": 5,
+  "spawnFade": 0.45,
+  "hitStopFrames": 3,
+  "storageKey": "xinggui_best_score",
+  "palette": [
+    "#E8F2FF",
+    "#FFE7B8",
+    "#C8F4FF",
+    "#FFD4E4",
+    "#D6C8FF",
+    "#C9FFE0"
+  ]
+}

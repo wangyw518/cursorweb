@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>星轨 Star Trail — preview</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #04060d;
+      color: #c9d2e4;
+      font-family: "PingFang SC", "SF Pro Text", sans-serif;
+      overflow: hidden;
+    }
+    #stage {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #game {
+      display: block;
+      touch-action: none;
+      background: #070B18;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      border-radius: 18px;
+    }
+    @media (max-width: 480px) {
+      #game { border-radius: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="390" height="844"></canvas>
+  </div>
+  <script src="preview.js"></script>
+</body>
+</html>

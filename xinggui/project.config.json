@@ -1,0 +1,28 @@
+{
+  "description": "星轨 Star Trail — 微信小游戏",
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "dev" },
+      { "type": "folder", "value": "test" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "file", "value": "package.json" },
+      { "type": "file", "value": "README.md" }
+    ],
+    "include": []
+  },
+  "setting": {
+    "bundle": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false
+  },
+  "compileType": "game",
+  "libVersion": "3.5.5",
+  "appid": "wxc8683bd9c1599d7d",
+  "projectname": "xinggui",
+  "miniprogramRoot": "./",
+  "condition": {},
+  "isGameTourist": false
+}

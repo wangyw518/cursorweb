@@ -1,0 +1,9 @@
+{
+  "name": "xinggui",
+  "private": true,
+  "description": "星轨 Star Trail — WeChat mini-game",
+  "scripts": {
+    "test": "node test/run.js",
+    "dev": "python3 -m http.server 4173"
+  }
+}
