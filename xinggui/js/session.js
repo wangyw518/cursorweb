@@ -130,6 +130,11 @@ function trySelect(session, x, y) {
     session.hint = hud.COPY.closeHint;
     session.hintAge = 0;
   }
+  const origin = starsLib.indexById(session.stars)[trailLib.firstId(session.trail)];
+  if (session.trail.ids.length >= cfg.minLoopStars && origin &&
+      math.dist(star.x, star.y, origin.x, origin.y) <= cfg.closeThreshold) {
+    closeLoop(session, starsLib.indexById(session.stars));
+  }
 }
 
 function closeLoop(session, byId) {
@@ -230,6 +235,7 @@ function step(session, dt) {
     h: session.h,
     pad: session.cfg.edgePadding,
     drift: session.cfg.driftSpeed,
+    selectedDrift: session.cfg.selectedDrift,
     spawnFade: session.cfg.spawnFade
   };
   starsLib.updateStars(session.stars, dt, world);
@@ -296,6 +302,7 @@ function draw(session, ctx, sky, view, time) {
       : 0;
     starsLib.drawStar(ctx, s, time, {
       near: near,
+      origin: first && s.id === first.id && session.phase === 'play',
       closeable: closable && first && s.id === first.id && session.phase === 'play'
     });
   }

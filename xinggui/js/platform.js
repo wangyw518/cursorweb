@@ -206,17 +206,22 @@ function share(payload) {
   }
 }
 
-function querySeed() {
+function queryAll() {
   if (isWechat() && wx.getLaunchOptionsSync) {
-    try {
-      const q = (wx.getLaunchOptionsSync() || {}).query || {};
-      return q.seed || '';
-    } catch (e) { return ''; }
+    try { return (wx.getLaunchOptionsSync() || {}).query || {}; } catch (e) { return {}; }
   }
   if (typeof location !== 'undefined') {
-    try { return new URLSearchParams(location.search).get('seed') || ''; } catch (e) { return ''; }
+    try {
+      const out = {};
+      new URLSearchParams(location.search).forEach(function (v, k) { out[k] = v; });
+      return out;
+    } catch (e) { return {}; }
   }
-  return '';
+  return {};
+}
+
+function querySeed() {
+  return queryAll().seed || '';
 }
 
 function applyViewTransform(ctx, view) {
@@ -232,6 +237,7 @@ module.exports = {
   setStorage: setStorage,
   enableShare: enableShare,
   share: share,
+  queryAll: queryAll,
   querySeed: querySeed,
   applyViewTransform: applyViewTransform,
   now: now

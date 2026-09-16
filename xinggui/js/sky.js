@@ -16,10 +16,10 @@ function createSky(w, h, rng) {
   return {
     dust: dust,
     nebula: [
-      { x: 0.18, y: 0.22, r: 0.55, color: 'rgba(48, 36, 110, 0.38)' },
-      { x: 0.78, y: 0.18, r: 0.48, color: 'rgba(18, 52, 88, 0.40)' },
-      { x: 0.62, y: 0.72, r: 0.58, color: 'rgba(62, 24, 72, 0.28)' },
-      { x: 0.28, y: 0.78, r: 0.36, color: 'rgba(16, 64, 72, 0.22)' }
+      { x: 0.18, y: 0.22, r: 0.62, color: 'rgba(72, 48, 140, 0.55)' },
+      { x: 0.78, y: 0.18, r: 0.54, color: 'rgba(24, 70, 120, 0.52)' },
+      { x: 0.62, y: 0.72, r: 0.64, color: 'rgba(90, 32, 96, 0.42)' },
+      { x: 0.28, y: 0.78, r: 0.42, color: 'rgba(20, 86, 96, 0.36)' }
     ],
     shoot: { t: 4 + rng() * 6, x: 0, y: 0, vx: 0, vy: 0, life: 0 },
     rng: rng
@@ -72,7 +72,7 @@ function drawSky(ctx, sky, w, h, time, urgency) {
 
   const band = ctx.createLinearGradient(0, h * 0.28, w, h * 0.62);
   band.addColorStop(0, 'rgba(80, 90, 140, 0)');
-  band.addColorStop(0.45, 'rgba(120, 130, 180, 0.06)');
+  band.addColorStop(0.45, 'rgba(140, 150, 210, 0.11)');
   band.addColorStop(1, 'rgba(80, 90, 140, 0)');
   ctx.fillStyle = band;
   ctx.fillRect(0, 0, w, h);

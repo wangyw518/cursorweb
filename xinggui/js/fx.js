@@ -158,7 +158,7 @@ function draw(ctx, fx) {
     const p = fx.popups[i];
     ctx.globalAlpha = Math.min(1, p.life * 1.8);
     ctx.fillStyle = p.color;
-    ctx.font = '200 18px "PingFang SC","SF Pro Display",sans-serif';
+    ctx.font = '18px "PingFang SC","Hiragino Sans GB","WenQuanYi Micro Hei","Microsoft YaHei",sans-serif';
     ctx.fillText(p.text, p.x, p.y);
   }
   ctx.restore();

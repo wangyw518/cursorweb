@@ -2,6 +2,8 @@
 
 const scoreLib = require('./score.js');
 
+const FONT = '"PingFang SC","Hiragino Sans GB","WenQuanYi Micro Hei","Microsoft YaHei",sans-serif';
+
 const COPY = {
   title: '星轨',
   subtitle: '夜空之中，连星成轨',
@@ -59,15 +61,15 @@ function drawPlayHud(ctx, session, view) {
   const top = view.safeTop;
   ctx.save();
   ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(232,238,248,0.92)';
-  ctx.font = '200 13px "PingFang SC","SF Pro Text",sans-serif';
+  ctx.fillStyle = 'rgba(232,238,248,0.94)';
+  ctx.font = '13px ' + FONT;
   ctx.textAlign = 'left';
   ctx.fillText(COPY.combo, 22, top);
-  ctx.font = '200 22px "SF Pro Display","PingFang SC",sans-serif';
+  ctx.font = '22px ' + FONT;
   ctx.fillText('×' + Math.max(1, session.combo), 22, top + 18);
 
   ctx.textAlign = 'center';
-  ctx.font = '200 34px "SF Pro Display","PingFang SC",sans-serif';
+  ctx.font = '34px ' + FONT;
   ctx.fillStyle = '#F4F7FF';
   ctx.shadowColor = 'rgba(160,190,255,0.35)';
   ctx.shadowBlur = 12;
@@ -79,15 +81,15 @@ function drawPlayHud(ctx, session, view) {
   const ss = Math.floor(t % 60);
   const clock = mm + ':' + (ss < 10 ? '0' : '') + ss;
   ctx.textAlign = 'left';
-  ctx.font = '200 20px "SF Pro Display","PingFang SC",sans-serif';
-  ctx.fillStyle = t <= 10 ? '#FFC4B8' : 'rgba(232,238,248,0.9)';
+  ctx.font = '20px ' + FONT;
+  ctx.fillStyle = t <= 10 ? '#FFC4B8' : 'rgba(232,238,248,0.92)';
   ctx.fillText(clock, w - view.safeRight - 58, top + 8);
 
   if (session.hint && session.hintAge < 4.5) {
     ctx.globalAlpha = session.hintAge < 0.4 ? session.hintAge / 0.4 : Math.max(0, 1 - (session.hintAge - 3.2) / 1.3);
     ctx.textAlign = 'center';
-    ctx.font = '200 13px "PingFang SC",sans-serif';
-    ctx.fillStyle = 'rgba(210,220,240,0.78)';
+    ctx.font = '13px ' + FONT;
+    ctx.fillStyle = 'rgba(220,228,242,0.88)';
     ctx.fillText(session.hint, w / 2, view.h - 42);
   }
   ctx.restore();
@@ -100,28 +102,28 @@ function drawTitle(ctx, session, view) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(244,247,255,0.96)';
-  ctx.font = '100 54px "PingFang SC","Songti SC","serif"';
-  ctx.shadowColor = 'rgba(150,180,255,0.28)';
+  ctx.font = '52px ' + FONT;
+  ctx.shadowColor = 'rgba(150,180,255,0.32)';
   ctx.shadowBlur = 18;
-  drawTracked(ctx, COPY.title, w / 2, h * 0.36, 18);
+  drawTracked(ctx, COPY.title, w / 2, h * 0.36, 16);
   ctx.shadowBlur = 0;
-  ctx.font = '200 13px "PingFang SC",sans-serif';
-  ctx.fillStyle = 'rgba(200,210,230,0.62)';
-  drawTracked(ctx, COPY.subtitle, w / 2, h * 0.36 + 46, 5);
+  ctx.font = '15px ' + FONT;
+  ctx.fillStyle = 'rgba(214,222,238,0.82)';
+  drawTracked(ctx, COPY.subtitle, w / 2, h * 0.36 + 48, 4);
 
-  ctx.font = '200 12px "PingFang SC",sans-serif';
-  ctx.fillStyle = 'rgba(200,210,230,0.42)';
-  ctx.fillText(COPY.hint, w / 2, h * 0.36 + 78);
+  ctx.font = '13px ' + FONT;
+  ctx.fillStyle = 'rgba(200,210,230,0.62)';
+  ctx.fillText(COPY.hint, w / 2, h * 0.36 + 80);
 
   if (session.best > 0) {
-    ctx.fillStyle = 'rgba(232,238,248,0.55)';
-    ctx.font = '200 12px "PingFang SC",sans-serif';
-    ctx.fillText(COPY.best + '  ' + session.best, w / 2, h * 0.36 + 108);
+    ctx.fillStyle = 'rgba(232,238,248,0.7)';
+    ctx.font = '13px ' + FONT;
+    ctx.fillText(COPY.best + '  ' + session.best, w / 2, h * 0.36 + 110);
   }
 
-  const pulse = 0.55 + 0.45 * Math.sin(session.clock * 2.2);
+  const pulse = 0.62 + 0.38 * Math.sin(session.clock * 2.2);
   ctx.globalAlpha = pulse;
-  ctx.font = '200 14px "PingFang SC",sans-serif';
+  ctx.font = '15px ' + FONT;
   ctx.fillStyle = '#E8F0FF';
   ctx.fillText(COPY.play, w / 2, h * 0.74);
   ctx.restore();
@@ -132,28 +134,41 @@ function drawSettle(ctx, session, view) {
   const h = view.h;
   const info = session.settle;
   ctx.save();
-  ctx.fillStyle = 'rgba(5, 8, 16, 0.38)';
+  ctx.fillStyle = 'rgba(5, 8, 16, 0.52)';
   ctx.fillRect(0, 0, w, h);
+
+  const card = { x: w * 0.1, y: h * 0.2, w: w * 0.8, h: h * 0.58 };
+  ctx.save();
+  ctx.shadowColor = 'rgba(80,120,200,0.18)';
+  ctx.shadowBlur = 28;
+  roundRect(ctx, card.x, card.y, card.w, card.h, 22);
+  ctx.fillStyle = 'rgba(10, 14, 26, 0.9)';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(210, 224, 255, 0.22)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(210,220,236,0.7)';
-  ctx.font = '200 13px "PingFang SC",sans-serif';
+  ctx.fillStyle = 'rgba(214,222,238,0.82)';
+  ctx.font = '14px ' + FONT;
   ctx.fillText(scoreLib.settleReasonLine(info.reason), w / 2, h * 0.26);
 
   ctx.fillStyle = '#F6F8FF';
-  ctx.font = '100 64px "SF Pro Display","PingFang SC",sans-serif';
+  ctx.font = '64px ' + FONT;
   ctx.shadowColor = 'rgba(170,200,255,0.35)';
   ctx.shadowBlur = 20;
   ctx.fillText(String(info.score), w / 2, h * 0.36);
   ctx.shadowBlur = 0;
 
-  ctx.font = '200 14px "PingFang SC",sans-serif';
-  ctx.fillStyle = 'rgba(220,228,242,0.78)';
+  ctx.font = '15px ' + FONT;
+  ctx.fillStyle = 'rgba(226,232,244,0.9)';
   ctx.fillText(info.line, w / 2, h * 0.46);
 
-  ctx.font = '200 12px "PingFang SC",sans-serif';
-  ctx.fillStyle = 'rgba(200,210,230,0.55)';
+  ctx.font = '13px ' + FONT;
+  ctx.fillStyle = 'rgba(210,218,232,0.72)';
   if (info.isNewBest) {
     ctx.fillStyle = '#FFE7B8';
     ctx.fillText(COPY.newBest, w / 2, h * 0.53);
@@ -163,8 +178,8 @@ function drawSettle(ctx, session, view) {
 
   const buttons = layoutSettle(w, h);
   drawPrimary(ctx, buttons.replay, COPY.cta, session.clock);
-  ctx.font = '200 13px "PingFang SC",sans-serif';
-  ctx.fillStyle = 'rgba(210,220,236,0.55)';
+  ctx.font = '14px ' + FONT;
+  ctx.fillStyle = 'rgba(214,222,236,0.7)';
   ctx.fillText(COPY.share, w / 2, buttons.share.y + buttons.share.h / 2);
   ctx.restore();
   return buttons;
@@ -181,8 +196,8 @@ function drawPrimary(ctx, btn, label, clock) {
   ctx.shadowBlur = 16;
   roundRect(ctx, x, y, w, h, r);
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, 'rgba(232, 240, 255, 0.16)');
-  g.addColorStop(1, 'rgba(180, 200, 255, 0.08)');
+  g.addColorStop(0, '#2A3554');
+  g.addColorStop(1, '#1A2238');
   ctx.fillStyle = g;
   ctx.fill();
   ctx.shadowBlur = 0;
@@ -190,7 +205,7 @@ function drawPrimary(ctx, btn, label, clock) {
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.fillStyle = '#F4F7FF';
-  ctx.font = '200 16px "PingFang SC",sans-serif';
+  ctx.font = '16px ' + FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const glow = 0.92 + 0.08 * Math.sin((clock || 0) * 2);
@@ -216,7 +231,7 @@ function drawToast(ctx, text, view, age) {
   ctx.globalAlpha = a;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = '200 13px "PingFang SC",sans-serif';
+  ctx.font = '13px ' + FONT;
   ctx.fillStyle = 'rgba(230,236,248,0.85)';
   ctx.fillText(text, view.w / 2, view.h * 0.18);
   ctx.restore();

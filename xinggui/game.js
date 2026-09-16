@@ -8,9 +8,12 @@ const sessionLib = require('./js/session.js');
 const skyLib = require('./js/sky.js');
 
 const view = platform.createView();
-const seedQuery = platform.querySeed();
+const query = platform.queryAll();
+const seedQuery = query.seed || '';
 const rng = math.mulberry32(seedQuery ? math.hashString(String(seedQuery)) : (Date.now() >>> 0));
 const storage = storageLib.createStorage(platform, config.storageKey);
+const timed = parseInt(query.t, 10);
+if (timed > 0 && timed < 600) config.sessionSeconds = timed;
 
 const session = sessionLib.createSession({
   config: config,

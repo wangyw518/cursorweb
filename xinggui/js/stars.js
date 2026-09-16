@@ -84,7 +84,6 @@ function updateStars(stars, dt, world) {
     const s = stars[i];
     if (s.dead) continue;
     s.angle += s.turn * dt;
-    const spd = math.length(s.vx, s.vy);
     const cruise = world.drift || 10;
     const want = Math.cos(s.angle) * cruise;
     const wany = Math.sin(s.angle) * cruise;
@@ -96,8 +95,9 @@ function updateStars(stars, dt, world) {
       s.vx = (s.vx / L) * cap;
       s.vy = (s.vy / L) * cap;
     }
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
+    const hold = s.selected ? (world.selectedDrift == null ? 0.22 : world.selectedDrift) : 1;
+    s.x += s.vx * dt * hold;
+    s.y += s.vy * dt * hold;
     if (s.x < pad) { s.x = pad; s.vx = Math.abs(s.vx); s.angle = Math.atan2(s.vy, s.vx); }
     if (s.x > w - pad) { s.x = w - pad; s.vx = -Math.abs(s.vx); s.angle = Math.atan2(s.vy, s.vx); }
     if (s.y < pad + 40) { s.y = pad + 40; s.vy = Math.abs(s.vy); s.angle = Math.atan2(s.vy, s.vx); }
@@ -151,30 +151,36 @@ function drawStar(ctx, star, time, opts) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  const bloom = ctx.createRadialGradient(x, y, 0, x, y, r * 4.8);
-  bloom.addColorStop(0, math.rgba(star.color, 0.62 * a));
-  bloom.addColorStop(0.16, math.rgba(star.color, 0.24 * a));
-  bloom.addColorStop(0.42, math.rgba(star.color, 0.07 * a));
+  const bloomR = r * 6.4;
+  const bloom = ctx.createRadialGradient(x, y, 0, x, y, bloomR);
+  bloom.addColorStop(0, math.rgba('#FFFFFF', 0.95 * a));
+  bloom.addColorStop(0.08, math.rgba(star.color, 0.85 * a));
+  bloom.addColorStop(0.22, math.rgba(star.color, 0.38 * a));
+  bloom.addColorStop(0.5, math.rgba(star.color, 0.10 * a));
   bloom.addColorStop(1, math.rgba(star.color, 0));
   ctx.globalAlpha = 1;
   ctx.fillStyle = bloom;
   ctx.beginPath();
-  ctx.arc(x, y, r * 4.8, 0, Math.PI * 2);
+  ctx.arc(x, y, bloomR, 0, Math.PI * 2);
   ctx.fill();
 
-  fillCircle(ctx, x, y, r * 1.55, star.color, 0.32 * a);
-  fillCircle(ctx, x, y, r * 0.72, '#FFFFFF', 0.82 * a);
-  fillCircle(ctx, x, y, r * 0.28, '#FFFFFF', 0.96 * a);
+  fillCircle(ctx, x, y, r * 1.85, star.color, 0.42 * a);
+  fillCircle(ctx, x, y, r * 0.85, '#FFFFFF', 0.9 * a);
+  fillCircle(ctx, x, y, r * 0.32, '#FFFFFF', 1 * a);
 
-  if (sel) {
+  if (sel && !closeable) {
     ctx.globalCompositeOperation = 'lighter';
-    strokeCircle(ctx, x, y, r * 2.15, 'rgba(232,242,255,0.55)', 1.1);
-    fillCircle(ctx, x, y, r * 3.4, '#C8DCFF', 0.07);
+    strokeCircle(ctx, x, y, r * 2.35, 'rgba(232,242,255,0.7)', 1.2);
+    fillCircle(ctx, x, y, r * 3.8, '#C8DCFF', 0.10);
   }
   if (closeable) {
-    const ring = r * (2.8 + 0.55 * Math.sin(time * 5));
-    strokeCircle(ctx, x, y, ring, 'rgba(255, 226, 168, 0.7)', 1.35);
-    fillCircle(ctx, x, y, r * 3.8, '#FFE7B8', 0.08);
+    const ring = r * (3.6 + 0.9 * Math.sin(time * 5.2));
+    strokeCircle(ctx, x, y, ring, 'rgba(255, 220, 150, 0.95)', 1.8);
+    strokeCircle(ctx, x, y, ring + 7, 'rgba(255, 226, 168, 0.35)', 1);
+    fillCircle(ctx, x, y, r * 5.2, '#FFE7B8', 0.14);
+  }
+  if (opts && opts.origin && !closeable) {
+    strokeCircle(ctx, x, y, r * 2.8, 'rgba(255, 226, 168, 0.45)', 1);
   }
   ctx.restore();
 }
@@ -212,20 +218,24 @@ function drawTrail(ctx, points, finger, stretch, closable, first, time) {
   ctx.lineJoin = 'round';
   ctx.globalCompositeOperation = 'lighter';
 
-  if (closable && first && pts.length >= 3) {
+  if (closable && first && points.length >= 3) {
     const fillPts = points.concat([{ x: first.x, y: first.y }]);
-    ctx.globalAlpha = 0.07 + 0.03 * Math.sin(time * 4);
+    ctx.globalAlpha = 0.10 + 0.04 * Math.sin(time * 4);
     ctx.fillStyle = '#B8D4FF';
     ctx.beginPath();
     ctx.moveTo(fillPts[0].x, fillPts[0].y);
     for (let i = 1; i < fillPts.length; i++) ctx.lineTo(fillPts[i].x, fillPts[i].y);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = 0.45 + 0.2 * Math.sin(time * 4);
+    ctx.setLineDash([5, 7]);
+    strokePoly(ctx, [points[points.length - 1], { x: first.x, y: first.y }], 1.6, 'rgba(255,226,168,0.85)');
+    ctx.setLineDash([]);
   }
 
-  strokePoly(ctx, pts, 16, outer);
-  strokePoly(ctx, pts, 8.5, mid);
-  strokePoly(ctx, pts, 2.15, core);
+  strokePoly(ctx, pts, 20, outer);
+  strokePoly(ctx, pts, 10, mid);
+  strokePoly(ctx, pts, 2.4, core);
 
   ctx.restore();
 }
