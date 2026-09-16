@@ -174,7 +174,32 @@
     };
   }
 
-  function update(field, dt) {
+  function syncPathFreeze(field, pathIds) {
+    var onPath = {};
+    var i;
+    for (i = 0; i < (pathIds || []).length; i++) onPath[pathIds[i]] = true;
+    for (i = 0; i < field.stars.length; i++) {
+      var s = field.stars[i];
+      if (onPath[s.id]) {
+        if (!s.frozen) {
+          s.parkedVx = s.vx;
+          s.parkedVy = s.vy;
+          s.frozen = true;
+        }
+        s.vx = 0;
+        s.vy = 0;
+      } else if (s.frozen) {
+        s.vx = s.parkedVx;
+        s.vy = s.parkedVy;
+        s.parkedVx = 0;
+        s.parkedVy = 0;
+        s.frozen = false;
+      }
+    }
+  }
+
+  function update(field, dt, frozenIds) {
+    if (frozenIds) syncPathFreeze(field, frozenIds);
     field.time += dt;
     var rect = field.playRect;
     var pad = 8;
@@ -290,6 +315,7 @@
     pointsForIds: pointsForIds,
     removeByIds: removeByIds,
     refill: refill,
+    syncPathFreeze: syncPathFreeze,
     nextStarId: nextStarId,
     dist: dist,
     neighborCount: neighborCount,

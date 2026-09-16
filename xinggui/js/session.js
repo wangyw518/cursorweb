@@ -83,6 +83,7 @@
       _attract: attract,
       _share: share
     };
+    starField.syncPathFreeze(session.field, session.path.starIds);
     session.update = function (dt) { update(session, dt); };
     session.render = function (ctx) { render(session, ctx); };
     session.handlePointer = function (x, y) { return handlePointer(session, x, y); };
@@ -97,6 +98,7 @@
     if (session.phase === 'play') {
       session.field = starField.create(viewport, session.config, session.ui.playRect);
       inputPath.clear(session.path);
+      starField.syncPathFreeze(session.field, session.path.starIds);
       session.particles.length = 0;
     }
   }
@@ -120,6 +122,7 @@
     session.phase = 'play';
     session.settle = null;
     session.ring = ringDetect.detectClosedRing([], session.field.stars);
+    starField.syncPathFreeze(session.field, session.path.starIds);
     return { kind: 'restart' };
   }
 
@@ -219,6 +222,7 @@
     });
 
     inputPath.clear(session.path);
+    starField.syncPathFreeze(session.field, session.path.starIds);
     session.particles.length = 0;
     session.hitStop = session.config.hitStopFrames || 0;
     session.toast = {
@@ -243,7 +247,7 @@
     if (session.hitStop > 0) {
       session.hitStop -= 1;
     } else if (session.phase === 'play') {
-      starField.update(session.field, dt);
+      starField.update(session.field, dt, session.path.starIds);
       if (session.path.starIds.length) {
         attract.applyAttract(
           session.field.stars,
@@ -295,11 +299,13 @@
     if (action === 'undo') {
       press(session, 'undo');
       inputPath.undo(session.path);
+      starField.syncPathFreeze(session.field, session.path.starIds);
       return { kind: 'undo', path: inputPath.ids(session.path) };
     }
     if (action === 'clear') {
       press(session, 'clear');
       inputPath.clear(session.path);
+      starField.syncPathFreeze(session.field, session.path.starIds);
       session.particles.length = 0;
       return { kind: 'clear', path: [] };
     }
@@ -331,6 +337,7 @@
       if (result.reason === 'too-far') {
         session.toast = { text: '距离过远', ttl: 0.75 };
       }
+      starField.syncPathFreeze(session.field, session.path.starIds);
       return { kind: 'star', starId: star.id, result: result, path: inputPath.ids(session.path) };
     }
 
@@ -344,6 +351,7 @@
     session.lastEmptyY = y;
     if (isDouble) {
       inputPath.clear(session.path);
+      starField.syncPathFreeze(session.field, session.path.starIds);
       session.particles.length = 0;
       return { kind: 'double-clear', path: [] };
     }

@@ -130,6 +130,47 @@ check('self-link when length < 4 is rejected', function () {
   assert.deepStrictEqual(path.starIds, [0, 1, 2]);
 });
 
+check('path stars freeze including start across fixedDt steps', function () {
+  storage.resetMemory();
+  var session = sessionMod.create(viewport(), config, 4);
+  loadField(session, squareRingStars());
+  session.field.stars.forEach(function (s) {
+    s.vx = 18;
+    s.vy = -12;
+  });
+  tap(session, session.field.stars[0]);
+  tap(session, session.field.stars[1]);
+  var start = session.field.stars[0];
+  var sx = start.x;
+  var sy = start.y;
+  var outsider = session.field.stars[10];
+  var ox = outsider.x;
+  var oy = outsider.y;
+  for (var i = 0; i < 24; i++) sessionMod.update(session, config.fixedDt);
+  assert.strictEqual(start.x, sx);
+  assert.strictEqual(start.y, sy);
+  assert.strictEqual(start.vx, 0);
+  assert.strictEqual(start.vy, 0);
+  assert.ok(outsider.x !== ox || outsider.y !== oy, 'off-path stars still drift');
+});
+
+check('frozen start can still close a 4-node ring', function () {
+  storage.resetMemory();
+  var session = sessionMod.create(viewport(), config, 5);
+  loadField(session, squareRingStars());
+  session.field.stars.forEach(function (s) {
+    s.vx = 10;
+    s.vy = 8;
+  });
+  var closed = closeSquare(session);
+  assert.strictEqual(closed.kind, 'close');
+  assert.ok(closed.ring.closed);
+  assert.ok(closed.awarded.score > 0);
+  assert.deepStrictEqual(session.path.starIds, []);
+  assert.strictEqual(session.field.stars[0].frozen, false);
+  assert.ok(session.field.stars[0].vx !== 0 || session.field.stars[0].vy !== 0);
+});
+
 check('winding number is signed, not even-odd ray cast', function () {
   var ccw = [
     { x: 0, y: 0, id: 0 },
