@@ -1,0 +1,30 @@
+{
+  "linkMaxPxRatio": 0.22,
+  "starCountMin": 18,
+  "starCountMax": 28,
+  "comboWindowMs": 8000,
+  "attractRadius": 36,
+  "hitStopFrames": 3,
+  "particleCap": 120,
+  "fixedDt": 0.016666666666666666,
+  "timerPlaceholder": 60,
+  "doubleTapMs": 350,
+  "doubleTapSlopPx": 28,
+  "starHitRadiusDim": 18,
+  "starHitRadiusBright": 22,
+  "colors": {
+    "deepSpace": "#0a0e1a",
+    "deepSpaceMid": "#10182c",
+    "nebula": "#160e24",
+    "starCyan": "#5ce1ff",
+    "starMagenta": "#ff5cc8",
+    "neonPath": "#7af0ff",
+    "neonTrail": "#c86bff",
+    "hud": "#c8d4f0",
+    "hudDim": "#7b88a6",
+    "reject": "#ff5a6a",
+    "button": "#182238",
+    "buttonBorder": "#3a4d78",
+    "buttonText": "#e8f0ff"
+  }
+}
