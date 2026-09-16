@@ -2,16 +2,44 @@
 
 const math = require('./math.js');
 
-function createStar(id, w, h, cfg, rng, fadeIn) {
+function placeNear(existing, w, h, cfg, rng) {
   const pad = cfg.edgePadding || 36;
+  const minY = pad + 48;
+  const maxY = h - pad - 72;
+  const maxL = w * (cfg.linkMaxRatio || 0.22) * 0.86;
+  const minL = maxL * 0.38;
+  if (!existing.length) {
+    return {
+      x: math.randRange(rng, pad, w - pad),
+      y: math.randRange(rng, minY, maxY)
+    };
+  }
+  for (let n = 0; n < 36; n++) {
+    const hub = existing[Math.floor(rng() * existing.length)];
+    const ang = rng() * Math.PI * 2;
+    const d = math.randRange(rng, minL, maxL);
+    const x = hub.x + Math.cos(ang) * d;
+    const y = hub.y + Math.sin(ang) * d;
+    if (x < pad || x > w - pad || y < minY || y > maxY) continue;
+    if (tooClose({ x: x, y: y }, existing, 26)) continue;
+    return { x: x, y: y };
+  }
+  return {
+    x: math.randRange(rng, pad, w - pad),
+    y: math.randRange(rng, minY, maxY)
+  };
+}
+
+function createStar(id, w, h, cfg, rng, fadeIn, near) {
   const color = math.pick(rng, cfg.palette);
   const r = math.randRange(rng, cfg.starMinR, cfg.starMaxR);
   const ang = rng() * Math.PI * 2;
   const spd = math.randRange(rng, cfg.driftSpeed * 0.45, cfg.driftSpeed);
+  const pos = near || { x: 0, y: 0 };
   return {
     id: id,
-    x: math.randRange(rng, pad, w - pad),
-    y: math.randRange(rng, pad + 48, h - pad - 72),
+    x: pos.x,
+    y: pos.y,
     vx: Math.cos(ang) * spd,
     vy: Math.sin(ang) * spd,
     angle: ang,
@@ -34,13 +62,13 @@ function spawnField(count, w, h, cfg, rng) {
   let guard = 0;
   while (stars.length < count && guard < count * 20) {
     guard++;
-    const s = createStar(id, w, h, cfg, rng, false);
-    if (tooClose(s, stars, 28)) continue;
+    const s = createStar(id, w, h, cfg, rng, false, placeNear(stars, w, h, cfg, rng));
+    if (tooClose(s, stars, 26)) continue;
     stars.push(s);
     id++;
   }
   while (stars.length < count) {
-    stars.push(createStar(id++, w, h, cfg, rng, false));
+    stars.push(createStar(id++, w, h, cfg, rng, false, placeNear(stars, w, h, cfg, rng)));
   }
   return { stars: stars, nextId: id };
 }
@@ -113,8 +141,9 @@ function refill(stars, nextId, target, w, h, cfg, rng) {
   let guard = 0;
   while (aliveCount(stars) < target && guard < 40) {
     guard++;
-    const s = createStar(id, w, h, cfg, rng, true);
-    if (tooClose(s, stars.filter(function (x) { return !x.dead; }), 26)) continue;
+    const live = stars.filter(function (x) { return !x.dead; });
+    const s = createStar(id, w, h, cfg, rng, true, placeNear(live, w, h, cfg, rng));
+    if (tooClose(s, live, 26)) continue;
     stars.push(s);
     id++;
   }
