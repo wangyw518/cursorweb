@@ -14,6 +14,7 @@ var score = require('../js/score');
 var storage = require('../js/storage');
 var share = require('../js/share');
 var hud = require('../js/hud');
+var fx = require('../js/fx');
 
 var failures = 0;
 
@@ -69,6 +70,7 @@ check('config freeze keys', function () {
   assert.strictEqual(config.colors.path, '#A78BFA');
   assert.strictEqual(config.colors.pathHead, '#22D3EE');
   assert.strictEqual(config.colors.combo, '#F472B6');
+  assert.strictEqual(config.colors.perfect, '#F472B6');
   assert.strictEqual(config.colors.scorePop, '#FDE68A');
 });
 

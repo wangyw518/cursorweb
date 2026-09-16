@@ -161,6 +161,13 @@
     ctx.restore();
   }
 
+  /**
+   * M2 stub. Keys burstParticleCap / burstLifeMs / perfectFlashColor are frozen.
+   */
+  function spawnBurst(/* x, y, config */) {
+    return [];
+  }
+
   return {
     hexToRgb: hexToRgb,
     rgba: rgba,
@@ -172,6 +179,7 @@
     drawRejectSegment: drawRejectSegment,
     drawRangeRing: drawRangeRing,
     drawActiveHalo: drawActiveHalo,
-    drawParticles: drawParticles
+    drawParticles: drawParticles,
+    spawnBurst: spawnBurst
   };
 });

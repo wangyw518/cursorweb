@@ -68,7 +68,7 @@ xinggui/
 | `colors.starLow` / `starHigh` | `#7EC8FF` / `#E8F3FF` | Dim / bright stars |
 | `colors.selectedCore` / `glow` | `#FFFFFF` / `#5B8CFF` | Selection + halo |
 | `colors.path` → `pathHead` | `#A78BFA` → `#22D3EE` | Neon path |
-| `colors.combo` / `scorePop` | `#F472B6` / `#FDE68A` | Reserved |
+| `colors.combo` / `perfect` / `scorePop` | `#F472B6` / `#F472B6` / `#FDE68A` | Reserved |
 
 ## Out of scope (later milestones)
 
