@@ -82,6 +82,85 @@ function closeSquare(session) {
   return tap(session, stars[0]);
 }
 
+function linkSquarePath(path, stars, max) {
+  inputPath.tryStart(path, stars[0].id);
+  inputPath.tryLink(path, stars[0], stars[1], max);
+  inputPath.tryLink(path, stars[1], stars[2], max);
+  inputPath.tryLink(path, stars[2], stars[3], max);
+}
+
+check('reconnect to start with ≥4 closes ring', function () {
+  var stars = [
+    star(1, 0, 0),
+    star(2, 50, 0),
+    star(3, 50, 50),
+    star(4, 0, 50),
+    star(5, 25, 25)
+  ];
+  var path = inputPath.create();
+  linkSquarePath(path, stars, 80);
+  assert.deepStrictEqual(path.starIds, [1, 2, 3, 4]);
+  var close = inputPath.tryLink(path, stars[3], stars[0], 80);
+  assert.strictEqual(close.ok, true);
+  assert.strictEqual(close.reason, 'closed');
+  assert.deepStrictEqual(path.starIds, [1, 2, 3, 4, 1]);
+
+  var viaTap = inputPath.create();
+  linkSquarePath(viaTap, stars, 80);
+  var tapped = inputPath.handleStarTap(viaTap, stars, 1, 80);
+  assert.strictEqual(tapped.ok, true);
+  assert.strictEqual(tapped.reason, 'closed');
+
+  var ring = ringDetect.detectClosedRing(path.starIds, stars, {
+    playRect: hud.layout(viewport()).playRect,
+    config: config
+  });
+  assert.strictEqual(ring.closed, true);
+  assert.strictEqual(ring.kind, 'winding');
+  assert.ok(ringDetect.windingNumber({ x: 25, y: 25 }, ring.vertices) !== 0);
+});
+
+check('reconnect to non-start used star still rejected', function () {
+  var stars = [
+    star(1, 0, 0),
+    star(2, 50, 0),
+    star(3, 50, 50),
+    star(4, 0, 50)
+  ];
+  var path = inputPath.create();
+  linkSquarePath(path, stars, 80);
+  var mid = inputPath.tryLink(path, stars[3], stars[1], 80);
+  assert.strictEqual(mid.ok, false);
+  assert.strictEqual(mid.reason, 'already-used');
+  assert.deepStrictEqual(path.starIds, [1, 2, 3, 4]);
+
+  var tapUsed = inputPath.handleStarTap(path, stars, 2, 80);
+  assert.strictEqual(tapUsed.ok, false);
+  assert.strictEqual(tapUsed.reason, 'already-used');
+});
+
+check('close still rejects over-distance and self-link', function () {
+  var stars = [
+    star(1, 0, 0),
+    star(2, 50, 0),
+    star(3, 50, 50),
+    star(4, 0, 50)
+  ];
+  var path = inputPath.create();
+  linkSquarePath(path, stars, 80);
+  var far = inputPath.tryLink(path, stars[3], stars[0], 10);
+  assert.strictEqual(far.ok, false);
+  assert.strictEqual(far.reason, 'too-far');
+  var same = inputPath.tryLink(path, stars[3], stars[3], 80);
+  assert.strictEqual(same.reason, 'same-star');
+  var short = inputPath.create();
+  inputPath.tryStart(short, 1);
+  inputPath.tryLink(short, stars[0], stars[1], 80);
+  inputPath.tryLink(short, stars[1], stars[2], 80);
+  var early = inputPath.tryLink(short, stars[2], stars[0], 80);
+  assert.strictEqual(early.reason, 'already-used');
+});
+
 check('winding number is signed, not even-odd ray cast', function () {
   var ccw = [
     { x: 0, y: 0, id: 0 },
