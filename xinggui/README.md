@@ -25,14 +25,14 @@ Do not import the repository root. The playable project root is `xinggui/`.
 
 ## M1
 
-- Close a ring by returning to the start star when the path has **≥4 nodes**. Detection is a signed **winding number** (not even-odd ray casting). Area and the in-ring set share that same vertex list.
+- Already-used stars are rejected. The only reconnect exception is `toId === path[0]` **and** `path.length ≥ 4` (start-only ring close). Over-distance, self-link, and reconnect to a non-start used star stay rejected. Then RingDetect uses a signed **winding number** (not even-odd ray casting). Area and the in-ring set share that same vertex list.
 - On close: interior stars are cleared (boundary nodes stay); score is `nodes×20 + floor(areaFactor × inRingCount × 15)`, then the combo multiplier.
 - Combo window `8000ms`, multipliers `1 / 1.5 / 2 / 2.5` (cap).
 - Perfect ring: ≥6 stars inside and no undo-reconnect on that path → `+200`.
 - Weak attract pulls unselected stars toward the path within `attractRadius`.
 - 60s countdown (`sessionMs`). HUD shows live score / timer / combo.
 - Settle panel: score, **新纪录** or gap to local high score, **再来一局**, mock **分享**. High score is stored locally.
-- `fx.spawnBurst` is invoked on close (M2 hook; still a no-op burst).
+- `fx.spawnBurst` fires on close (capped particles, score pop, combo pop, hit-stop, flash).
 
 ## Layout
 
@@ -84,13 +84,15 @@ xinggui/
 | `colors.path` → `pathHead` | `#A78BFA` → `#22D3EE` | Neon path |
 | `colors.combo` / `perfect` / `scorePop` | `#F472B6` / `#F472B6` / `#FDE68A` | HUD / settle |
 
-## Out of scope (later milestones)
+## M2
 
-Heavy burst particles / perfect flash polish stay stubbed (`spawnBurst` hook is already called).
+- Close burst: particles (cap `burstParticleCap`, life `burstLifeMs`), screen flash, score/`×combo`/`完美` pops, 3-frame hit-stop, brief pulse.
+- Start star keeps a halo once the path has ≥4 nodes so the close target is readable.
 
 ## Local logic check
 
 ```bash
 node xinggui/test/m0.test.js
 node xinggui/test/m1.test.js
+node xinggui/test/m2.test.js
 ```

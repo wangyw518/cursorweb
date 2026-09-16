@@ -73,6 +73,9 @@
       pressed: null,
       pressedLeft: 0,
       hitStop: 0,
+      flash: 0,
+      pulse: 0,
+      popups: [],
       best: saved && saved.best ? saved.best : 0,
       combo: emptyCombo(),
       lastAward: null,
@@ -114,6 +117,9 @@
     session.remainingMs = session.config.sessionMs || 60000;
     session.timer = Math.ceil(session.remainingMs / 1000);
     session.hitStop = 0;
+    session.flash = 0;
+    session.pulse = 0;
+    session.popups = [];
     session.best = saved && saved.best ? saved.best : 0;
     session.combo = emptyCombo();
     session.lastAward = null;
@@ -176,6 +182,27 @@
     session.particles = next;
   }
 
+  function updatePopups(session, dt) {
+    if (!session.popups) return;
+    var next = [];
+    for (var i = 0; i < session.popups.length; i++) {
+      var p = session.popups[i];
+      p.life -= dt * 0.9;
+      p.y -= 22 * dt;
+      if (p.life > 0) next.push(p);
+    }
+    session.popups = next;
+  }
+
+  function pushBurst(session, x, y, hex) {
+    var cap = session.config.burstParticleCap || session.config.particleCap || 120;
+    var burst = fx.spawnBurst(x, y, session.config, hex);
+    for (var i = 0; i < burst.length; i++) {
+      if (session.particles.length >= cap) session.particles.shift();
+      session.particles.push(burst[i]);
+    }
+  }
+
   function applyClose(session) {
     var ring = ringDetect.detectClosedRing(
       session.path.starIds,
@@ -209,7 +236,6 @@
       cx /= ring.vertices.length;
       cy /= ring.vertices.length;
     }
-    fx.spawnBurst(cx, cy, session.config);
 
     var gone = [];
     for (i = 0; i < ring.inRing.length; i++) gone.push(ring.inRing[i].id);
@@ -220,6 +246,46 @@
 
     inputPath.clear(session.path);
     session.particles.length = 0;
+    var burstHex = awarded.perfect
+      ? (session.config.perfectFlashColor || session.config.colors.perfect)
+      : session.config.colors.scorePop;
+    pushBurst(session, cx, cy, burstHex);
+    for (i = 0; i < ring.vertices.length; i++) {
+      pushBurst(
+        session,
+        ring.vertices[i].x,
+        ring.vertices[i].y,
+        fx.starHex(ring.vertices[i], session.config.colors)
+      );
+    }
+    session.flash = awarded.perfect ? 0.42 : 0.22;
+    session.pulse = 1;
+    session.popups = [];
+    session.popups.push({
+      x: cx,
+      y: cy - 12,
+      text: '+' + awarded.score,
+      life: 1,
+      hex: session.config.colors.scorePop
+    });
+    if (awarded.multiplier > 1) {
+      session.popups.push({
+        x: cx,
+        y: cy + 14,
+        text: '×' + awarded.multiplier,
+        life: 1,
+        hex: session.config.colors.combo
+      });
+    }
+    if (awarded.perfect) {
+      session.popups.push({
+        x: cx,
+        y: cy + (awarded.multiplier > 1 ? 32 : 16),
+        text: '完美',
+        life: 1.1,
+        hex: session.config.perfectFlashColor || session.config.colors.perfect
+      });
+    }
     session.hitStop = session.config.hitStopFrames || 0;
     session.toast = {
       text: awarded.perfect ? ('完美  +' + awarded.score) : ('+' + awarded.score),
@@ -231,6 +297,9 @@
 
   function update(session, dt) {
     session.now += dt;
+    if (session.flash > 0) session.flash = Math.max(0, session.flash - dt * 2.8);
+    if (session.pulse > 0) session.pulse = Math.max(0, session.pulse - dt * 3.4);
+    updatePopups(session, dt);
     if (session.phase === 'play') {
       session.remainingMs -= dt * 1000;
       if (session.remainingMs <= 0) {
@@ -331,6 +400,9 @@
       if (result.reason === 'too-far') {
         session.toast = { text: '距离过远', ttl: 0.75 };
       }
+      if (result.reason === 'already-used') {
+        session.toast = { text: '不能连回已用的星', ttl: 0.7 };
+      }
       return { kind: 'star', starId: star.id, result: result, path: inputPath.ids(session.path) };
     }
 
@@ -353,14 +425,24 @@
   function render(session, ctx) {
     var vp = session.viewport;
     var colors = session.config.colors;
+    var scale = 1 + 0.016 * (session.pulse || 0);
+    ctx.save();
+    ctx.translate(vp.width / 2, vp.height / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-vp.width / 2, -vp.height / 2);
+
     fx.fillDeepSpace(ctx, vp.width, vp.height, colors);
     fx.drawDust(ctx, session.field.dust, colors);
 
     var ids = session.path.starIds;
     var tip = ids.length ? starField.getStar(session.field, ids[ids.length - 1]) : null;
+    var origin = ids.length ? starField.getStar(session.field, ids[0]) : null;
     if (tip && session.phase === 'play') {
       fx.drawRangeRing(ctx, tip, linkMaxPx(session), colors);
       fx.drawActiveHalo(ctx, tip, colors, session.field.time);
+    }
+    if (origin && ids.length >= 4 && session.phase === 'play') {
+      fx.drawActiveHalo(ctx, origin, colors, session.field.time * 1.4);
     }
 
     var i;
@@ -383,6 +465,20 @@
     }
 
     fx.drawParticles(ctx, session.particles);
+    for (i = 0; i < (session.popups || []).length; i++) {
+      fx.drawPopup(ctx, session.popups[i], colors);
+    }
+    ctx.restore();
+
+    fx.drawFlash(
+      ctx,
+      vp.width,
+      vp.height,
+      session.flash || 0,
+      session.lastAward && session.lastAward.perfect
+        ? session.config.perfectFlashColor
+        : null
+    );
 
     hud.draw(ctx, session.ui, {
       timer: session.timer,
