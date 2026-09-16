@@ -59,16 +59,36 @@ function createStar(id, w, h, cfg, rng, fadeIn, near) {
 function spawnField(count, w, h, cfg, rng) {
   const stars = [];
   let id = 1;
+  const groups = 3 + (rng() < 0.5 ? 1 : 0);
+  const per = Math.ceil(count / groups);
+  let seedTries = 0;
+  for (let g = 0; g < groups && stars.length < count && seedTries < 40; g++) {
+    seedTries++;
+    const seed = createStar(id, w, h, cfg, rng, false, placeNear([], w, h, cfg, rng));
+    if (tooClose(seed, stars, 64) && stars.length) {
+      g--;
+      continue;
+    }
+    stars.push(seed);
+    id++;
+    const family = [seed];
+    let inner = 0;
+    while (family.length < per && stars.length < count && inner < 40) {
+      inner++;
+      const s = createStar(id, w, h, cfg, rng, false, placeNear(family, w, h, cfg, rng));
+      if (tooClose(s, stars, 26)) continue;
+      stars.push(s);
+      family.push(s);
+      id++;
+    }
+  }
   let guard = 0;
-  while (stars.length < count && guard < count * 20) {
+  while (stars.length < count && guard < count * 12) {
     guard++;
     const s = createStar(id, w, h, cfg, rng, false, placeNear(stars, w, h, cfg, rng));
     if (tooClose(s, stars, 26)) continue;
     stars.push(s);
     id++;
-  }
-  while (stars.length < count) {
-    stars.push(createStar(id++, w, h, cfg, rng, false, placeNear(stars, w, h, cfg, rng)));
   }
   return { stars: stars, nextId: id };
 }
