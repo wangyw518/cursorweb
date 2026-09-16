@@ -102,6 +102,15 @@ exports.undoLastAndDoubleTapClear = function () {
   assert.strictEqual(s.trail.ids.length, 0);
 };
 
+exports.scriptGlowShotScores = function () {
+  const s = make();
+  const taps = sessionLib.scriptGlowShot(s);
+  sessionLib.pointerDown(s, taps[0].x, taps[0].y);
+  for (let i = 1; i < taps.length; i++) sessionLib.pointerMove(s, taps[i].x, taps[i].y);
+  assert.ok(s.score > 0);
+  assert.ok(s.fx.particles.length > 0, 'burst particles');
+};
+
 exports.replayFromSettle = function () {
   const s = make();
   sessionLib.startPlay(s);

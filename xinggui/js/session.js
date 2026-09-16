@@ -335,7 +335,7 @@ function draw(session, ctx, sky, view, time) {
   ctx.scale(scale, scale);
   ctx.translate(-session.w / 2, -session.h / 2);
 
-  if (sky) skyLib.drawSky(ctx, sky, session.w, session.h, time, urgency);
+  if (sky) skyLib.drawSky(ctx, sky, session.w, session.h, time, urgency, session.cfg, session.quality);
 
   const byId = starsLib.indexById(session.stars);
   const pts = trailLib.toPoints(session.trail, byId);
@@ -381,6 +381,38 @@ function draw(session, ctx, sky, view, time) {
   if (session.toast) hud.drawToast(ctx, session.toast, view, session.toastAge);
 }
 
+function scriptGlowShot(session) {
+  startPlay(session);
+  const w = session.w;
+  const h = session.h;
+  const span = w * (session.cfg.linkMaxRatio || 0.22) * 0.72;
+  const cx = w * 0.5;
+  const cy = h * 0.48;
+  const colors = session.cfg.palette;
+  function star(id, x, y, color) {
+    return {
+      id: id, x: x, y: y, vx: 0, vy: 0, angle: 0, turn: 0,
+      r: 8.4, color: color,
+      twinkle: 0.2, twinkleSpeed: 1, selected: false, selIndex: -1,
+      dead: false, born: 1, pulse: 0
+    };
+  }
+  session.stars = [
+    star(1, cx - span / 2, cy - span / 2, colors[0]),
+    star(2, cx + span / 2, cy - span / 2, colors[1]),
+    star(3, cx + span / 2, cy + span / 2, colors[2]),
+    star(4, cx - span / 2, cy + span / 2, colors[3]),
+    star(5, cx - span / 6, cy, colors[4]),
+    star(6, cx + span / 6, cy, colors[5]),
+    star(7, cx - span * 1.6, cy - span, colors[1]),
+    star(8, cx + span * 1.55, cy + span, colors[2])
+  ];
+  session.nextId = 9;
+  return session.stars.slice(0, 4).map(function (s) {
+    return { x: s.x, y: s.y };
+  }).concat([{ x: session.stars[0].x, y: session.stars[0].y }]);
+}
+
 function sharePayload(session) {
   const sc = session.settle ? session.settle.score : session.score;
   return {
@@ -401,5 +433,6 @@ module.exports = {
   draw: draw,
   endSession: endSession,
   closeLoop: closeLoop,
+  scriptGlowShot: scriptGlowShot,
   sharePayload: sharePayload
 };

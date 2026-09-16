@@ -14,6 +14,8 @@ const rng = math.mulberry32(seedQuery ? math.hashString(String(seedQuery)) : (Da
 const storage = storageLib.createStorage(platform, config.storageKey);
 const timed = parseInt(query.t, 10);
 if (timed > 0 && timed < 600) config.sessionSeconds = timed;
+const shotMode = query.shot && !platform.isWechat();
+if (shotMode) config.hitStopFrames = 50;
 
 function detectLowEnd() {
   try {
@@ -51,6 +53,27 @@ platform.bindInput(view, {
     sessionLib.pointerUp(session);
   }
 });
+
+if (typeof window !== 'undefined') {
+  window.__xinggui = { session: session, view: view };
+}
+
+if (shotMode) {
+  setTimeout(function () {
+    const taps = sessionLib.scriptGlowShot(session);
+    let i = 0;
+    function poke() {
+      if (i >= taps.length) return;
+      const p = taps[i];
+      if (i === 0) sessionLib.pointerDown(session, p.x, p.y);
+      else sessionLib.pointerMove(session, p.x, p.y);
+      i += 1;
+      if (i >= taps.length) sessionLib.pointerUp(session);
+      else setTimeout(poke, 160);
+    }
+    poke();
+  }, 420);
+}
 
 const STEP = 1 / 60;
 let acc = 0;

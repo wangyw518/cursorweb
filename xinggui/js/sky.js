@@ -43,11 +43,11 @@ function updateSky(sky, dt, w) {
   }
 }
 
-function drawSky(ctx, sky, w, h, time, urgency) {
+function drawSky(ctx, sky, w, h, time, urgency, cfg, quality) {
   ctx.save();
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, '#070B18');
-  g.addColorStop(1, '#12183A');
+  g.addColorStop(0, (cfg && cfg.bgTop) || '#070B18');
+  g.addColorStop(1, (cfg && cfg.bgBottom) || '#12183A');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
@@ -75,7 +75,8 @@ function drawSky(ctx, sky, w, h, time, urgency) {
   ctx.fillRect(0, 0, w, h);
 
   ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < sky.dust.length; i++) {
+  const dustN = quality && quality.low ? Math.floor(sky.dust.length * 0.5) : sky.dust.length;
+  for (let i = 0; i < dustN; i++) {
     const d = sky.dust[i];
     const par = 0.15 + d.layer * 0.12;
     const x = ((d.x * w + time * par * 6) % (w + 20)) - 10;
