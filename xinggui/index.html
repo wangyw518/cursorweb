@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="google" content="notranslate" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>星轨 Xinggui · 浏览器预览</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #07090f;
+      color: #8a94aa;
+      font-family: "WenQuanYi Micro Hei", "PingFang SC", sans-serif;
+      min-height: 100%;
+    }
+    #meta {
+      text-align: center;
+      padding: 10px 12px 0;
+      font-size: 13px;
+    }
+    #meta a {
+      color: #7EC8FF;
+      margin: 0 8px;
+    }
+    #wrap {
+      width: 375px;
+      height: 667px;
+      margin: 8px auto 16px;
+      position: relative;
+      box-shadow: 0 0 0 1px #1b2438, 0 18px 40px rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #screen {
+      display: block;
+      width: 375px;
+      height: 667px;
+      touch-action: none;
+    }
+    @media (max-width: 420px) {
+      #wrap, #screen { width: 100vw; height: calc(100vw * 667 / 375); }
+    }
+  </style>
+</head>
+<body>
+  <div id="meta">
+    星轨浏览器预览 · 点星连线，回到起点闭合
+    <div>
+      <a href="./">自由模式</a>
+      <a href="./?demo=close">闭合演示（70px 方阵）</a>
+    </div>
+  </div>
+  <div id="wrap"><canvas id="screen"></canvas></div>
+  <script>
+    (function () {
+      var canvas = document.getElementById('screen');
+      var W = 375;
+      var H = 667;
+      function point(e) {
+        var r = canvas.getBoundingClientRect();
+        var t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
+        return {
+          clientX: (t.clientX - r.left) * (W / r.width),
+          clientY: (t.clientY - r.top) * (H / r.height)
+        };
+      }
+      window.wx = {
+        createCanvas: function () { return canvas; },
+        getSystemInfoSync: function () {
+          return {
+            windowWidth: W,
+            windowHeight: H,
+            pixelRatio: window.devicePixelRatio || 1,
+            statusBarHeight: 20,
+            safeArea: { top: 20, bottom: H, left: 0, right: W }
+          };
+        },
+        onTouchStart: function (cb) {
+          canvas.addEventListener('pointerdown', function (e) {
+            var p = point(e);
+            cb({ touches: [p], changedTouches: [p] });
+          });
+        },
+        onWindowResize: function () {}
+      };
+    })();
+  </script>
+  <script>
+    (function () {
+      var files = [
+        './js/fx.js',
+        './js/inputPath.js',
+        './js/starField.js',
+        './js/hud.js',
+        './js/ringDetect.js',
+        './js/attract.js',
+        './js/score.js',
+        './js/storage.js',
+        './js/share.js',
+        './js/session.js',
+        './game.js'
+      ];
+      function addScript(src) {
+        return new Promise(function (resolve, reject) {
+          var el = document.createElement('script');
+          el.src = src;
+          el.onload = resolve;
+          el.onerror = function () { reject(new Error('failed ' + src)); };
+          document.body.appendChild(el);
+        });
+      }
+      fetch('./js/config.json')
+        .then(function (res) { return res.json(); })
+        .then(function (cfg) {
+          window.XingguiConfig = cfg;
+          var chain = Promise.resolve();
+          files.forEach(function (src) {
+            chain = chain.then(function () { return addScript(src); });
+          });
+          return chain.then(function () {
+            if (location.search.indexOf('demo=close') === -1) return;
+            return new Promise(function (resolve) {
+              function wait() {
+                var g = window.__xinggui;
+                if (!g || !g.session) {
+                  setTimeout(wait, 40);
+                  return;
+                }
+                function s(id, x, y, tier) {
+                  return {
+                    id: id, x: x, y: y, vx: 0, vy: 0,
+                    tier: tier || 0, phase: id, radius: tier ? 6 : 4, hue: 'cyan'
+                  };
+                }
+                g.session.field.stars = [
+                  s(0, 120, 220, 1), s(1, 190, 220, 1),
+                  s(2, 190, 290, 0), s(3, 120, 290, 0),
+                  s(4, 140, 238), s(5, 155, 242), s(6, 170, 248),
+                  s(7, 145, 260), s(8, 162, 265), s(9, 150, 252)
+                ];
+                resolve();
+              }
+              wait();
+            });
+          });
+        })
+        .catch(function (err) {
+          document.getElementById('meta').textContent = String(err);
+        });
+    })();
+  </script>
+</body>
+</html>
