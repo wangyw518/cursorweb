@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="google" content="notranslate" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>星轨 M0 Preview</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #07090f;
+      color: #8a94aa;
+      font-family: sans-serif;
+      height: 100%;
+    }
+    #meta {
+      text-align: center;
+      padding: 10px 12px 0;
+      font-size: 12px;
+    }
+    #wrap {
+      width: 375px;
+      height: 667px;
+      margin: 8px auto 16px;
+      position: relative;
+      box-shadow: 0 0 0 1px #1b2438, 0 18px 40px rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #screen {
+      display: block;
+      width: 375px;
+      height: 667px;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="meta">Browser smoke preview · 375×667 · not the WeChat package</div>
+  <div id="wrap"><canvas id="screen"></canvas></div>
+  <script>
+    (function () {
+      var canvas = document.getElementById('screen');
+      var W = 375;
+      var H = 667;
+      function point(e) {
+        var r = canvas.getBoundingClientRect();
+        var t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
+        return {
+          clientX: (t.clientX - r.left) * (W / r.width),
+          clientY: (t.clientY - r.top) * (H / r.height)
+        };
+      }
+      window.wx = {
+        createCanvas: function () { return canvas; },
+        getSystemInfoSync: function () {
+          return {
+            windowWidth: W,
+            windowHeight: H,
+            pixelRatio: window.devicePixelRatio || 1,
+            statusBarHeight: 20,
+            safeArea: { top: 20, bottom: H, left: 0, right: W }
+          };
+        },
+        onTouchStart: function (cb) {
+          canvas.addEventListener('pointerdown', function (e) {
+            var p = point(e);
+            cb({ touches: [p], changedTouches: [p] });
+          });
+        },
+        onWindowResize: function () {}
+      };
+    })();
+  </script>
+  <script>
+    (function () {
+      var files = [
+        '../js/fx.js',
+        '../js/ringDetect.js',
+        '../js/inputPath.js',
+        '../js/starField.js',
+        '../js/hud.js',
+        '../js/attract.js',
+        '../js/score.js',
+        '../js/storage.js',
+        '../js/share.js',
+        '../js/session.js',
+        '../game.js'
+      ];
+      function addScript(src) {
+        return new Promise(function (resolve, reject) {
+          var el = document.createElement('script');
+          el.src = src;
+          el.onload = resolve;
+          el.onerror = function () { reject(new Error('failed ' + src)); };
+          document.body.appendChild(el);
+        });
+      }
+      fetch('../js/config.json')
+        .then(function (res) { return res.json(); })
+        .then(function (cfg) {
+          window.XingguiConfig = cfg;
+          var chain = Promise.resolve();
+          files.forEach(function (src) {
+            chain = chain.then(function () { return addScript(src); });
+          });
+          return chain;
+        })
+        .catch(function (err) {
+          document.getElementById('meta').textContent = String(err);
+        });
+    })();
+  </script>
+</body>
+</html>
