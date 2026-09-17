@@ -243,7 +243,15 @@
       return { kind: 'settle-block' };
     }
     if (session.phase !== 'aim') return { kind: 'busy' };
-    if (!launcher.inGrab(session.launcher, x, y, session.ball, session.config.grabSlopPx)) {
+    var onTable = table.contains(session.table.bounds, x, y);
+    var grabbed = launcher.inGrab(
+      session.launcher,
+      x,
+      y,
+      session.ball,
+      session.config.grabSlopPx
+    );
+    if (!grabbed && !onTable) {
       return { kind: 'miss-grab' };
     }
     launcher.beginDrag(session.launcher, x, y, session.ball);

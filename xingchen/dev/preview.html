@@ -78,14 +78,19 @@
         onWindowResize: function () {}
       };
       bind('onTouchStart', 'pointerdown');
-      bind('onTouchMove', 'pointermove');
-      bind('onTouchEnd', 'pointerup');
-      canvas.addEventListener('pointerleave', function (e) {
-        if (e.buttons) {
-          var p = point(e);
-          if (window.wx._cancel) window.wx._cancel({ touches: [p], changedTouches: [p] });
-        }
+      window.addEventListener('pointermove', function (e) {
+        if (!e.buttons) return;
+        var p = point(e);
+        var ev = { touches: [p], changedTouches: [p] };
+        if (window.wx._move) window.wx._move(ev);
+      }, { passive: false });
+      window.addEventListener('pointerup', function (e) {
+        var p = point(e);
+        var ev = { touches: [p], changedTouches: [p] };
+        if (window.wx._up) window.wx._up(ev);
       });
+      window.wx.onTouchMove = function (cb) { window.wx._move = cb; };
+      window.wx.onTouchEnd = function (cb) { window.wx._up = cb; };
       window.wx.onTouchCancel = function (cb) { window.wx._cancel = cb; };
     })();
   </script>

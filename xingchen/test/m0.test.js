@@ -162,6 +162,14 @@ check('session aim → fire → collide → stop feel', function () {
   assert.ok(sawHit || session.award.oob || session.award.score >= 0);
 });
 
+check('drag can start from the table, not only the capsule', function () {
+  var session = freshSession();
+  var b = session.table.bounds;
+  var mid = sessionMod.handlePointerDown(session, b.x + b.w * 0.5, b.y + b.h * 0.55);
+  assert.strictEqual(mid.kind, 'charge');
+  assert.strictEqual(session.phase, 'charging');
+});
+
 check('fixed dt is 1/60', function () {
   assert.ok(Math.abs(config.fixedDt - 1 / 60) < 1e-12);
   assert.strictEqual(config.stopHoldMs, 120);

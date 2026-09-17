@@ -33,7 +33,7 @@
     ];
     var dock = {
       x: bounds.x + bounds.w * 0.5,
-      y: bounds.y + bounds.h * 0.905,
+      y: bounds.y + bounds.h * 0.84,
       w: config.launcherW || 78,
       h: config.launcherH || 30
     };
