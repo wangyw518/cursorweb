@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="google" content="notranslate" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>星尘弹射 Xingchen · 浏览器预览</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #07090f;
+      color: #8a94aa;
+      font-family: "WenQuanYi Micro Hei", "PingFang SC", sans-serif;
+      min-height: 100%;
+    }
+    #meta {
+      text-align: center;
+      padding: 10px 12px 0;
+      font-size: 13px;
+    }
+    #wrap {
+      width: 375px;
+      height: 667px;
+      margin: 8px auto 16px;
+      position: relative;
+      box-shadow: 0 0 0 1px #1b2438, 0 18px 40px rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #screen {
+      display: block;
+      width: 375px;
+      height: 667px;
+      touch-action: none;
+    }
+    @media (max-width: 420px) {
+      #wrap, #screen { width: 100vw; height: calc(100vw * 667 / 375); }
+    }
+  </style>
+</head>
+<body>
+  <div id="meta">星尘弹射浏览器预览 · 拖动瞄准，松手弹射 · 375×667</div>
+  <div id="wrap"><canvas id="screen"></canvas></div>
+  <script>
+    (function () {
+      var canvas = document.getElementById('screen');
+      var W = 375;
+      var H = 667;
+      function point(e) {
+        var r = canvas.getBoundingClientRect();
+        var t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
+        return {
+          clientX: (t.clientX - r.left) * (W / r.width),
+          clientY: (t.clientY - r.top) * (H / r.height)
+        };
+      }
+      function bind(name, type) {
+        var listeners = [];
+        canvas.addEventListener(type, function (e) {
+          e.preventDefault();
+          var p = point(e);
+          var ev = { touches: [p], changedTouches: [p] };
+          for (var i = 0; i < listeners.length; i++) listeners[i](ev);
+        }, { passive: false });
+        window.wx[name] = function (cb) { listeners.push(cb); };
+      }
+      window.wx = {
+        createCanvas: function () { return canvas; },
+        getSystemInfoSync: function () {
+          return {
+            windowWidth: W,
+            windowHeight: H,
+            pixelRatio: window.devicePixelRatio || 1,
+            statusBarHeight: 20,
+            safeArea: { top: 20, bottom: H, left: 0, right: W }
+          };
+        },
+        onWindowResize: function () {}
+      };
+      bind('onTouchStart', 'pointerdown');
+      bind('onTouchMove', 'pointermove');
+      bind('onTouchEnd', 'pointerup');
+      canvas.addEventListener('pointerleave', function (e) {
+        if (e.buttons) {
+          var p = point(e);
+          if (window.wx._cancel) window.wx._cancel({ touches: [p], changedTouches: [p] });
+        }
+      });
+      window.wx.onTouchCancel = function (cb) { window.wx._cancel = cb; };
+    })();
+  </script>
+  <script>
+    (function () {
+      var files = [
+        '../js/physics.js',
+        '../js/table.js',
+        '../js/obstacles.js',
+        '../js/scoreRings.js',
+        '../js/launcher.js',
+        '../js/stopDetect.js',
+        '../js/score.js',
+        '../js/storage.js',
+        '../js/hud.js',
+        '../js/fx.js',
+        '../js/session.js',
+        '../game.js'
+      ];
+      function addScript(src) {
+        return new Promise(function (resolve, reject) {
+          var el = document.createElement('script');
+          el.src = src;
+          el.onload = resolve;
+          el.onerror = function () { reject(new Error('failed ' + src)); };
+          document.body.appendChild(el);
+        });
+      }
+      fetch('../js/config.json')
+        .then(function (res) { return res.json(); })
+        .then(function (cfg) {
+          window.XingchenConfig = cfg;
+          var chain = Promise.resolve();
+          files.forEach(function (src) {
+            chain = chain.then(function () { return addScript(src); });
+          });
+          return chain;
+        })
+        .catch(function (err) {
+          document.getElementById('meta').textContent = String(err);
+        });
+    })();
+  </script>
+</body>
+</html>
