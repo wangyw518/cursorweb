@@ -380,7 +380,10 @@
       best: session.best,
       charging: session.phase === 'charging',
       power: session.launcher.power,
-      hint: hud.hintFor(session.phase, session.phase === 'charging'),
+      hint: hud.hintFor(
+        session.phase === 'scored' ? 'flight' : session.phase,
+        session.phase === 'charging'
+      ),
       toast: session.toast,
       settle: session.settle,
       pressed: session.pressed

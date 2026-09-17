@@ -52,7 +52,7 @@
     ctx.moveTo(x + rr, y);
     ctx.arcTo(x + w, y, x + w, y + h, rr);
     ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y, x, y, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
     ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
   }
@@ -148,6 +148,9 @@
     if (state.settle.isNew) {
       ctx.fillStyle = colors.ringGold || '#F5C542';
       ctx.fillText('新纪录', ui.settleGap.x, ui.settleGap.y + 8);
+    } else if (state.settle.best === 0 && state.settle.score === 0) {
+      ctx.fillStyle = colors.hudDim || '#8AA0C8';
+      ctx.fillText('暂无纪录', ui.settleGap.x, ui.settleGap.y + 8);
     } else {
       ctx.fillStyle = colors.hudDim || '#8AA0C8';
       ctx.fillText('距最高分  ' + state.settle.gap, ui.settleGap.x, ui.settleGap.y + 8);

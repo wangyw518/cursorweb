@@ -17,10 +17,10 @@
   function create(table, config) {
     var scale = Math.max(0.82, Math.min(1.15, table.bounds.w / 327));
     return [
-      circle(table, 0.50, 0.28, 13 * scale),
-      circle(table, 0.18, 0.58, 15 * scale),
-      circle(table, 0.82, 0.62, 14 * scale),
-      circle(table, 0.28, 0.20, 11 * scale)
+      circle(table, 0.50, 0.28, 16 * scale),
+      circle(table, 0.18, 0.58, 18 * scale),
+      circle(table, 0.82, 0.62, 17 * scale),
+      circle(table, 0.28, 0.20, 14 * scale)
     ];
   }
 

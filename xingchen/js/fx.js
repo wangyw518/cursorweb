@@ -69,7 +69,7 @@
     ctx.moveTo(x + rr, y);
     ctx.arcTo(x + w, y, x + w, y + h, rr);
     ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y, x, y, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
     ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
   }
@@ -77,16 +77,25 @@
   function drawTable(ctx, table, colors) {
     var b = table.bounds;
     ctx.save();
-    roundRect(ctx, b.x, b.y, b.w, b.h, 18);
-    var g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+    roundRect(ctx, b.x, b.y, b.w, b.h, 22);
+    var g = ctx.createLinearGradient(b.x, b.y, b.x + b.w * 0.15, b.y + b.h);
     g.addColorStop(0, colors.tableOuter || '#070B18');
-    g.addColorStop(0.4, colors.tableInner || '#141B3A');
+    g.addColorStop(0.38, colors.tableInner || '#141B3A');
     g.addColorStop(1, colors.tableOuter || '#070B18');
     ctx.fillStyle = g;
     ctx.fill();
-    ctx.strokeStyle = rgba(colors.bumper || '#38BDF8', 0.35);
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
+    var rg = ctx.createRadialGradient(
+      b.x + b.w * 0.5,
+      b.y + b.h * 0.42,
+      20,
+      b.x + b.w * 0.5,
+      b.y + b.h * 0.45,
+      Math.max(b.w, b.h) * 0.62
+    );
+    rg.addColorStop(0, rgba(colors.tableInner || '#141B3A', 0.55));
+    rg.addColorStop(1, rgba(colors.tableOuter || '#070B18', 0));
+    ctx.fillStyle = rg;
+    ctx.fill();
     ctx.restore();
   }
 
@@ -95,9 +104,9 @@
     var i;
     for (i = 0; i < table.voids.length; i++) {
       var v = table.voids[i];
-      var rg = ctx.createRadialGradient(v.x, v.y, 2, v.x, v.y, table.voidGap * 1.15);
-      rg.addColorStop(0, rgba(colors.void || '#2E1065', 0.85));
-      rg.addColorStop(0.55, rgba(colors.void || '#2E1065', 0.28));
+      var rg = ctx.createRadialGradient(v.x, v.y, 1, v.x, v.y, table.voidGap * 1.35);
+      rg.addColorStop(0, 'rgba(8,4,18,0.96)');
+      rg.addColorStop(0.4, rgba(colors.void || '#2E1065', 0.7));
       rg.addColorStop(1, rgba(colors.void || '#2E1065', 0));
       ctx.fillStyle = rg;
       ctx.beginPath();
@@ -116,16 +125,19 @@
       ctx.beginPath();
       ctx.moveTo(w.x1, w.y1);
       ctx.lineTo(w.x2, w.y2);
-      ctx.strokeStyle = rgba(colors.bumper || '#38BDF8', 0.18);
-      ctx.lineWidth = (w.r || 5) * 3.2;
+      ctx.shadowColor = colors.bumper || '#38BDF8';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = rgba(colors.bumper || '#38BDF8', 0.22);
+      ctx.lineWidth = (w.r || 5) * 3.4;
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(w.x1, w.y1);
       ctx.lineTo(w.x2, w.y2);
       ctx.strokeStyle = colors.bumper || '#38BDF8';
-      ctx.globalAlpha = 0.85;
-      ctx.lineWidth = (w.r || 5) * 1.15;
+      ctx.globalAlpha = 0.92;
+      ctx.lineWidth = (w.r || 5) * 1.25;
       ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -136,18 +148,26 @@
     var i;
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
-      var g = ctx.createRadialGradient(o.x - o.r * 0.25, o.y - o.r * 0.3, 1, o.x, o.y, o.r * 1.35);
-      g.addColorStop(0, rgba(colors.obstacleRim || '#7DD3FC', 0.35));
+      ctx.shadowColor = rgba(colors.obstacleRim || '#7DD3FC', 0.55);
+      ctx.shadowBlur = 14;
+      var g = ctx.createRadialGradient(o.x - o.r * 0.28, o.y - o.r * 0.32, 1, o.x, o.y, o.r);
+      g.addColorStop(0, '#31415F');
       g.addColorStop(0.45, colors.obstacle || '#1B2438');
-      g.addColorStop(1, rgba(colors.bgOuter || '#070B18', 0.95));
+      g.addColorStop(1, '#070B18');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
       ctx.fill();
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = colors.obstacleRim || '#7DD3FC';
-      ctx.globalAlpha = 0.7;
-      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = 0.88;
+      ctx.lineWidth = 2;
       ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = rgba(colors.obstacleRim || '#7DD3FC', 0.35);
+      ctx.beginPath();
+      ctx.arc(o.x - o.r * 0.28, o.y - o.r * 0.3, o.r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -164,26 +184,31 @@
       var r = rings[i];
       var hex = ringHex(r, colors);
       var flashing = flashRing && flashRing === r;
+      var mid = (r.innerR + r.outerR) * 0.5;
+      ctx.shadowColor = flashing ? '#FFFFFF' : hex;
+      ctx.shadowBlur = flashing ? 18 : 12;
       ctx.beginPath();
-      ctx.arc(r.x, r.y, (r.innerR + r.outerR) * 0.5, 0, Math.PI * 2);
+      ctx.arc(r.x, r.y, mid, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 1 : 0.22;
-      ctx.lineWidth = (r.outerR - r.innerR) + (flashing ? 4 : 0);
+      ctx.globalAlpha = flashing ? 1 : 0.28;
+      ctx.lineWidth = (r.outerR - r.innerR) + (flashing ? 5 : 0);
       ctx.stroke();
 
+      ctx.shadowBlur = flashing ? 10 : 0;
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.outerR, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 1 : 0.9;
-      ctx.lineWidth = flashing ? 3.4 : 2.1;
+      ctx.globalAlpha = flashing ? 1 : 0.95;
+      ctx.lineWidth = flashing ? 3.6 : 2.3;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.innerR, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 0.95 : 0.7;
-      ctx.lineWidth = flashing ? 2.6 : 1.5;
+      ctx.globalAlpha = flashing ? 0.95 : 0.78;
+      ctx.lineWidth = flashing ? 2.8 : 1.7;
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
     ctx.restore();
   }
@@ -194,19 +219,31 @@
     var x = launcher.x - w * 0.5;
     var y = launcher.y - h * 0.5;
     ctx.save();
-    ctx.shadowColor = rgba(colors.capsuleRim || '#67E8F9', 0.45);
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = rgba(colors.capsuleRim || '#67E8F9', 0.65);
+    ctx.shadowBlur = 16;
     roundRect(ctx, x, y, w, h, h * 0.5);
-    ctx.fillStyle = colors.capsule || '#0B1224';
+    var g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, '#17324A');
+    g.addColorStop(0.55, colors.capsule || '#0B1224');
+    g.addColorStop(1, '#070B18');
+    ctx.fillStyle = g;
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = colors.capsuleRim || '#67E8F9';
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.globalAlpha = 0.35;
+    if (launcher.power > 0.02) {
+      ctx.save();
+      roundRect(ctx, x + 4, y + 4, w - 8, h - 8, (h - 8) * 0.5);
+      ctx.clip();
+      ctx.fillStyle = rgba(colors.aim || '#67E8F9', 0.22 + launcher.power * 0.35);
+      ctx.fillRect(x + 4, y + 4, (w - 8) * launcher.power, h - 8);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 0.45;
     ctx.strokeStyle = colors.ballGlow || '#7DD3FC';
-    ctx.lineWidth = 1;
-    roundRect(ctx, x + 5, y + 5, w - 10, h - 10, (h - 10) * 0.5);
+    ctx.lineWidth = 1.1;
+    roundRect(ctx, x + 6, y + 6, w - 12, h - 12, (h - 12) * 0.5);
     ctx.stroke();
     ctx.restore();
   }
@@ -214,9 +251,9 @@
   function drawBall(ctx, ball, colors, pulse) {
     var p = pulse == null ? 1 : pulse;
     ctx.save();
-    var glow = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, ball.r * 3.1 * p);
-    glow.addColorStop(0, rgba(colors.ballGlow || '#7DD3FC', 0.55));
-    glow.addColorStop(0.45, rgba(colors.ballGlow || '#7DD3FC', 0.18));
+    var glow = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, ball.r * 3.6 * p);
+    glow.addColorStop(0, rgba(colors.ballGlow || '#7DD3FC', 0.7));
+    glow.addColorStop(0.4, rgba(colors.ballGlow || '#7DD3FC', 0.22));
     glow.addColorStop(1, rgba(colors.ballGlow || '#7DD3FC', 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
@@ -270,8 +307,10 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (ctx.setLineDash) ctx.setLineDash([5, 7]);
-    ctx.strokeStyle = rgba(colors.aim || '#67E8F9', 0.55);
-    ctx.lineWidth = 1.6;
+    ctx.shadowColor = colors.aim || '#67E8F9';
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = rgba(colors.aim || '#67E8F9', 0.72);
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     var i;
