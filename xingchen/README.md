@@ -1,7 +1,7 @@
-# 星尘弹射 Xingchen（Star Dust Launcher）
+# 奇境弹球 Xingchen（Wonder Realm Pinball）
 
 WeChat native Canvas 2D mini-game. Pure client, custom lightweight 2D physics only (no Matter.js / Cocos / Unity).
-Main package is code-only. Sibling packages `xinggui/` and `minigame/` are not imported or modified.
+Package folder stays `xingchen/`. Sibling packages `xinggui/` and `minigame/` are not imported or modified.
 
 AppID: `wxc8683bd9c1599d7d`
 
@@ -17,24 +17,25 @@ Do not import the repository root. The playable project root is `xingchen/`.
 
 `dev/` and `test/` are pack-ignored browser smoke / node tests. They are not part of the WeChat package.
 
-## Loop (frozen GDD)
+## Loop (DeepSeek PRD)
 
-Drag aim + power → fire one ball → collide on statics → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score the ring band → settle (gap to best / 新纪录) → 再来一局.
+Select a pre-shot skill → drag aim + power → fire → collide → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score the **treasure cell under the ball center** + any colored-orb bonuses → next shot or settle.
 
-No timer. One shot per round.
+Reach the level **score target within K shots**. Each shot costs **1 星力**. Local best + replay. No timer.
 
-- **Out of table:** ball center past the table rectangle scores **0 immediately** and beats stop-detect.
-- **Rings:** annular bands only (between inner / outer radius), not filled disks.
-- **Overlap:** highest tier wins; same tier → smaller ring.
-- **Tiers:** 10 / 30 / 80 / 200.
-- **Edge:** center within `±edgePx` of a rim → `×1.2`.
-- **Trajectory preview:** reflection polyline vs static walls / obstacles. Not a full physics sim.
+- **Treasure grid:** bronze / silver / gold / epic glowing chests + sigils. Reward is the cell under the ball center.
+- **Target orbs:** colored 玫辉 / 翠辉 / 曦辉 give bonus on first hit.
+- **Skills:** 炎破 (break one obstacle), 霜止 (higher friction), 分影 (two balls).
+- **Out of table:** ball center past the table rectangle scores 0 for that ball (target bonuses still count).
+- **Stamina:** 30 星力, −1 / shot. At 0, share-assist + rewarded-ad UI hooks (stubs restore virtual 星力 only).
+- **Economy:** virtual 星晶 and cosmetic skins only. Magic / neon table — not a felt cash table.
 
 ## Controls
 
-- Drag from the cue ball / launcher capsule. Pull back to aim; fire direction is opposite the pull.
+- Tap 炎破 / 霜止 / 分影 to arm a skill (limited uses per level).
+- Drag from the cue ball / table. Pull back to aim; fire direction is opposite the pull.
 - Release to launch. A short pull cancels.
-- Corner rifts are open: the ball can leave the table (偏离星表 → 0).
+- Corner rifts are open: the ball can leave the table (偏离星表).
 
 ## Layout
 
@@ -49,7 +50,10 @@ xingchen/
     physics.js
     table.js
     obstacles.js
-    scoreRings.js
+    cells.js
+    targets.js
+    skills.js
+    economy.js
     stopDetect.js
     score.js
     session.js
@@ -61,35 +65,20 @@ xingchen/
   README.md
 ```
 
-## Visual freeze
+## Visual
 
-| Surface | Value |
-| --- | --- |
-| Table | `#070B18` → `#141B3A` deep space (no green felt) |
-| Rings | green / blue / purple / gold |
-| Cue ball | white core + `#7DD3FC` glow |
-| Aim / preview | `#67E8F9` |
-| Launcher | neon capsule |
+Deep space table `#070B18` → `#141B3A` / `#1A2450`. Neon sigils bronze / silver / gold / epic. Cue ball white + `#7DD3FC` glow. No green felt and no pile-of-coins table art.
 
-No cash / coin / gambling imagery or copy.
-
-## Config freeze (`js/config.json`)
+## Config (`js/config.json`)
 
 | Key | Value | Notes |
 | --- | --- | --- |
 | `fixedDt` | `1/60` | Accumulator in `game.js` |
 | `stopSpeed` / `stopHoldMs` | `12` / `120` | Rest detection |
-| `friction` / `restitution` | `2.05` / `0.74` | Custom integrator |
-| `maxSpeed` | `980` | Velocity clamp |
-| `tiers` | `[10, 30, 80, 200]` | 新星 / 彗星 / 星云 / 恒星 |
-| `edgePx` / `edgeMultiplier` | `3` / `1.2` | Rim bonus |
-| `previewBounces` / `previewLength` | `5` / `320` | Reflection polyline |
-
-## Milestones
-
-- **M0** — aim → fire → collide → stop feel, reflection preview.
-- **M1** — annular rings, edge bonus, OOB 0, settle, local best.
-- **M2** — scored ring flashes white 1 frame, then burst particles.
+| `friction` / `iceFriction` | `2.05` / `3.55` | Ice skill uses the higher value |
+| `staminaMax` | `30` | −1 per shot |
+| `levels[0]` | 5 shots / 160 | 初入奇境 |
+| `rarities` | 20 / 50 / 100 / 180 | 铜印 / 银印 / 金印 / 星谕 |
 
 ## Browser smoke
 
@@ -104,4 +93,5 @@ python3 -m http.server 8766 --directory xingchen
 node xingchen/test/m0.test.js
 node xingchen/test/m1.test.js
 node xingchen/test/m2.test.js
+node xingchen/test/m3.test.js
 ```

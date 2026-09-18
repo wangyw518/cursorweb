@@ -1,61 +1,87 @@
 (function (root, factory) {
-  var api = factory();
+  var api = factory(
+    typeof require === 'function' ? require('./cells') : root.XingchenCells
+  );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.XingchenScore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (cells) {
   'use strict';
 
-  var DEFAULT_TIERS = [10, 30, 80, 200];
-
-  function tierPoints(tier, config) {
-    var tiers = (config && config.tiers) || DEFAULT_TIERS;
-    if (tier == null || tier < 0 || tier >= tiers.length) return 0;
-    return tiers[tier];
-  }
-
-  function fromPick(pick, config) {
-    if (!pick || !pick.ring) {
+  function fromCell(cell, config) {
+    if (!cell) {
       return {
         points: 0,
-        edge: false,
-        multiplier: 1,
+        crystals: 0,
         score: 0,
-        tier: -1,
+        rarity: null,
+        name: '',
+        miss: true,
         oob: false,
-        miss: true
+        bonus: 0,
+        cell: null
       };
     }
-    var points = tierPoints(pick.ring.tier, config);
-    var edge = !!pick.edge;
-    var mult = edge ? ((config && config.edgeMultiplier) || 1.2) : 1;
+    var spec = cells.specOf(cell.rarity, config);
     return {
-      points: points,
-      edge: edge,
-      multiplier: mult,
-      score: Math.round(points * mult),
-      tier: pick.ring.tier,
-      oob: false,
+      points: spec.score,
+      crystals: spec.crystals,
+      score: spec.score,
+      rarity: cell.rarity,
+      name: spec.name,
       miss: false,
-      ring: pick.ring
+      oob: false,
+      bonus: 0,
+      cell: cell
     };
   }
 
-  function outOfBounds() {
+  function combine(picks, bonus, config) {
+    var score = 0;
+    var crystals = 0;
+    var names = [];
+    var list = [];
+    var i;
+    for (i = 0; i < picks.length; i++) {
+      var one = fromCell(picks[i], config);
+      score += one.score;
+      crystals += one.crystals;
+      if (one.name) names.push(one.name);
+      list.push(one);
+    }
+    var extra = bonus > 0 ? bonus : 0;
+    return {
+      points: score,
+      crystals: crystals,
+      score: score + extra,
+      bonus: extra,
+      rarity: list.length ? list[0].rarity : null,
+      name: names.join(' · '),
+      miss: picks.length === 0 && extra <= 0,
+      oob: false,
+      parts: list,
+      cell: list.length ? list[0].cell : null
+    };
+  }
+
+  function outOfBounds(bonus) {
+    var extra = bonus > 0 ? bonus : 0;
     return {
       points: 0,
-      edge: false,
-      multiplier: 1,
-      score: 0,
-      tier: -1,
+      crystals: 0,
+      score: extra,
+      bonus: extra,
+      rarity: null,
+      name: '',
+      miss: extra <= 0,
       oob: true,
-      miss: false
+      parts: [],
+      cell: null
     };
   }
 
   return {
-    tierPoints: tierPoints,
-    fromPick: fromPick,
-    outOfBounds: outOfBounds,
-    DEFAULT_TIERS: DEFAULT_TIERS
+    fromCell: fromCell,
+    combine: combine,
+    outOfBounds: outOfBounds
   };
 });

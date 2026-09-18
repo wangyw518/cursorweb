@@ -58,7 +58,7 @@ async function main() {
     '--disable-gpu',
     '--no-sandbox',
     '--hide-scrollbars',
-    '--user-data-dir=/tmp/chrome-xingchen',
+    '--user-data-dir=/tmp/chrome-qijing',
     '--remote-debugging-port=' + PORT,
     '--window-size=430,780',
     'about:blank'
@@ -102,8 +102,9 @@ async function main() {
 
   var boot = await evalExpr('!!window.__xingchen && !!window.__xingchen.session');
   if (!boot) throw new Error('game did not boot');
-  await shot('xingchen_table_ready');
+  await shot('qijing_ready_table');
 
+  await evalExpr('window.__xingchen.sessionMod.selectSkill(window.__xingchen.session,"fire")');
   var ball = await evalExpr('(function(){var b=window.__xingchen.session.ball; return {x:b.x,y:b.y};})()');
   await evalExpr(
     'window.__xingchen.sessionMod.handlePointerDown(window.__xingchen.session,' +
@@ -114,55 +115,40 @@ async function main() {
     (ball.x - 96) + ',' + (ball.y + 36) + ')'
   );
   await sleep(80);
-  var charging = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
-  console.log('charging', JSON.stringify({
-    phase: charging.phase,
-    power: charging.power,
-    preview: charging.previewPoints,
-    bounces: charging.previewBounces
-  }));
-  await shot('xingchen_drag_aim_bounce');
+  await shot('qijing_aim_fire_skill');
 
   await evalExpr(
     'window.__xingchen.sessionMod.handlePointerUp(window.__xingchen.session,' +
     (ball.x - 96) + ',' + (ball.y + 36) + ')'
   );
   await sleep(160);
-  await shot('xingchen_ball_in_flight');
+  await shot('qijing_ball_in_flight');
 
   var guard = 0;
   var live = null;
   while (guard < 80) {
     live = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
-    if (live.phase === 'scored' || live.phase === 'settle') break;
+    if (live.phase === 'scored' || live.phase === 'settle' || live.phase === 'between') break;
     await sleep(80);
     guard += 1;
   }
-  console.log('after-flight', JSON.stringify({
-    phase: live && live.phase,
-    award: live && live.award,
-    settle: live && live.settle
-  }));
-  await shot('xingchen_miss_burst');
+  console.log('after-flight', JSON.stringify(live && { phase: live.phase, award: live.award }));
 
-  for (i = 0; i < 24; i++) {
-    await evalExpr('window.__xingchen.sessionMod.update(window.__xingchen.session, 1/60)');
-  }
-  live = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
-  console.log('settle-play', JSON.stringify(live.settle));
-  await shot('xingchen_settle_miss');
-
-  await evalExpr('(function(){var g=window.__xingchen; g.sessionMod.restart(g.session); var gold=g.session.rings.filter(function(r){return r.tier===3;})[0]; var x=gold.x+(gold.innerR+gold.outerR)*0.5; g.sessionMod.debugPlace(g.session,x,gold.y,0,0); for(var i=0;i<40;i++) g.sessionMod.update(g.session,1/60);})()');
+  await evalExpr('(function(){var g=window.__xingchen; g.sessionMod.restart(g.session); var cell=g.session.cells.filter(function(c){return c.rarity==="epic";})[0]; g.session.shotsLeft=0; g.sessionMod.debugPlace(g.session,cell.cx,cell.cy,0,0); for(var i=0;i<40;i++) g.sessionMod.update(g.session,1/60);})()');
   await sleep(80);
   live = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
-  console.log('settle-record', JSON.stringify(live.settle));
-  await shot('xingchen_settle_record');
+  console.log('settle-win', JSON.stringify(live.settle));
+  await shot('qijing_settle_win');
 
-  await evalExpr('(function(){var s=window.__xingchen.session; var r=s.ui.replay; window.__xingchen.sessionMod.handlePointerDown(s, r.x+20, r.y+12);})()');
-  await sleep(200);
+  await evalExpr('(function(){var s=window.__xingchen.session; s.wallet.stamina=0; s.phase="aim"; window.__xingchen.sessionMod.handlePointerDown(s,s.ball.x,s.ball.y+8);})()');
+  await sleep(80);
   live = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
-  console.log('replay', JSON.stringify({ phase: live.phase, best: live.best }));
-  await shot('xingchen_replay_ready');
+  console.log('stamina', JSON.stringify({ phase: live.phase, stamina: live.stamina }));
+  await shot('qijing_stamina_empty');
+
+  await evalExpr('(function(){var g=window.__xingchen; g.sessionMod.restart(g.session);})()');
+  await sleep(80);
+  await shot('qijing_replay_ready');
 
   await cdp.close();
   chrome.kill();

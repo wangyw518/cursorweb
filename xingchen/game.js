@@ -1,5 +1,5 @@
 /**
- * 星尘弹射 Xingchen — M0/M1/M2 entry.
+ * 奇境弹球 Xingchen — DeepSeek PRD playable entry.
  * WeChat native Canvas 2D. Custom 2D physics only. No Matter.js.
  */
 (function () {

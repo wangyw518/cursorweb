@@ -3,7 +3,7 @@
 var assert = require('assert');
 
 var config = require('../js/config.json');
-var scoreRings = require('../js/scoreRings');
+var cells = require('../js/cells');
 var score = require('../js/score');
 var table = require('../js/table');
 var hud = require('../js/hud');
@@ -43,58 +43,62 @@ function freshSession() {
   return sessionMod.create(viewport(), config);
 }
 
-function tickUntilSettled(session, maxSteps) {
+function tickUntilStopped(session, maxSteps) {
   var i;
   for (i = 0; i < (maxSteps || 400); i++) {
     sessionMod.update(session, config.fixedDt);
-    if (session.phase === 'scored' || session.phase === 'settle') return session.award;
+    if (
+      session.phase === 'scored' ||
+      session.phase === 'settle' ||
+      session.phase === 'between'
+    ) return session.award;
   }
   return session.award;
 }
 
-check('annular band scores; hole and outside miss', function () {
-  var rings = [{ x: 0, y: 0, innerR: 20, outerR: 40, tier: 1, colorKey: 'ringBlue' }];
-  assert.strictEqual(scoreRings.inBand(rings[0], 30, 0), true);
-  assert.strictEqual(scoreRings.inBand(rings[0], 10, 0), false);
-  assert.strictEqual(scoreRings.inBand(rings[0], 50, 0), false);
+function epicCell(session) {
+  var i;
+  for (i = 0; i < session.cells.length; i++) {
+    if (session.cells[i].rarity === 'epic') return session.cells[i];
+  }
+  return session.cells[0];
+}
 
-  var hit = scoreRings.pick(rings, 30, 0, 3);
-  assert.strictEqual(hit.ring.tier, 1);
-  var missHole = score.fromPick(scoreRings.pick(rings, 8, 0, 3), config);
-  assert.strictEqual(missHole.score, 0);
-  assert.strictEqual(missHole.miss, true);
-  var missOut = score.fromPick(scoreRings.pick(rings, 55, 0, 3), config);
-  assert.strictEqual(missOut.score, 0);
+function bronzeCell(session) {
+  var i;
+  for (i = 0; i < session.cells.length; i++) {
+    if (session.cells[i].rarity === 'bronze') return session.cells[i];
+  }
+  return session.cells[session.cells.length - 1];
+}
+
+check('display name is 奇境弹球', function () {
+  assert.strictEqual(config.displayName, '奇境弹球');
 });
 
-check('overlap prefers highest tier; same tier prefers smaller ring', function () {
-  var high = { x: 0, y: 0, innerR: 10, outerR: 40, tier: 3, colorKey: 'ringGold' };
-  var low = { x: 0, y: 0, innerR: 8, outerR: 50, tier: 0, colorKey: 'ringGreen' };
-  var picked = scoreRings.pick([low, high], 25, 0, 3);
-  assert.strictEqual(picked.ring.tier, 3);
+check('grid pick uses the cell under the ball center', function () {
+  var board = {
+    bounds: { x: 0, y: 0, w: 200, h: 240 }
+  };
+  var grid = cells.create(board, { gridCols: 5, gridRows: 6 });
+  assert.ok(grid.length === 30);
+  var epic = grid.filter(function (c) { return c.rarity === 'epic'; })[0];
+  var hit = cells.pick(grid, epic.cx, epic.cy);
+  assert.strictEqual(hit.cell.rarity, 'epic');
+  var award = score.fromCell(hit.cell, config);
+  assert.strictEqual(award.score, 180);
+  assert.strictEqual(award.name, '星谕');
 
-  var big = { x: 0, y: 0, innerR: 10, outerR: 50, tier: 0, colorKey: 'ringGreen' };
-  var small = { x: 0, y: 0, innerR: 12, outerR: 30, tier: 0, colorKey: 'ringGreen' };
-  var same = scoreRings.pick([big, small], 20, 0, 3);
-  assert.strictEqual(same.ring.outerR, 30);
-
-  var award = score.fromPick(picked, config);
-  assert.strictEqual(award.score, 200);
+  var miss = cells.pick(grid, -20, -20);
+  assert.strictEqual(miss.cell, null);
+  assert.strictEqual(score.fromCell(null, config).miss, true);
 });
 
-check('edge ±edgePx multiplies by 1.2 on the chosen ring', function () {
-  var ring = { x: 0, y: 0, innerR: 20, outerR: 40, tier: 2, colorKey: 'ringPurple' };
-  var rim = scoreRings.pick([ring], 40, 0, 3);
-  assert.strictEqual(rim.edge, true);
-  var mid = scoreRings.pick([ring], 30, 0, 3);
-  assert.strictEqual(mid.edge, false);
-  var innerRim = scoreRings.pick([ring], 21, 0, 3);
-  assert.strictEqual(innerRim.edge, true);
-
-  var edged = score.fromPick(rim, config);
-  assert.strictEqual(edged.multiplier, 1.2);
-  assert.strictEqual(edged.score, 96);
-  assert.strictEqual(score.fromPick(mid, config).score, 80);
+check('rarity scores are 20 / 50 / 100 / 180', function () {
+  assert.strictEqual(config.rarities.bronze.score, 20);
+  assert.strictEqual(config.rarities.silver.score, 50);
+  assert.strictEqual(config.rarities.gold.score, 100);
+  assert.strictEqual(config.rarities.epic.score, 180);
 });
 
 check('OOB (center past bounds) scores 0 immediately and beats stop detect', function () {
@@ -111,31 +115,34 @@ check('OOB (center past bounds) scores 0 immediately and beats stop detect', fun
   assert.strictEqual(session.stop.stopped, false);
 });
 
-check('stopped on a gold band awards 200 and writes local best', function () {
+check('stopped on an epic cell awards 180 and can write local best', function () {
   var session = freshSession();
-  var gold = session.rings.filter(function (r) { return r.tier === 3; })[0];
-  var x = gold.x + (gold.innerR + gold.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, gold.y, 0, 0);
-  var award = tickUntilSettled(session, 20);
+  var cell = epicCell(session);
+  session.shotsLeft = 0;
+  sessionMod.debugPlace(session, cell.cx, cell.cy, 0, 0);
+  var award = tickUntilStopped(session, 20);
   assert.ok(award);
-  assert.strictEqual(award.tier, 3);
-  assert.strictEqual(award.score, 200);
+  assert.strictEqual(award.rarity, 'epic');
+  assert.strictEqual(award.score, 180);
+  assert.ok(session.settle);
   assert.strictEqual(session.settle.isNew, true);
-  assert.strictEqual(storage.load().best, 200);
+  assert.strictEqual(session.settle.won, true);
+  assert.strictEqual(storage.load().best, 180);
 });
 
 check('settle shows gap to best when not a record; replay restores aim', function () {
   storage.resetMemory();
-  storage.save({ best: 200 });
+  storage.save({ best: 400, stamina: 30, crystals: 0, bestLevel: 1 });
   var session = sessionMod.create(viewport(), config);
-  assert.strictEqual(session.best, 200);
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
-  tickUntilSettled(session, 20);
-  assert.strictEqual(session.settle.score, 10);
+  assert.strictEqual(session.best, 400);
+  var cell = bronzeCell(session);
+  session.shotsLeft = 0;
+  sessionMod.debugPlace(session, cell.cx, cell.cy, 0, 0);
+  tickUntilStopped(session, 20);
+  assert.strictEqual(session.settle.score, 20);
+  assert.strictEqual(session.settle.won, false);
   assert.strictEqual(session.settle.isNew, false);
-  assert.strictEqual(session.settle.gap, 190);
+  assert.strictEqual(session.settle.gap, 380);
 
   var i;
   for (i = 0; i < 30; i++) sessionMod.update(session, config.fixedDt);
@@ -143,18 +150,32 @@ check('settle shows gap to best when not a record; replay restores aim', functio
 
   var replay = hud.hitTest(
     session.ui,
-    session.ui.replay.x + 20,
+    session.ui.settleScore.x,
     session.ui.replay.y + 10,
     'settle'
   );
   assert.strictEqual(replay, 'replay');
   sessionMod.handlePointerDown(
     session,
-    session.ui.replay.x + 20,
+    session.ui.settleScore.x,
     session.ui.replay.y + 10
   );
   assert.strictEqual(session.phase, 'aim');
-  assert.strictEqual(session.best, 200);
+  assert.strictEqual(session.best, 400);
+});
+
+check('level is reach target within K shots', function () {
+  assert.strictEqual(config.levels[0].shots, 5);
+  assert.strictEqual(config.levels[0].target, 160);
+  var session = freshSession();
+  assert.strictEqual(session.shotsLeft, 5);
+  assert.strictEqual(session.level.target, 160);
+  var cell = bronzeCell(session);
+  sessionMod.debugPlace(session, cell.cx, cell.cy, 0, 0);
+  tickUntilStopped(session, 20);
+  assert.strictEqual(session.levelScore, 20);
+  assert.ok(session.phase === 'between' || session.phase === 'aim');
+  assert.strictEqual(session.settle, null);
 });
 
 check('session has no timer field in the loop', function () {
@@ -164,23 +185,20 @@ check('session has no timer field in the loop', function () {
   assert.strictEqual(session.remainingMs, undefined);
 });
 
-check('tiers are 10/30/80/200', function () {
-  assert.deepStrictEqual(config.tiers, [10, 30, 80, 200]);
-  assert.strictEqual(score.tierPoints(0, config), 10);
-  assert.strictEqual(score.tierPoints(3, config), 200);
-});
-
 check('stop hold is 120ms before a table stop scores', function () {
   var session = freshSession();
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
+  var cell = bronzeCell(session);
+  sessionMod.debugPlace(session, cell.cx, cell.cy, 0, 0);
   sessionMod.update(session, 0.06);
   assert.strictEqual(session.phase, 'flight');
   assert.ok(session.stop.holdMs >= 60);
   assert.strictEqual(stopDetect.isStopped(session.stop), false);
   sessionMod.update(session, 0.06);
-  assert.ok(session.phase === 'scored' || session.phase === 'settle');
+  assert.ok(
+    session.phase === 'scored' ||
+    session.phase === 'settle' ||
+    session.phase === 'between'
+  );
 });
 
 if (failures) {

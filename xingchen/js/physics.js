@@ -130,8 +130,10 @@
     return resolveCircleCircle(body, c.x, c.y, wr, restitution);
   }
 
-  function collideWorld(body, walls, obstacles, restitution) {
+  function collideWorld(body, walls, obstacles, restitution, targets) {
     var hit = false;
+    var obstacle = null;
+    var target = null;
     var i;
     for (i = 0; i < walls.length; i++) {
       var w = walls[i];
@@ -139,35 +141,117 @@
     }
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
-      if (resolveCircleCircle(body, o.x, o.y, o.r, restitution)) hit = true;
+      if (o.broken) continue;
+      if (resolveCircleCircle(body, o.x, o.y, o.r, restitution)) {
+        hit = true;
+        obstacle = o;
+      }
     }
-    return hit;
+    if (targets) {
+      for (i = 0; i < targets.length; i++) {
+        var t = targets[i];
+        if (resolveCircleCircle(body, t.x, t.y, t.r, restitution)) {
+          hit = true;
+          if (!t.collected) target = t;
+        }
+      }
+    }
+    return { hit: hit, obstacle: obstacle, target: target };
   }
 
-  function stepOnce(body, walls, obstacles, dt, config) {
+  function resolveBallBall(a, b, restitution) {
+    var nx = b.x - a.x;
+    var ny = b.y - a.y;
+    var dist = hypot(nx, ny);
+    var minDist = a.r + b.r;
+    if (dist >= minDist || dist < 1e-8) return false;
+    var n = { x: nx / dist, y: ny / dist };
+    var pen = (minDist - dist) * 0.5;
+    a.x -= n.x * pen;
+    a.y -= n.y * pen;
+    b.x += n.x * pen;
+    b.y += n.y * pen;
+    var rvx = a.vx - b.vx;
+    var rvy = a.vy - b.vy;
+    var vn = rvx * n.x + rvy * n.y;
+    if (vn > 0) return true;
+    var e = 1 + (restitution == null ? 0.74 : restitution);
+    var j = -e * vn * 0.5;
+    a.vx += j * n.x;
+    a.vy += j * n.y;
+    b.vx -= j * n.x;
+    b.vy -= j * n.y;
+    return true;
+  }
+
+  function stepOnce(body, walls, obstacles, dt, config, targets) {
     clampSpeed(body, config.maxSpeed || 980);
     body.x += body.vx * dt;
     body.y += body.vy * dt;
-    var hit = collideWorld(body, walls, obstacles, config.restitution == null ? 0.74 : config.restitution);
+    var col = collideWorld(
+      body,
+      walls,
+      obstacles,
+      config.restitution == null ? 0.74 : config.restitution,
+      targets
+    );
     clampSpeed(body, config.maxSpeed || 980);
     var friction = config.friction == null ? 2.05 : config.friction;
     var damp = Math.exp(-friction * dt);
     body.vx *= damp;
     body.vy *= damp;
-    return hit;
+    return col;
   }
 
-  function step(world, dt, config) {
-    var body = world.ball;
+  function stepBody(body, world, dt, config) {
     var speed = hypot(body.vx, body.vy);
     var sub = Math.max(1, Math.min(6, Math.ceil((speed * dt) / Math.max(2, body.r * 0.55))));
     var slice = dt / sub;
     var hit = false;
+    var obstacle = null;
+    var target = null;
     var i;
     for (i = 0; i < sub; i++) {
-      if (stepOnce(body, world.walls, world.obstacles, slice, config)) hit = true;
+      var col = stepOnce(body, world.walls, world.obstacles, slice, config, world.targets);
+      if (col.hit) hit = true;
+      if (col.obstacle) obstacle = col.obstacle;
+      if (col.target) target = col.target;
     }
-    return { hit: hit, substeps: sub };
+    return { hit: hit, substeps: sub, obstacle: obstacle, target: target };
+  }
+
+  function step(world, dt, config) {
+    return stepBody(world.ball, world, dt, config);
+  }
+
+  function stepMany(balls, world, dt, config) {
+    var hit = false;
+    var obstacle = null;
+    var target = null;
+    var events = [];
+    var i;
+    for (i = 0; i < balls.length; i++) {
+      if (balls[i].oob) continue;
+      var one = stepBody(balls[i], world, dt, config);
+      if (one.hit) hit = true;
+      if (one.obstacle) {
+        obstacle = one.obstacle;
+        events.push({ kind: 'obstacle', obstacle: one.obstacle, ball: balls[i] });
+      }
+      if (one.target) {
+        target = one.target;
+        events.push({ kind: 'target', target: one.target, ball: balls[i] });
+      }
+    }
+    var rest = config.restitution == null ? 0.74 : config.restitution;
+    for (i = 0; i < balls.length; i++) {
+      var j;
+      for (j = i + 1; j < balls.length; j++) {
+        if (balls[i].oob || balls[j].oob) continue;
+        resolveBallBall(balls[i], balls[j], rest);
+      }
+    }
+    return { hit: hit, obstacle: obstacle, target: target, events: events };
   }
 
   function raycastWorld(ox, oy, dx, dy, walls, obstacles, ballR, maxDist) {
@@ -182,6 +266,7 @@
     }
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
+      if (o.broken) continue;
       var t = raycastCircle(ox, oy, dx, dy, o.x, o.y, o.r + ballR);
       if (t != null && t <= maxDist && (!best || t < best.t)) {
         var hx = ox + dx * t - o.x;
@@ -245,6 +330,9 @@
     raycastWorld: raycastWorld,
     collideWorld: collideWorld,
     step: step,
+    stepMany: stepMany,
+    stepBody: stepBody,
+    resolveBallBall: resolveBallBall,
     preview: preview
   };
 });
