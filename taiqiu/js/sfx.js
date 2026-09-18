@@ -11,6 +11,18 @@
 
   var ctx = null;
   var last = { ball: 0, cushion: 0, pocket: 0, cue: 0 };
+  var bgmOn = true;
+  var bgmNodes = [];
+  var bgmTimer = null;
+  var LOOP_BEAT = 0.42;
+
+  // Original 8-bar lounge hook (not a cover). Soft pentatonic so SFX stay on top.
+  var BGM_NOTES = [
+    392, 0, 494, 523, 494, 0, 392, 349,
+    392, 494, 587, 0, 523, 494, 392, 0,
+    349, 392, 440, 494, 392, 0, 330, 349,
+    392, 0, 523, 494, 440, 392, 349, 392
+  ];
 
   function audio() {
     if (ctx) return ctx;
@@ -77,6 +89,65 @@
     });
   }
 
+  function stopBgmVoices() {
+    var i;
+    for (i = 0; i < bgmNodes.length; i++) {
+      try { bgmNodes[i].stop(); } catch (err) {}
+    }
+    bgmNodes = [];
+  }
+
+  function scheduleBgmLoop() {
+    var ac = audio();
+    if (!ac || !bgmOn || !ac.createOscillator) return false;
+    stopBgmVoices();
+    var t0 = (ac.currentTime || 0) + 0.02;
+    var i;
+    for (i = 0; i < BGM_NOTES.length; i++) {
+      var freq = BGM_NOTES[i];
+      if (!freq) continue;
+      var osc = ac.createOscillator();
+      var g = ac.createGain();
+      var start = t0 + i * LOOP_BEAT;
+      osc.type = i % 4 === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(0.028, start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + LOOP_BEAT * 0.9);
+      osc.connect(g);
+      g.connect(ac.destination);
+      osc.start(start);
+      osc.stop(start + LOOP_BEAT);
+      bgmNodes.push(osc);
+    }
+    var period = BGM_NOTES.length * LOOP_BEAT * 1000;
+    if (bgmTimer) clearTimeout(bgmTimer);
+    bgmTimer = setTimeout(function () {
+      if (bgmOn) scheduleBgmLoop();
+    }, period - 30);
+    return true;
+  }
+
+  function startBgm() {
+    bgmOn = true;
+    return scheduleBgmLoop();
+  }
+
+  function stopBgm() {
+    bgmOn = false;
+    if (bgmTimer) {
+      clearTimeout(bgmTimer);
+      bgmTimer = null;
+    }
+    stopBgmVoices();
+    return false;
+  }
+
+  function toggleBgm() {
+    if (bgmOn) return stopBgm();
+    return startBgm();
+  }
+
   function reset() {
     last = { ball: 0, cushion: 0, pocket: 0, cue: 0 };
   }
@@ -87,6 +158,11 @@
     cushion: cushion,
     pocket: pocket,
     reset: reset,
-    audio: audio
+    audio: audio,
+    startBgm: startBgm,
+    stopBgm: stopBgm,
+    toggleBgm: toggleBgm,
+    bgmEnabled: function () { return !!bgmOn; },
+    setBgm: function (on) { return on === false ? stopBgm() : startBgm(); }
   };
 });

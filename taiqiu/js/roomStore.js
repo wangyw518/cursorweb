@@ -61,7 +61,11 @@
       lastReason: null,
       lastSeat: null,
       lastRole: null,
-      lastShot: null
+      lastShot: null,
+      names: ['房主', '好友'],
+      aimSeq: 0,
+      aim: null,
+      aimDeadlineAt: 0
     };
   }
 
@@ -84,6 +88,7 @@
       if (t === 'scratch') return 'scratch';
       if (t === 'foul' || e.foul) return e.reason || 'foul';
       if (t === 'legal' || (t === 'pocket' && e.legal !== false)) return 'legal';
+      if (t === 'timeout') return 'timeout';
       if (t === 'miss') return 'miss';
       if (t === 'new-game') return 'new-game';
     }
@@ -110,6 +115,10 @@
       }
       if (payload.scores) state.scores = payload.scores.slice();
       if (payload.targetN != null) state.targetN = payload.targetN;
+      if (payload.names) state.names = payload.names.slice();
+      if (payload.hostName || payload.name) {
+        state.names[0] = String(payload.hostName || payload.name);
+      }
       write(roomId, state);
       return {
         ok: true,
@@ -122,10 +131,17 @@
       };
     }
 
-    function join(roomId) {
+    function join(roomIdOrPayload) {
+      var roomId = roomIdOrPayload;
+      var guestName = null;
+      if (roomIdOrPayload && typeof roomIdOrPayload === 'object') {
+        roomId = roomIdOrPayload.roomId;
+        guestName = roomIdOrPayload.name || roomIdOrPayload.guestName || null;
+      }
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'join', reason: 'missing', roomId: roomId };
       state.guestJoined = true;
+      if (guestName) state.names[1] = String(guestName);
       state.seq += 1;
       write(roomId, state);
       return {
@@ -148,12 +164,23 @@
       if (fromSeat !== 0 && fromSeat !== 1) {
         return { ok: false, action: 'shot', reason: 'bad-seat', roomId: roomId };
       }
-      if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
-        return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
-      }
       var reason = reasonFromEvents(payload.events, payload.reason);
-      if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
-        return { ok: false, action: 'shot', reason: 'not-your-turn', roomId: roomId, state: clone(state) };
+      if (reason === 'timeout') {
+        var due = state.aimDeadlineAt;
+        if (!due || Date.now() + 250 < due) {
+          return { ok: false, action: 'shot', reason: 'too-early', roomId: roomId, state: clone(state) };
+        }
+        if (payload.token && payload.token !== tokenFor(roomId, 0) && payload.token !== tokenFor(roomId, 1)) {
+          return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
+        }
+        fromSeat = state.turn;
+      } else {
+        if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
+          return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
+        }
+        if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
+          return { ok: false, action: 'shot', reason: 'not-your-turn', roomId: roomId, state: clone(state) };
+        }
       }
       if (payload.shotSeq != null && state.shotSeq != null && payload.shotSeq <= state.shotSeq && reason !== 'new-game') {
         return { ok: false, action: 'shot', reason: 'stale-seq', roomId: roomId, state: clone(state) };
@@ -181,6 +208,11 @@
         state.turnRole = 'host';
       }
       if (reason === 'nine') state.phase = payload.phase || 'Settle';
+      state.aim = null;
+      state.aimDeadlineAt = reason === 'timeout'
+        ? (payload.nextDeadlineAt || (Date.now() + 25000))
+        : 0;
+      if (payload.names) state.names = payload.names.slice();
       state.lastReason = reason;
       state.lastSeat = fromSeat;
       state.lastRole = roleOfSeat(fromSeat);
@@ -200,6 +232,46 @@
       return { ok: true, action: 'shot', roomId: roomId, state: clone(state) };
     }
 
+    function aim(roomId, payload) {
+      payload = payload || {};
+      var state = rooms[roomId];
+      if (!state) return { ok: false, action: 'aim', reason: 'missing', roomId: roomId };
+      var fromSeat = payload.fromSeat;
+      if (fromSeat !== 0 && fromSeat !== 1) fromSeat = seatOfRole(payload.role, null);
+      if (fromSeat !== 0 && fromSeat !== 1) {
+        return { ok: false, action: 'aim', reason: 'bad-seat', roomId: roomId };
+      }
+      if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
+        return { ok: false, action: 'aim', reason: 'bad-token', roomId: roomId };
+      }
+      if (!state.matchOver && state.turn !== fromSeat) {
+        return { ok: false, action: 'aim', reason: 'not-your-turn', roomId: roomId, state: clone(state) };
+      }
+      var incoming = payload.aimSeq != null ? payload.aimSeq : (state.aimSeq || 0) + 1;
+      if (state.aimSeq != null && incoming < state.aimSeq) {
+        return { ok: false, action: 'aim', reason: 'stale-aim', roomId: roomId, state: clone(state) };
+      }
+      state.aimSeq = incoming;
+      state.aim = {
+        aimSeq: incoming,
+        fromSeat: fromSeat,
+        kind: payload.kind || 'aim',
+        aimAngle: payload.aimAngle,
+        power: payload.power || 0,
+        ax: payload.ax,
+        ay: payload.ay,
+        preview: payload.preview || null,
+        deadlineAt: payload.deadlineAt || state.aimDeadlineAt || 0
+      };
+      if (payload.deadlineAt) state.aimDeadlineAt = payload.deadlineAt;
+      if (payload.kind === 'firing') state.phase = 'Shot';
+      else if (state.phase !== 'Settle') state.phase = 'Aim';
+      if (payload.names) state.names = payload.names.slice();
+      state.seq += 1;
+      write(roomId, state);
+      return { ok: true, action: 'aim', roomId: roomId, state: clone(state) };
+    }
+
     function stateOf(roomId) {
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'state', reason: 'missing', roomId: roomId };
@@ -209,7 +281,8 @@
     function dispatch(action, payload) {
       payload = payload || {};
       if (action === 'create') return create(payload);
-      if (action === 'join') return join(payload.roomId);
+      if (action === 'join') return join(payload);
+      if (action === 'aim') return aim(payload.roomId, payload);
       if (action === 'shot') return shot(payload.roomId, payload);
       if (action === 'state') return stateOf(payload.roomId);
       return { ok: false, reason: 'unknown-action', action: action };
@@ -234,6 +307,7 @@
     return {
       create: create,
       join: join,
+      aim: aim,
       shot: shot,
       state: stateOf,
       dispatch: dispatch,

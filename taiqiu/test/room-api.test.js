@@ -221,6 +221,65 @@ check('shot from the waiting seat is rejected', function () {
   assert.strictEqual(store.state(made.roomId).state.turn, 0);
 });
 
+check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
+  var store = storeMod.createStore();
+  var made = store.create();
+  store.join(made.roomId);
+  var first = store.aim(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    aimSeq: 1,
+    kind: 'charging',
+    aimAngle: 0.4,
+    power: 0.6,
+    ax: Math.cos(0.4),
+    ay: Math.sin(0.4)
+  });
+  assert.strictEqual(first.ok, true);
+  assert.strictEqual(first.state.shotSeq, 0);
+  assert.strictEqual(first.state.aimSeq, 1);
+  assert.strictEqual(first.state.aim.kind, 'charging');
+  assert.strictEqual(first.state.phase, 'Aim');
+  var fire = store.aim(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    aimSeq: 2,
+    kind: 'firing',
+    aimAngle: 0.4,
+    power: 0.9
+  });
+  assert.strictEqual(fire.state.shotSeq, 0);
+  assert.strictEqual(fire.state.aimSeq, 2);
+  assert.strictEqual(fire.state.phase, 'Shot');
+});
+
+check('timeout after deadline switches seat and keeps the snapshot', function () {
+  var store = storeMod.createStore();
+  var made = store.create({
+    balls: [{ id: 'b1', n: 1, nx: 0.41, ny: 0.52, pocketed: false }]
+  });
+  store.join(made.roomId);
+  store.aim(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    aimSeq: 1,
+    kind: 'aim',
+    deadlineAt: Date.now() - 20
+  });
+  var timed = store.shot(made.roomId, {
+    fromSeat: 1,
+    token: storeMod.tokenFor(made.roomId, 1),
+    reason: 'timeout',
+    events: [{ type: 'timeout' }],
+    balls: [{ id: 'b1', n: 1, nx: 0.41, ny: 0.52, pocketed: false }]
+  });
+  assert.strictEqual(timed.ok, true);
+  assert.strictEqual(timed.state.turn, 1);
+  assert.strictEqual(timed.state.balls[0].nx, 0.41);
+  assert.strictEqual(timed.state.matchOver, false);
+  assert.ok(timed.state.aimDeadlineAt > Date.now());
+});
+
 check('new-game reracks via API and resets turn', function () {
   var store = storeMod.createStore();
   var made = store.create();
@@ -340,9 +399,43 @@ function runHttp(cb) {
   });
 }
 
-var httpPending = 1;
+function runAimHttp(cb) {
+  var started = roomServer.listen({ port: 0, host: '127.0.0.1' }, function (addr) {
+    var port = addr.port;
+    httpJson(port, 'POST', '/room/create', {}, function (err, created) {
+      if (err) {
+        started.server.close();
+        return cb(err);
+      }
+      httpJson(port, 'POST', '/room/aim', {
+        roomId: created.roomId,
+        fromSeat: 0,
+        token: created.token,
+        aimSeq: 1,
+        kind: 'charging',
+        aimAngle: 0.33,
+        power: 0.45
+      }, function (err2, aimed) {
+        started.server.close();
+        if (err2) return cb(err2);
+        cb(null, { created: created, aimed: aimed });
+      });
+    });
+  });
+}
+
+var httpPending = 2;
+function finishHttp() {
+  if (httpPending) return;
+  if (failures) {
+    console.error(failures + ' failed');
+    process.exit(1);
+  }
+  console.log('room api tests passed');
+}
+
 runHttp(function (err, result) {
-  httpPending = 0;
+  httpPending -= 1;
   try {
     if (err) throw err;
     assert.ok(result.created.ok);
@@ -362,11 +455,24 @@ runHttp(function (err, result) {
     console.error('FAIL  HTTP room poll');
     console.error('  ' + fail.message);
   }
-  if (failures) {
-    console.error(failures + ' failed');
-    process.exit(1);
+  finishHttp();
+});
+
+runAimHttp(function (err, result) {
+  httpPending -= 1;
+  try {
+    if (err) throw err;
+    assert.ok(result.aimed.ok);
+    assert.strictEqual(result.aimed.state.shotSeq, 0);
+    assert.strictEqual(result.aimed.state.aimSeq, 1);
+    assert.strictEqual(result.aimed.state.aim.kind, 'charging');
+    console.log('ok  HTTP POST /room/aim keeps shotSeq');
+  } catch (fail) {
+    failures += 1;
+    console.error('FAIL  HTTP /room/aim');
+    console.error('  ' + fail.message);
   }
-  console.log('room api tests passed');
+  finishHttp();
 });
 
 if (failures && !httpPending) {

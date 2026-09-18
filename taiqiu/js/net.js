@@ -27,6 +27,10 @@
     return roomApi.shot(roomId, payload, cb);
   }
 
+  function aim(roomId, payload, cb) {
+    return roomApi.aim(roomId, payload, cb);
+  }
+
   function state(roomId, cb) {
     return roomApi.state(roomId, cb);
   }
@@ -78,6 +82,7 @@
     createRoom: createRoom,
     joinRoom: joinRoom,
     shot: shot,
+    aim: aim,
     state: state,
     pushState: pushState,
     pullState: pullState,

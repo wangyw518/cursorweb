@@ -42,8 +42,88 @@
   function persist(session) {
     storage.save({
       best: session.best,
-      skinProgress: session.skinProgress
+      skinProgress: session.skinProgress,
+      bgm: session.bgm !== false,
+      displayName: session.displayName || ''
     });
+  }
+
+  function seatFallback(seat) {
+    return seat === 1 ? '好友' : '房主';
+  }
+
+  function applyLocalName(session, raw) {
+    var name = String(raw || '').trim();
+    if (!name) return session;
+    session.displayName = name;
+    session.names = session.names || [seatFallback(0), seatFallback(1)];
+    session.names[session.mySeat || 0] = name;
+    persist(session);
+    return session;
+  }
+
+  function fetchNick(session) {
+    var room = (session.config && session.config.room) || {};
+    var hint = session.displayName ||
+      (session.mySeat === 1 ? (room.guestDisplayName || room.displayName) : room.displayName) ||
+      '';
+    if (hint) applyLocalName(session, hint);
+    try {
+      if (typeof wx === 'undefined') return session;
+      if (wx.getUserInfo) {
+        wx.getUserInfo({
+          success: function (res) {
+            var nick = res && res.userInfo && res.userInfo.nickName;
+            if (nick) applyLocalName(session, nick);
+          }
+        });
+      }
+    } catch (err) {}
+    return session;
+  }
+
+  function compactPreview(preview) {
+    if (!preview || !preview.points || !preview.points.length) {
+      return preview && preview.ghost ? { points: [], ghost: preview.ghost, bounces: 0 } : null;
+    }
+    var pts = preview.points;
+    var step = pts.length > 14 ? 2 : 1;
+    var out = [];
+    var i;
+    for (i = 0; i < pts.length; i += step) {
+      out.push({
+        x: Math.round(pts[i].x * 10) / 10,
+        y: Math.round(pts[i].y * 10) / 10
+      });
+    }
+    return {
+      points: out,
+      ghost: preview.ghost || null,
+      bounces: preview.bounces || 0
+    };
+  }
+
+  function aimTimeoutMs(session) {
+    var sec = session.config && session.config.aimTimeoutSec;
+    if (!(sec > 0)) sec = 25;
+    return Math.round(sec * 1000);
+  }
+
+  function aimPollSec(session) {
+    var cfg = (roomApi.configOf && roomApi.configOf()) || {};
+    var room = (session.config && session.config.room) || {};
+    var ms = cfg.aimPollMs || room.aimPollMs || 140;
+    return ms / 1000;
+  }
+
+  function ensureBgm(session) {
+    if (!sfx) return session;
+    if (session.bgm === false) {
+      if (sfx.stopBgm) sfx.stopBgm();
+      return session;
+    }
+    if (sfx.startBgm) sfx.startBgm();
+    return session;
   }
 
   function worldOf(session) {
@@ -181,7 +261,38 @@
       targetN: session.target ? session.target.n : 0,
       matchOver: !!session.matchOver,
       winner: session.winner,
-      guestJoined: !!(session.room && session.room.guestJoined)
+      guestJoined: !!(session.room && session.room.guestJoined),
+      names: session.names ? session.names.slice() : null
+    };
+  }
+
+  function buildRemoteSettle(session, state) {
+    var winner = state && state.winner != null ? state.winner : session.winner;
+    var scores = ((state && state.scores) || session.scores || [0, 0]).slice();
+    var names = ((state && state.names) || session.names || [seatFallback(0), seatFallback(1)]).slice();
+    return {
+      coins: 0,
+      points: 0,
+      unit: '星币',
+      reason: 'nine',
+      legal: true,
+      foul: false,
+      win: true,
+      versus: true,
+      winner: winner,
+      scores: scores,
+      names: names,
+      starApplied: false,
+      pocketBonus: 0,
+      landingBonus: 0,
+      zoneLabel: '',
+      quality: {},
+      props: [],
+      skinProgress: 0,
+      disclaimer: (session.config && session.config.disclaimer) || '',
+      gap: 0,
+      isNew: false,
+      best: session.best
     };
   }
 
@@ -203,23 +314,48 @@
     else if (state.turn != null) session.turn = state.turn;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
+    if (state.names) session.names = state.names.slice();
+    if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
+    if (session.aimDeadlineAt && session.aimDeadlineAt > Date.now()) session._timeoutPosted = false;
     if (session.room) {
       if (state.shotSeq != null) session.room.lastSeq = state.shotSeq;
       else if (state.seq != null) session.room.lastSeq = state.seq;
+      if (state.aimSeq != null) session.room.aimSeq = state.aimSeq;
     }
     if (state.guestJoined && session.room) {
       session.room.guestJoined = true;
       session.hotseat = false;
     }
-    if (state.phase === fsm.PHASE.Aim || state.phase === fsm.PHASE.Settle) {
-      session.phase = state.phase;
+    if (state.aim && state.aim.fromSeat !== session.mySeat) {
+      session.remoteAim = state.aim;
+      session.remoteBusy = state.aim.kind === 'firing' ? 'firing' : null;
+    } else if (state.phase === fsm.PHASE.Shot && session.turn !== session.mySeat) {
+      session.remoteBusy = 'firing';
+    } else if (state.aim == null && session.turn === session.mySeat) {
+      session.remoteAim = null;
+      session.remoteBusy = null;
     }
-    if (state.matchOver && state.phase === fsm.PHASE.Settle) {
+    if (state.matchOver) {
       session.phase = fsm.PHASE.Settle;
+      session.matchOver = true;
+      if (!session.settle || !session.settle.win) {
+        session.settle = buildRemoteSettle(session, state);
+      } else {
+        session.settle.scores = (state.scores || session.settle.scores || session.scores).slice();
+        if (state.names) session.settle.names = state.names.slice();
+        session.settle.winner = state.winner != null ? state.winner : session.settle.winner;
+        session.settle.versus = true;
+      }
+    } else if (state.phase === fsm.PHASE.Aim || state.phase === fsm.PHASE.Settle) {
+      session.phase = state.phase;
     }
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
     if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
+    if (session.phase === fsm.PHASE.Aim && session.versus && !session.matchOver &&
+        session.room && session.room.guestJoined && !session.aimDeadlineAt && canAim(session)) {
+      armAimClock(session);
+    }
     return session;
   }
 
@@ -338,9 +474,22 @@
       matchOver: false,
       winner: null,
       syncAcc: 0,
-      roomPanel: null
+      roomPanel: null,
+      names: [
+        saved.displayName || (config.room && config.room.displayName) || seatFallback(0),
+        (config.room && config.room.guestDisplayName) || seatFallback(1)
+      ],
+      displayName: saved.displayName || (config.room && config.room.displayName) || '',
+      bgm: saved.bgm !== false && (config.bgm !== false),
+      aimDeadlineAt: 0,
+      aimSeq: 0,
+      remoteAim: null,
+      remoteBusy: null,
+      banner: null,
+      lastAimPush: 0
     };
     resetRound(session);
+    fetchNick(session);
     if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
     session.update = function (dt) { update(session, dt); };
     session.render = function (ctx) { render.draw(session, ctx); };
@@ -388,11 +537,116 @@
     session.preview = { points: [], ghost: null, bounces: 0 };
     session.settle = null;
     session.matchOver = false;
+    session.remoteAim = null;
+    session.remoteBusy = null;
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
     session.phase = fsm.PHASE.Aim;
     balls.haltBalls(session.balls);
     lockObjectBalls(session);
+    if (session.versus && session.room && session.room.guestJoined) armAimClock(session);
+    else session.aimDeadlineAt = 0;
+  }
+
+  function armAimClock(session, deadlineAt) {
+    if (!session.versus) {
+      session.aimDeadlineAt = 0;
+      return session;
+    }
+    if (session.hotseat && !(session.room && session.room.guestJoined)) {
+      session.aimDeadlineAt = 0;
+      return session;
+    }
+    session.aimDeadlineAt = deadlineAt || (Date.now() + aimTimeoutMs(session));
+    if (canAim(session)) pushAim(session, { kind: 'aim', deadlineAt: session.aimDeadlineAt });
+    return session;
+  }
+
+  function pushAim(session, extra) {
+    extra = extra || {};
+    if (!session.room || !session.room.roomId) return null;
+    if (!session.versus) return null;
+    if (extra.kind !== 'firing' && !canAim(session)) return null;
+    session.aimSeq = (session.aimSeq || 0) + 1;
+    session.lastAimPush = Date.now();
+    var payload = {
+      roomId: session.room.roomId,
+      fromSeat: session.mySeat,
+      role: session.mySeat === 1 ? 'guest' : 'host',
+      token: session.room.token,
+      aimSeq: session.aimSeq,
+      kind: extra.kind || (session.cue && session.cue.dragging ? 'charging' : 'aim'),
+      aimAngle: extra.aimAngle != null ? extra.aimAngle : (session.cue ? session.cue.angle : 0),
+      power: extra.power != null ? extra.power : (session.cue ? session.cue.power : 0),
+      ax: extra.ax != null ? extra.ax : (session.cue ? session.cue.ax : 0),
+      ay: extra.ay != null ? extra.ay : (session.cue ? session.cue.ay : -1),
+      preview: extra.preview !== undefined ? extra.preview : compactPreview(session.preview),
+      deadlineAt: extra.deadlineAt || session.aimDeadlineAt || 0,
+      names: session.names
+    };
+    return roomApi.aim(session.room.roomId, payload, function (res) {
+      if (res && res.ok && res.state && res.state.aimSeq != null) {
+        session.aimSeq = res.state.aimSeq;
+      }
+    });
+  }
+
+  function pushTimeout(session, opts) {
+    opts = opts || {};
+    if (!session.room || !session.room.roomId) return null;
+    var felt = session.table && session.table.felt;
+    var snap = roomApi.snapshotBalls(session.balls, felt);
+    return roomApi.shot(session.room.roomId, {
+      roomId: session.room.roomId,
+      fromSeat: session.mySeat,
+      role: session.mySeat === 1 ? 'guest' : 'host',
+      token: session.room.token,
+      reason: 'timeout',
+      events: [{ type: 'timeout' }],
+      ballsSnapshot: snap,
+      balls: snap,
+      scores: session.scores.slice(),
+      phase: fsm.PHASE.Aim,
+      targetN: session.target ? session.target.n : 0,
+      matchOver: false,
+      names: session.names,
+      nextDeadlineAt: Date.now() + aimTimeoutMs(session)
+    }, function (res) {
+      if (!res || !res.ok || !res.state) return;
+      if (opts.ingest) {
+        ingestState(session, res);
+        return;
+      }
+      if (session.room && res.state.shotSeq != null) session.room.lastSeq = res.state.shotSeq;
+      if (res.state.names) session.names = res.state.names.slice();
+    });
+  }
+
+  function timeoutAim(session) {
+    if (session.phase !== fsm.PHASE.Aim || session.matchOver) return null;
+    if (!session.versus) return null;
+    if (!session.aimDeadlineAt || Date.now() < session.aimDeadlineAt) return null;
+    if (session.hotseat && !(session.room && session.room.guestJoined)) return null;
+    if (session.turn !== session.mySeat) {
+      if (!session._timeoutPosted) {
+        session._timeoutPosted = true;
+        pushTimeout(session, { ingest: true });
+      }
+      return { kind: 'timeout-wait' };
+    }
+    if (session.cue && session.cue.dragging) cue.cancelDrag(session.cue);
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    session.resolution = { legal: false, foul: true, reason: 'timeout', enterStarZone: false, win: false };
+    session.lastShotEvents = [{ type: 'timeout' }];
+    session.award = score.emptyAward('timeout');
+    session.banner = { text: '超时未击球 · 换人', kind: 'foul', life: 2.2 };
+    session.toast = { text: '超时未击球 · 换人', life: 1.8 };
+    var from = session.turn;
+    session._timeoutPosted = false;
+    pushTimeout(session, { ingest: false });
+    if (shouldSwitchTurn(session)) switchTurn(session);
+    continueShot(session);
+    return { kind: 'timeout', from: from, turn: session.turn };
   }
 
   /**
@@ -432,13 +686,64 @@
     if (award && award.legal && award.reason === 'nine') {
       return { text: '打进9号 · 胜', life: 1.6 };
     }
+    if (award && award.legal && award.starApplied && award.zoneLabel) {
+      return { text: '落点加成 · ' + award.zoneLabel + ' +' + award.landingBonus + ' 星币', life: 1.6 };
+    }
     if (award && award.legal) {
       return { text: '+' + award.coins + ' 星币', life: 1.2 };
+    }
+    if (award && award.reason === 'scratch') {
+      return { text: session.versus ? '犯规 · 白球入袋 · 换人' : '犯规 · 白球入袋', life: 1.8 };
+    }
+    if (award && award.reason === 'order') {
+      return { text: session.versus ? '犯规 · 打错目标球 · 换人' : '犯规 · 打错目标球', life: 1.8 };
+    }
+    if (award && award.reason === 'whiff') {
+      return { text: session.versus ? '犯规 · 未碰目标球 · 换人' : '犯规 · 未碰目标球', life: 1.8 };
+    }
+    if (award && award.reason === 'timeout') {
+      return { text: '超时未击球 · 换人', life: 1.8 };
     }
     if (award && award.foul) {
       return { text: session.versus ? '犯规 · 换人' : '犯规', life: 1.4 };
     }
     return { text: session.versus ? '未进 · 换人' : '未进', life: 1.2 };
+  }
+
+  function bannerFor(session, award) {
+    if (!award) return null;
+    if (award.reason === 'scratch') {
+      return { text: session.versus ? '犯规 · 白球入袋（刮库）· 换人' : '犯规 · 白球入袋（刮库）', kind: 'foul', life: 2.4 };
+    }
+    if (award.reason === 'order') {
+      return { text: session.versus ? '犯规 · 打错目标球 · 换人' : '犯规 · 打错目标球', kind: 'foul', life: 2.4 };
+    }
+    if (award.reason === 'whiff') {
+      return { text: session.versus ? '犯规 · 未碰目标球 · 换人' : '犯规 · 未碰目标球', kind: 'foul', life: 2.4 };
+    }
+    if (award.reason === 'timeout') {
+      return { text: '超时未击球 · 换人', kind: 'foul', life: 2.2 };
+    }
+    if (award.foul) {
+      return { text: session.versus ? '犯规 · 换人' : '犯规', kind: 'foul', life: 2.0 };
+    }
+    return null;
+  }
+
+  function spawnScorePops(session, award, x, y) {
+    if (!award || !fx.spawnPop) return;
+    if (award.legal && award.pocketBonus) {
+      fx.spawnPop(session.particles, x, y - 12, '+' + award.pocketBonus + ' 星币', session.config.colors.scorePop);
+    }
+    if (award.starApplied && award.landingBonus) {
+      fx.spawnPop(
+        session.particles,
+        x,
+        y + 10,
+        (award.zoneLabel || '新星') + ' +' + award.landingBonus,
+        session.config.colors.scorePop
+      );
+    }
   }
 
   function concludeShot(session, applyStar) {
@@ -478,6 +783,7 @@
         session.config.colors.scorePop,
         8
       );
+      spawnScorePops(session, award, burstX, burstY);
     }
 
     session.landFlash = null;
@@ -511,16 +817,20 @@
         disclaimer: award.disclaimer,
         gap: gap.gap,
         isNew: gap.isNew,
-        best: session.best
+        best: session.best,
+        scores: session.scores.slice(),
+        names: session.names ? session.names.slice() : [seatFallback(0), seatFallback(1)]
       };
       session.phase = fsm.PHASE.Settle;
       session.toast = toastFor(session, award);
+      session.banner = bannerFor(session, award);
       pushRoom(session, 'nine', shooter);
       return session.settle;
     }
 
     // Miss / foul / legal 1–8: continueShot, never rack.
     session.toast = toastFor(session, award);
+    session.banner = bannerFor(session, award);
     if (shouldSwitchTurn(session)) switchTurn(session);
     continueShot(session);
     pushRoom(session, award.reason || (session.resolution && session.resolution.reason) || 'miss', shooter);
@@ -551,8 +861,18 @@
       }
     }
     for (i = 0; i < events.pockets.length; i++) {
-      session.shot.pocketed.push(events.pockets[i].ball.id);
+      var pocketed = events.pockets[i].ball;
+      session.shot.pocketed.push(pocketed.id);
       if (sfx && sfx.pocket) sfx.pocket();
+      if (fx.spawnPop) {
+        fx.spawnPop(
+          session.particles,
+          pocketed.x,
+          pocketed.y,
+          pocketed.id === 'cue' ? '刮库' : ('进袋 +' + ((session.config && session.config.pocketBonus) || 24)),
+          session.config.colors.scorePop
+        );
+      }
     }
     session.shot.scratch = !!(cueBall && cueBall.pocketed);
     session.shot.pocketedLowest = session.shot.targetId
@@ -590,17 +910,33 @@
       session.toast.life -= dt;
       if (session.toast.life <= 0) session.toast = null;
     }
+    if (session.banner) {
+      session.banner.life -= dt;
+      if (session.banner.life <= 0) session.banner = null;
+    }
     if (session.phase === fsm.PHASE.Aim) {
       // P0-A: freeze the table while aiming / charging. Never step physics.
       balls.haltBalls(session.balls);
       guardObjectBalls(session);
+      if (session.versus && session.aimDeadlineAt && Date.now() >= session.aimDeadlineAt) {
+        timeoutAim(session);
+      }
       if (session.room) {
         session.syncAcc += dt;
-        var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
+        var watching = session.versus && !canAim(session);
+        var pollSec = watching
+          ? aimPollSec(session)
+          : ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
         if (session.syncAcc > pollSec) {
           session.syncAcc = 0;
           pullRoom(session);
           guardObjectBalls(session);
+        }
+        if (canAim(session) && session.cue && session.cue.dragging) {
+          var gap = aimPollSec(session) * 1000;
+          if (Date.now() - (session.lastAimPush || 0) >= gap) {
+            pushAim(session, { kind: 'charging' });
+          }
         }
       }
       return;
@@ -650,8 +986,12 @@
       guestJoined: false,
       token: made.token,
       role: 'host',
-      lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0
+      lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0,
+      aimSeq: made.state && made.state.aimSeq != null ? made.state.aimSeq : 0
     };
+    fetchNick(session);
+    if (made.state && made.state.names) session.names = made.state.names.slice();
+    applyLocalName(session, session.displayName || session.names[0]);
     session.roomPanel = {
       roomId: made.roomId,
       hint: '分享给好友，加入后同步台面。第二页打开 ?roomId=' + made.roomId
@@ -673,10 +1013,14 @@
       return { kind: 'room', roomId: session.room.roomId, existing: true };
     }
     var felt = session.table && session.table.felt;
+    fetchNick(session);
     var made = roomApi.create({
       balls: roomApi.snapshotBalls(session.balls, felt),
       scores: [0, 0],
-      targetN: session.target ? session.target.n : 1
+      targetN: session.target ? session.target.n : 1,
+      names: session.names,
+      hostName: session.displayName || (session.names && session.names[0]) || seatFallback(0),
+      name: session.displayName || (session.names && session.names[0]) || seatFallback(0)
     }, function (res) {
       if (res && res.ok && res.roomId && !(session.room && session.room.roomId)) {
         attachHostRoom(session, res);
@@ -703,21 +1047,29 @@
       role: session.role,
       lastSeq: joined.state
         ? (joined.state.shotSeq != null ? joined.state.shotSeq : joined.state.seq)
-        : 0
+        : 0,
+      aimSeq: joined.state && joined.state.aimSeq != null ? joined.state.aimSeq : 0
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
+    fetchNick(session);
     if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
+    applyLocalName(session, session.displayName || seatFallback(1));
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
   }
 
   function joinRoom(session, roomId) {
-    var joined = roomApi.join(roomId, function (res) {
+    fetchNick(session);
+    var payload = {
+      roomId: roomId,
+      name: session.displayName || (session.config.room && session.config.room.guestDisplayName) || seatFallback(1)
+    };
+    var joined = roomApi.join(payload, function (res) {
       if (res && res.ok && !(session.room && session.room.roomId === roomId && session.mySeat === 1)) {
         attachGuestRoom(session, res, roomId);
       }
     });
-    if (joined && joined.ok) return attachGuestRoom(session, joined, roomId);
+    if (joined && joined.ok) return attachGuestRoom(session, joined, payload.roomId);
     if (joined && joined.pending) {
       session.toast = { text: '正在加入…', life: 1.4 };
       return { kind: 'join-pending', roomId: roomId };
@@ -758,9 +1110,17 @@
     if (session.roomPanel && hit !== 'room-close' && hit !== 'room') {
       return { kind: 'room-block' };
     }
+    if (hit === 'bgm') {
+      session.bgm = session.bgm === false;
+      if (sfx && sfx.setBgm) sfx.setBgm(session.bgm);
+      persist(session);
+      return { kind: 'bgm', bgm: session.bgm };
+    }
     if (hit === 'room') return handleRoomTap(session);
     if (session.phase === fsm.PHASE.Splash) {
       session.phase = fsm.PHASE.Aim;
+      fetchNick(session);
+      ensureBgm(session);
       return { kind: 'start' };
     }
     if (hit === 'aim3d') {
@@ -784,7 +1144,10 @@
     }
     if (session.phase === fsm.PHASE.Aim) {
       if (!canAim(session)) {
-        session.toast = { text: '对方击球', life: 1.1 };
+        session.toast = {
+          text: session.remoteBusy === 'firing' ? '对方击球中…' : '对方思考中',
+          life: 1.1
+        };
         return { kind: 'wait-turn' };
       }
       var cueBall = findCue(session);
@@ -793,6 +1156,7 @@
         cue.beginDrag(session.cue, x, y, cueBall, dragBounds(session));
         refreshPreview(session);
         guardObjectBalls(session);
+        pushAim(session, { kind: 'charging' });
         return { kind: 'aim' };
       }
     }
@@ -804,6 +1168,10 @@
     cue.moveDrag(session.cue, x, y, findCue(session), dragBounds(session));
     refreshPreview(session);
     guardObjectBalls(session);
+    var gap = aimPollSec(session) * 1000;
+    if (Date.now() - (session.lastAimPush || 0) >= gap) {
+      pushAim(session, { kind: 'charging' });
+    }
     return { kind: 'aim' };
   }
 
@@ -824,8 +1192,17 @@
     cueBall.vx = shot.vx;
     cueBall.vy = shot.vy;
     session.phase = fsm.PHASE.Shot;
+    session.remoteBusy = null;
     stopDetect.reset(session.stop);
     session.settleIn = 0;
+    pushAim(session, {
+      kind: 'firing',
+      aimAngle: shot.angle,
+      power: shot.power,
+      ax: shot.ax,
+      ay: shot.ay,
+      preview: null
+    });
     if (sfx && sfx.cue) sfx.cue();
     return { kind: 'fire', power: shot.power, phase: session.phase };
   }
@@ -833,7 +1210,7 @@
   function fireAi(session) {
     if (session.phase !== fsm.PHASE.Aim) return { kind: 'none' };
     if (!canAim(session)) {
-      session.toast = { text: '对方击球', life: 1.1 };
+      session.toast = { text: '对方思考中', life: 1.1 };
       return { kind: 'wait-turn' };
     }
     var cueBall = findCue(session);
@@ -852,9 +1229,16 @@
     cueBall.vx = plan.vx;
     cueBall.vy = plan.vy;
     session.phase = fsm.PHASE.Shot;
+    session.remoteBusy = null;
     stopDetect.reset(session.stop);
     session.settleIn = 0;
     session.preview = { points: [], ghost: null, bounces: 0 };
+    pushAim(session, {
+      kind: 'firing',
+      aimAngle: session.lastShotInput.aimAngle,
+      power: plan.power,
+      preview: null
+    });
     if (sfx && sfx.cue) sfx.cue();
     session.toast = { text: '弱AI试杆', life: 1.0 };
     return { kind: 'ai', power: plan.power, phase: session.phase };
@@ -896,7 +1280,11 @@
       scores: session.scores.slice(),
       landFlash: session.landFlash
         ? { tileId: session.landFlash.tileId, frames: session.landFlash.frames }
-        : null
+        : null,
+      names: session.names ? session.names.slice() : null,
+      bgm: session.bgm !== false,
+      aimDeadlineAt: session.aimDeadlineAt || 0,
+      remoteBusy: session.remoteBusy || null
     };
   }
 
@@ -960,6 +1348,9 @@
     inviteRoom: inviteRoom,
     pullRoom: pullRoom,
     pushRoom: pushRoom,
+    pushAim: pushAim,
+    timeoutAim: timeoutAim,
+    armAimClock: armAimClock,
     canAim: canAim,
     ingestState: ingestState,
     applyRoomState: applyRoomState,

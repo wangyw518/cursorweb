@@ -52,7 +52,16 @@
         h: 26,
         label: '新开一局'
       },
+      bgm: {
+        x: viewport.width - pad - 46,
+        y: top,
+        w: 46,
+        h: 22,
+        label: '音乐'
+      },
       hint: { x: viewport.width - pad, y: playTop + 10 },
+      turn: { x: cx, y: top + 68 },
+      clock: { x: viewport.width - pad, y: top + 36 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 36, w: Math.max(80, viewport.width - pad * 2), h: 6 },
       settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
@@ -86,6 +95,7 @@
       if (ui.roomSplash && inRect(ui.roomSplash, x, y)) return 'room';
       return 'start';
     }
+    if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && inRect(ui.room, x, y)) return 'room';
@@ -107,6 +117,47 @@
     ctx.arcTo(x, y + h, x, y, rr);
     ctx.arcTo(x, y, x + w, y, rr);
     ctx.closePath();
+  }
+
+  function charUnits(ch) {
+    var code = ch.charCodeAt(0);
+    return code > 127 ? 2 : 1;
+  }
+
+  function truncateName(raw, maxUnits) {
+    var s = String(raw || '').trim();
+    var cap = maxUnits == null ? 12 : maxUnits;
+    var units = 0;
+    var out = '';
+    var i;
+    for (i = 0; i < s.length; i++) {
+      var u = charUnits(s.charAt(i));
+      if (units + u > cap) return out + '…';
+      out += s.charAt(i);
+      units += u;
+    }
+    return out || '';
+  }
+
+  function seatFallback(seat) {
+    return seat === 1 ? '好友' : '房主';
+  }
+
+  function nameOf(session, seat) {
+    var names = session && session.names;
+    var raw = names && names[seat] ? names[seat] : seatFallback(seat);
+    return truncateName(raw) || seatFallback(seat);
+  }
+
+  function ownTurn(session) {
+    return !session.versus || session.turn === session.mySeat ||
+      (session.hotseat && !(session.room && session.room.guestJoined));
+  }
+
+  function remainSec(session) {
+    var at = session.aimDeadlineAt || 0;
+    if (!at) return 0;
+    return Math.max(0, Math.ceil((at - Date.now()) / 1000));
   }
 
   function drawButton(ctx, btn, colors, pressed) {
@@ -138,21 +189,31 @@
 
     ctx.fillStyle = colors.hudDim;
     ctx.font = '12px ' + FONT;
-    var ownTurn = !session.versus || session.turn === session.mySeat ||
-      (session.hotseat && !(session.room && session.room.guestJoined));
-    var turnPrefix = session.versus
-      ? (ownTurn ? '你的回合 · ' : '对方击球 · ')
-      : '';
-    var targetText = lowest ? (turnPrefix + '目标 ' + lowest.n + ' 号球') : (turnPrefix + '目标已完成');
+    var mine = ownTurn(session);
+    var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
     ctx.fillText(targetText, ui.target.x, ui.target.y);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = colors.hud;
     ctx.font = '12px ' + FONT;
     var bestText = session.versus
-      ? ('P1 ' + ((session.scores && session.scores[0]) || 0) + ' · P2 ' + ((session.scores && session.scores[1]) || 0))
+      ? (nameOf(session, 0) + ' ' + ((session.scores && session.scores[0]) || 0) +
+        ' · ' + nameOf(session, 1) + ' ' + ((session.scores && session.scores[1]) || 0))
       : ('最佳 ' + (session.best || 0) + ' 星币');
     ctx.fillText(bestText, ui.best.x, ui.best.y);
+
+    if (session.versus && session.phase !== 'Splash' && session.phase !== 'Settle') {
+      var clock = remainSec(session);
+      var busy = session.remoteBusy === 'firing' || session.phase === 'Shot';
+      var turnText;
+      if (busy && !mine) turnText = '对方击球中…';
+      else if (mine) turnText = clock ? ('轮到你 · ' + clock + 's') : '轮到你';
+      else turnText = clock ? ('对方思考中 · ' + clock + 's') : '对方思考中';
+      ctx.fillStyle = mine ? '#F5D76E' : colors.hudDim;
+      ctx.font = 'bold 13px ' + FONT;
+      ctx.textAlign = 'right';
+      ctx.fillText(turnText, ui.clock.x, ui.clock.y);
+    }
 
     drawButton(ctx, {
       x: ui.mode.x,
@@ -182,6 +243,15 @@
     if (ui.rerack && session.phase !== 'Splash') {
       drawButton(ctx, ui.rerack, colors, session.pressed === 'rerack');
     }
+    if (ui.bgm) {
+      drawButton(ctx, {
+        x: ui.bgm.x,
+        y: ui.bgm.y,
+        w: ui.bgm.w,
+        h: ui.bgm.h,
+        label: session.bgm === false ? '音乐关' : '音乐'
+      }, colors, session.pressed === 'bgm' || session.bgm === false);
+    }
 
     if (session.phase === 'Aim' && session.cue.dragging) {
       var p = session.cue.power;
@@ -195,7 +265,9 @@
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'right';
-      ctx.fillText(session.versus && !ownTurn ? '对方击球 · 请等待' : '拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
+      ctx.fillText(session.versus && !mine
+        ? (session.remoteBusy === 'firing' ? '对方击球中…' : '对方思考中')
+        : '拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
     } else if (session.phase === 'Shot') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
@@ -208,7 +280,15 @@
       ctx.fillText('等待母球停稳…', ui.hint.x, ui.hint.y);
     }
 
-    if (session.toast && session.toast.text) {
+    if (session.banner && session.banner.text) {
+      ctx.fillStyle = session.banner.kind === 'foul' ? 'rgba(120, 28, 28, 0.86)' : 'rgba(36, 24, 15, 0.82)';
+      roundRect(ctx, 18, ui.title.y + 56, session.viewport.width - 36, 26, 8);
+      ctx.fill();
+      ctx.fillStyle = '#FDE68A';
+      ctx.font = 'bold 13px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText(session.banner.text, session.viewport.width * 0.5, ui.title.y + 73);
+    } else if (session.toast && session.toast.text) {
       ctx.fillStyle = colors.hud;
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'center';
@@ -242,18 +322,35 @@
     ctx.textAlign = 'center';
     var title = '本杆星币';
     if (s.win || s.reason === 'nine') {
-      title = s.versus ? ('P' + ((s.winner || 0) + 1) + ' 胜 · 打进9号') : '打进9号 · 胜';
+      var winnerName = s.names && s.names[s.winner != null ? s.winner : 0]
+        ? truncateName(s.names[s.winner != null ? s.winner : 0])
+        : (s.versus ? seatFallback(s.winner || 0) : '');
+      title = s.versus ? (winnerName + ' 胜 · 打进9号') : '打进9号 · 胜';
     } else if (!s.legal) {
       if (s.reason === 'scratch') title = '犯规 · 白球入袋';
-      else if (s.reason === 'order') title = '犯规 · 未按9球顺序';
+      else if (s.reason === 'order') title = '犯规 · 打错目标球';
       else if (s.reason === 'whiff') title = '犯规 · 未碰目标球';
+      else if (s.reason === 'timeout') title = '超时未击球';
       else title = '未进目标球';
     }
     ctx.fillText(title, ui.settleScore.x, ui.settleScore.y - 22);
 
-    ctx.font = 'bold 36px ' + FONT;
+    ctx.font = 'bold 32px ' + FONT;
     ctx.fillStyle = '#F5D76E';
-    ctx.fillText(String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
+    if (s.versus && s.scores) {
+      ctx.font = 'bold 18px ' + FONT;
+      ctx.fillText(
+        nameOf({ names: s.names }, 0) + ' ' + (s.scores[0] || 0) +
+          '  ·  ' + nameOf({ names: s.names }, 1) + ' ' + (s.scores[1] || 0),
+        ui.settleScore.x,
+        ui.settleScore.y + 8
+      );
+      ctx.font = '13px ' + FONT;
+      ctx.fillStyle = colors.hud;
+      ctx.fillText('本杆 ' + String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 32);
+    } else {
+      ctx.fillText(String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
+    }
 
     ctx.font = '13px ' + FONT;
     ctx.fillStyle = colors.hud;
@@ -365,6 +462,11 @@
     drawChrome: drawChrome,
     drawSettle: drawSettle,
     drawSplash: drawSplash,
-    drawRoomPanel: drawRoomPanel
+    drawRoomPanel: drawRoomPanel,
+    truncateName: truncateName,
+    nameOf: nameOf,
+    seatFallback: seatFallback,
+    ownTurn: ownTurn,
+    remainSec: remainSec
   };
 });

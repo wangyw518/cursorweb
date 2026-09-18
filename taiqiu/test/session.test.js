@@ -618,6 +618,116 @@ check('legal StarZone land flash is a 1-frame tile stroke, not particles only', 
   assert.strictEqual(s.landFlash, null);
 });
 
+check('truncateName keeps 6 CJK / 12 half-width and ellipsizes', function () {
+  assert.strictEqual(hud.truncateName('星券台球玩家'), '星券台球玩家');
+  assert.strictEqual(hud.truncateName('星券台球玩家甲'), '星券台球玩家…');
+  assert.strictEqual(hud.truncateName('HelloWorld12'), 'HelloWorld12');
+  assert.strictEqual(hud.truncateName('HelloWorld123'), 'HelloWorld12…');
+  assert.strictEqual(hud.seatFallback(0), '房主');
+  assert.strictEqual(hud.seatFallback(1), '好友');
+});
+
+check('versus HUD names fall back to 房主/好友 and never P1/P2', function () {
+  var s = fresh();
+  sessionMod.createRoom(s);
+  s.versus = true;
+  s.names = ['星券台球玩家甲乙丙', 'Li'];
+  assert.strictEqual(hud.nameOf(s, 0), '星券台球玩家…');
+  assert.strictEqual(hud.nameOf(s, 1), 'Li');
+  var dbg = sessionMod.getDebugState(s);
+  assert.ok(dbg.names);
+  assert.strictEqual(JSON.stringify(dbg).indexOf('P1'), -1);
+});
+
+check('aim timeout switches turn, keeps object balls, and banners', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  var one = balls.findByN(host.balls, 1);
+  one.x += 15;
+  var oneX = one.x;
+  var due = Date.now() - 50;
+  roomApi.aim(host.room.roomId, {
+    fromSeat: 0,
+    token: host.room.token,
+    aimSeq: 1,
+    kind: 'aim',
+    aimAngle: -1.2,
+    power: 0.2,
+    deadlineAt: due
+  });
+  host.aimDeadlineAt = due;
+  var res = sessionMod.timeoutAim(host);
+  assert.ok(res);
+  assert.strictEqual(res.kind, 'timeout');
+  assert.strictEqual(host.turn, 1);
+  assert.strictEqual(host.phase, fsm.PHASE.Aim);
+  assert.ok(Math.abs(balls.findByN(host.balls, 1).x - oneX) < 0.01);
+  assert.ok(host.banner && host.banner.kind === 'foul');
+  assert.ok(host.banner.text.indexOf('超时') !== -1);
+  sessionMod.pullRoom(guest);
+  assert.strictEqual(guest.turn, 1);
+  assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - oneX) < 0.01);
+});
+
+check('aim preview does not advance shotSeq', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  var before = roomApi.state(host.room.roomId);
+  assert.strictEqual(before.state.shotSeq, 0);
+  sessionMod.pushAim(host, { kind: 'charging', aimAngle: 0.75, power: 0.55, ax: Math.cos(0.75), ay: Math.sin(0.75) });
+  var after = roomApi.state(host.room.roomId);
+  assert.strictEqual(after.state.shotSeq, 0);
+  assert.ok(after.state.aimSeq >= 1);
+  assert.ok(after.state.aim);
+  assert.ok(Math.abs(after.state.aim.aimAngle - 0.75) < 1e-6);
+  sessionMod.pullRoom(guest);
+  assert.ok(guest.remoteAim);
+  assert.ok(Math.abs(guest.remoteAim.aimAngle - 0.75) < 1e-6);
+});
+
+check('guest sees win settle after host pockets 9', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  sessionMod.debugForceStop(host, { pocketNine: true, firstContact: true });
+  assert.strictEqual(host.phase, fsm.PHASE.Settle);
+  sessionMod.pullRoom(guest);
+  assert.strictEqual(guest.phase, fsm.PHASE.Settle);
+  assert.ok(guest.settle && guest.settle.win);
+  assert.ok(guest.settle.scores);
+  assert.strictEqual(guest.winner, 0);
+});
+
+check('scratch and wrong-ball fouls show a banner', function () {
+  var s = fresh();
+  sessionMod.debugForceStop(s, { scratch: true, firstContact: true });
+  assert.ok(s.banner);
+  assert.strictEqual(s.banner.kind, 'foul');
+  assert.ok(s.banner.text.indexOf('白球') !== -1);
+  sessionMod.newGame(s);
+  var foul = sessionMod.debugForceStop(s, { pocketTarget: true, firstContact: false });
+  assert.strictEqual(foul.foul, true);
+  assert.ok(s.banner && s.banner.text.indexOf('目标球') !== -1);
+});
+
+check('HUD 音乐 toggle persists and defaults on', function () {
+  var s = fresh();
+  assert.strictEqual(s.bgm, true);
+  assert.ok(s.ui.bgm);
+  var res = sessionMod.handlePointerDown(s, s.ui.bgm.x + 4, s.ui.bgm.y + 4);
+  assert.strictEqual(res.kind, 'bgm');
+  assert.strictEqual(s.bgm, false);
+  assert.strictEqual(storage.load().bgm, false);
+  sfx.setBgm(false);
+});
+
 check('foul skips land flash and zone bonus UI', function () {
   var s = fresh();
   var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];

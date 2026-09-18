@@ -236,11 +236,11 @@
       }
       ctx.globalAlpha = 0.9;
       drawZoneMark(ctx, t, p, s, flashing ? '#FFFFFF' : hex);
-      ctx.font = (8 * p.s) + 'px ' + FONT;
+      ctx.font = 'bold ' + Math.max(8, 9 * p.s) + 'px ' + FONT;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = flashing ? '#FFFFFF' : hex;
-      ctx.fillText(t.label, p.x, p.y + s * 0.72);
+      ctx.fillText(t.label + ' +' + t.bonusXingbi, p.x, p.y + s * 0.78);
       ctx.restore();
     }
   }
@@ -291,10 +291,46 @@
     ctx.restore();
   }
 
+  function remoteStick(session) {
+    var rem = session.remoteAim;
+    if (!rem || session.phase !== 'Aim') return null;
+    if (hud.ownTurn && hud.ownTurn(session)) return null;
+    var ang = rem.aimAngle != null ? rem.aimAngle : Math.atan2(rem.ay || -1, rem.ax || 0);
+    return {
+      ax: rem.ax != null ? rem.ax : Math.cos(ang),
+      ay: rem.ay != null ? rem.ay : Math.sin(ang),
+      power: rem.power || 0,
+      angle: ang,
+      dragging: (rem.power || 0) > 0.03
+    };
+  }
+
   function drawAim(ctx, session) {
-    if (session.phase !== 'Aim' || !session.cue.dragging || session.cue.power < 0.04) return;
+    var stick = session.cue;
+    var preview = session.preview;
+    var rem = remoteStick(session);
+    if (rem) {
+      stick = rem;
+      preview = (session.remoteAim && session.remoteAim.preview) || preview;
+    }
+    if (session.phase !== 'Aim' || !stick || stick.power < 0.04) return;
+    if (!rem && !session.cue.dragging) return;
     var colors = session.config.colors;
-    var pts = session.preview && session.preview.points ? session.preview.points : [];
+    var pts = preview && preview.points ? preview.points : [];
+    if ((!pts || !pts.length) && rem) {
+      var cueBallAim = null;
+      var bi;
+      for (bi = 0; bi < session.balls.length; bi++) {
+        if (session.balls[bi].id === 'cue') cueBallAim = session.balls[bi];
+      }
+      if (cueBallAim) {
+        var span = 80 + stick.power * 200;
+        pts = [
+          { x: cueBallAim.x, y: cueBallAim.y },
+          { x: cueBallAim.x + stick.ax * span, y: cueBallAim.y + stick.ay * span }
+        ];
+      }
+    }
     ctx.save();
     ctx.setLineDash([7, 6]);
     ctx.strokeStyle = colors.aim;
@@ -309,8 +345,8 @@
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    if (session.preview && session.preview.ghost) {
-      var g = table.project(session.preview.ghost.x, session.preview.ghost.y, session.table, session.viewMode);
+    if (preview && preview.ghost) {
+      var g = table.project(preview.ghost.x, preview.ghost.y, session.table, session.viewMode);
       ctx.globalAlpha = 0.35;
       ctx.beginPath();
       ctx.arc(g.x, g.y, session.balls[0].r * g.s, 0, Math.PI * 2);
@@ -321,13 +357,17 @@
 
   function drawCueStick(ctx, session) {
     if (session.phase !== 'Aim') return;
+    var stick = session.cue;
+    var rem = remoteStick(session);
+    if (rem) stick = rem;
+    else if (session.versus && hud.ownTurn && !hud.ownTurn(session)) return;
     var cueBall = null;
     var i;
     for (i = 0; i < session.balls.length; i++) {
       if (session.balls[i].id === 'cue') cueBall = session.balls[i];
     }
     if (!cueBall || cueBall.pocketed) return;
-    var pose = cue.stickPose(session.cue, cueBall);
+    var pose = cue.stickPose(stick, cueBall);
     if (!pose) return;
     var a = table.project(pose.tipX, pose.tipY, session.table, session.viewMode);
     var b = table.project(pose.tailX, pose.tailY, session.table, session.viewMode);
@@ -432,6 +472,7 @@
     drawTiles: drawTiles,
     drawBall: drawBall,
     drawLandFlash: drawLandFlash,
-    tileHasLandFlash: tileHasLandFlash
+    tileHasLandFlash: tileHasLandFlash,
+    remoteStick: remoteStick
   };
 });

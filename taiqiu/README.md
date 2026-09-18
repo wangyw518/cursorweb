@@ -48,7 +48,7 @@ Rewards are virtual **星币** only.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
 - Tap **弱AI试杆** for an optional noisy practice shot at the object ball.
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). After each shot the client posts `shot` and both sides poll `state`. Legal 1–8 keeps the shooter; miss / foul switches; a miss never reracks.
+- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). While aiming, the shooter posts `POST /room/aim` (~140ms) so the waiting seat draws a live aim line; after the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / aim timeout (25s, `aimTimeoutSec`) switches; a miss never reracks. HUD **音乐** toggles the original procedural lounge loop (default on; does not cover cue / pocket SFX).
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -103,7 +103,8 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | create | `POST /room/create` | optional `{ balls, scores, targetN }` | `{ roomId, role: "host", state }` |
 | join | `POST /room/join` | `{ roomId }` | `{ role: "guest", state }` |
 | shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
-| state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole`, `shotSeq`, `matchOver`, `winner`) |
+| aim | `POST /room/aim` | `{ roomId, fromSeat, token, aimSeq, kind: aim\|charging\|firing, aimAngle, power, ax, ay, preview?, deadlineAt }` | `{ state }` (`aimSeq` only; `shotSeq` unchanged) |
+| state | `GET /room/state?roomId=` | — | full snapshot plus `names`, `aim`, `aimSeq`, `aimDeadlineAt` |
 
 `events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots return `{ ok: false, reason: "not-your-turn" }`.
 

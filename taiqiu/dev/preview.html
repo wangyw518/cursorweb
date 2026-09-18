@@ -164,11 +164,21 @@
         .then(function (res) { return res.json(); })
         .then(function (cfg) {
           var api = '';
-          try { api = new URLSearchParams(location.search).get('api') || ''; } catch (err) {}
+          var nick = '';
+          try {
+            var sp = new URLSearchParams(location.search);
+            api = sp.get('api') || '';
+            nick = sp.get('displayName') || sp.get('name') || '';
+          } catch (err) {}
           if (api) {
             cfg.room = cfg.room || {};
             cfg.room.roomApiBase = api;
             cfg.room.httpUrl = api;
+          }
+          if (nick) {
+            cfg.room = cfg.room || {};
+            cfg.room.displayName = nick;
+            cfg.room.guestDisplayName = nick;
           }
           window.TaiqiuConfig = cfg;
           var chain = Promise.resolve();

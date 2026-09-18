@@ -106,6 +106,13 @@
     wx.onTouchStart(function (ev) {
       var p = point(ev);
       if (p) sessionMod.handlePointerDown(session, p.x, p.y);
+      if (session.bgm !== false && sessionMod && session.phase) {
+        try {
+          var sfx = (typeof require === 'function' && require('./js/sfx')) ||
+            (typeof globalThis !== 'undefined' && globalThis.TaiqiuSfx);
+          if (sfx && sfx.startBgm) sfx.startBgm();
+        } catch (err) {}
+      }
     });
     if (wx.onTouchMove) {
       wx.onTouchMove(function (ev) {
@@ -147,8 +154,17 @@
       return out;
     }
 
+    function applyLaunchName(q) {
+      var nick = (q && (q.displayName || q.name)) || '';
+      if (!nick) return;
+      session.displayName = nick;
+      session.names = session.names || ['房主', '好友'];
+      session.names[session.mySeat || 0] = nick;
+    }
+
     function maybeJoin(opts) {
       var q = parseQuery(opts && (opts.query != null ? opts.query : opts));
+      applyLaunchName(q);
       if (!q.roomId) return;
       if (session.room && session.room.roomId === q.roomId) {
         sessionMod.pullRoom(session);

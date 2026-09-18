@@ -9,7 +9,8 @@
  *   POST /room/create → { roomId, role: 'host', state }
  *   POST /room/join   { roomId } → { role: 'guest', state }
  *   POST /room/shot   { roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }
- *   GET  /room/state?roomId= → full authoritative snapshot
+ *   POST /room/aim    { roomId, fromSeat, token, aimSeq, kind, aimAngle, power, ax, ay, preview }
+ *   GET  /room/state?roomId= → full authoritative snapshot (plus names / aim / aimSeq)
  *
  * Turn rules (authoritative on the room):
  *   legal pocket of 1–8 → same seat continues
@@ -31,6 +32,7 @@
   var cfg = {
     roomApiBase: '',
     pollMs: 450,
+    aimPollMs: 140,
     cloudEnv: '',
     cloudFn: 'taiqiuRoom'
   };
@@ -151,8 +153,10 @@
     var next = clone(state);
     if (next.turnRole == null) next.turnRole = roleOfSeat(next.turn);
     if (next.shotSeq == null) next.shotSeq = next.seq || 0;
+    if (next.aimSeq == null) next.aimSeq = next.aim && next.aim.aimSeq != null ? next.aim.aimSeq : 0;
     if (!next.ballsSnapshot && next.balls) next.ballsSnapshot = clone(next.balls);
     if (!next.balls && next.ballsSnapshot) next.balls = clone(next.ballsSnapshot);
+    if (!next.names) next.names = ['房主', '好友'];
     return next;
   }
 
@@ -210,7 +214,11 @@
       ballsSnapshot: state.ballsSnapshot,
       matchOver: state.matchOver,
       winner: state.winner,
-      guestJoined: state.guestJoined
+      guestJoined: state.guestJoined,
+      names: state.names,
+      aim: state.aim,
+      aimSeq: state.aimSeq,
+      aimDeadlineAt: state.aimDeadlineAt
     };
   }
 
@@ -237,7 +245,9 @@
       targetN: payload.targetN,
       matchOver: payload.matchOver,
       winner: payload.winner,
-      guestJoined: payload.guestJoined
+      guestJoined: payload.guestJoined,
+      names: payload.names,
+      nextDeadlineAt: payload.nextDeadlineAt
     };
   }
 
@@ -273,10 +283,22 @@
 
   LocalMockRoom.prototype.join = function (roomIdOrPayload) {
     this._hydrate();
-    var roomId = typeof roomIdOrPayload === 'string'
-      ? roomIdOrPayload
-      : (roomIdOrPayload && roomIdOrPayload.roomId);
-    var res = decorateJoin(this.store.join(roomId));
+    var payload = typeof roomIdOrPayload === 'string'
+      ? { roomId: roomIdOrPayload }
+      : (roomIdOrPayload || {});
+    var res = decorateJoin(this.store.join(payload));
+    this._flush();
+    return res;
+  };
+
+  LocalMockRoom.prototype.aim = function (roomId, payload) {
+    if (roomId && typeof roomId === 'object' && !payload) {
+      payload = roomId;
+      roomId = payload.roomId;
+    }
+    this._hydrate();
+    var res = this.store.aim(roomId, payload || {});
+    if (res && res.state) res.state = decorateState(res.state);
     this._flush();
     return res;
   };
@@ -390,6 +412,7 @@
     if (opts.roomApiBase != null) cfg.roomApiBase = String(opts.roomApiBase);
     else if (opts.httpUrl != null && opts.httpUrl !== '') cfg.roomApiBase = String(opts.httpUrl);
     if (opts.pollMs) cfg.pollMs = opts.pollMs;
+    if (opts.aimPollMs) cfg.aimPollMs = opts.aimPollMs;
     if (opts.cloudEnv != null) cfg.cloudEnv = String(opts.cloudEnv);
     if (opts.cloudFn) cfg.cloudFn = opts.cloudFn;
     return clone(cfg);
@@ -403,10 +426,28 @@
   }
 
   function join(roomId, cb) {
-    var id = roomId;
-    if (roomId && typeof roomId === 'object') id = roomId.roomId;
-    if (usingHttp()) return httpCall('POST', '/room/join', { roomId: id }, cb);
-    return done(mock.join(id), cb);
+    var payload = { roomId: roomId };
+    if (roomId && typeof roomId === 'object') {
+      payload = {
+        roomId: roomId.roomId,
+        name: roomId.name || roomId.guestName
+      };
+    }
+    if (usingHttp()) return httpCall('POST', '/room/join', payload, cb);
+    return done(mock.join(payload), cb);
+  }
+
+  function aim(roomId, payload, cb) {
+    if (typeof payload === 'function') { cb = payload; payload = {}; }
+    if (roomId && typeof roomId === 'object' && !payload) {
+      payload = roomId;
+      roomId = payload.roomId;
+      cb = arguments[1];
+    }
+    var body = payload || {};
+    body.roomId = roomId || body.roomId;
+    if (usingHttp()) return httpCall('POST', '/room/aim', body, cb);
+    return done(mock.aim(body.roomId, body), cb);
   }
 
   function shot(roomId, payload, cb) {
@@ -444,6 +485,7 @@
     configure: configure,
     create: create,
     join: join,
+    aim: aim,
     shot: shot,
     state: state,
     createRoom: create,

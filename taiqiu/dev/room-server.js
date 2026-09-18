@@ -4,6 +4,7 @@
  * Draft endpoints:
  *   POST /room/create
  *   POST /room/join
+ *   POST /room/aim
  *   POST /room/shot
  *   GET  /room/state?roomId=
  *
@@ -76,6 +77,12 @@ function createHandler(store) {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
         send(res, 200, decorateJoin(store.dispatch('join', body)));
+      });
+    }
+    if (req.method === 'POST' && url === '/room/aim') {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        send(res, 200, store.dispatch('aim', body));
       });
     }
     if (req.method === 'POST' && url === '/room/shot') {
@@ -166,6 +173,7 @@ if (require.main === module) {
     console.log('[taiqiu] room API http://' + shown + ':' + addr.port);
     console.log('  POST /room/create');
     console.log('  POST /room/join');
+    console.log('  POST /room/aim');
     console.log('  POST /room/shot');
     console.log('  GET  /room/state?roomId=');
   });
