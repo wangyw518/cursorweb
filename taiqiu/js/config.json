@@ -14,7 +14,7 @@
   "previewBounces": 2,
   "previewLength": 280,
   "wallRadius": 3.2,
-  "pocketRadius": 18.5,
+  "pocketRadius": 17.22,
   "railThickness": 24,
   "grabSlopPx": 40,
   "settleDelayMs": 240,

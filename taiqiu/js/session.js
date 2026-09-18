@@ -149,7 +149,11 @@
     return state;
   }
 
-  function resetRound(session) {
+  /**
+   * Full re-rack. GATED: only 「新开一局 / 再来一局」 / newGame.
+   * Miss, foul, and legal 1–8 must never call this.
+   */
+  function rack(session) {
     session.table = table.layout(session.viewport, session.config, session.ui.playRect);
     session.tiles = tiles.create(session.table, session.config);
     session.balls = balls.create(session.table, session.config);
@@ -169,6 +173,11 @@
     session.winner = null;
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
+    return session;
+  }
+
+  function resetRound(session) {
+    return rack(session);
   }
 
   function newGame(session) {
@@ -176,7 +185,7 @@
     session.turn = 0;
     session.matchOver = false;
     session.winner = null;
-    resetRound(session);
+    rack(session);
     pushRoom(session);
     return { kind: 'new-game' };
   }
@@ -212,7 +221,8 @@
       scores: [0, 0],
       matchOver: false,
       winner: null,
-      syncAcc: 0
+      syncAcc: 0,
+      roomPanel: null
     };
     resetRound(session);
     if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
@@ -264,6 +274,16 @@
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
     session.phase = fsm.PHASE.Aim;
+  }
+
+  /**
+   * 「再来一杆」 / post-miss continue. Keeps every object-ball position.
+   * Only respots the cue on a scratch (kitchen / head spot).
+   */
+  function continueShot(session) {
+    applySpotRules(session);
+    beginNextAim(session);
+    return session;
   }
 
   function applySpotRules(session) {
@@ -345,10 +365,9 @@
       session.landFlash = { tileId: landed.id, frames: 1 };
     }
 
-    applySpotRules(session);
-
     var win = !!(session.resolution && session.resolution.win);
     if (win) {
+      applySpotRules(session);
       session.matchOver = true;
       session.winner = session.turn;
       session.settle = {
@@ -379,9 +398,10 @@
       return session.settle;
     }
 
+    // Miss / foul / legal 1–8: continueShot, never rack.
     session.toast = toastFor(session, award);
     if (shouldSwitchTurn(session)) switchTurn(session);
-    beginNextAim(session);
+    continueShot(session);
     pushRoom(session);
     return award;
   }
@@ -501,10 +521,14 @@
     session.turn = 0;
     session.scores = [0, 0];
     session.room = { roomId: made.roomId, guestJoined: false };
+    session.roomPanel = {
+      roomId: made.roomId,
+      hint: '分享房间码给好友（占位，完整同步待房间 API）'
+    };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
-    session.toast = { text: '房间 ' + made.roomId, life: 1.6 };
+    session.toast = { text: '房间 ' + made.roomId + ' · 分享占位', life: 2.0 };
     pushRoom(session);
-    return { kind: 'room', roomId: made.roomId, seat: 0 };
+    return { kind: 'room', roomId: made.roomId, seat: 0, stub: true };
   }
 
   function joinRoom(session, roomId) {
@@ -526,9 +550,13 @@
 
   function inviteRoom(session) {
     if (!session.room || !session.room.roomId) return createRoom(session);
+    session.roomPanel = {
+      roomId: session.room.roomId,
+      hint: '分享房间码给好友（占位，完整同步待房间 API）'
+    };
     session.lastShare = share.shareRoom(session.room.roomId);
-    session.toast = { text: '邀请房间 ' + session.room.roomId, life: 1.4 };
-    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId };
+    session.toast = { text: '房间 ' + session.room.roomId + ' · 分享占位', life: 1.8 };
+    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId, stub: true };
   }
 
   function handleRoomTap(session) {
@@ -537,8 +565,19 @@
   }
 
   function handlePointerDown(session, x, y) {
-    var hit = hud.hitTest(session.ui, x, y, session.phase);
+    var hit = hud.hitTest(session.ui, x, y, session.phase, session);
     session.pressed = hit;
+    if (hit === 'room-close') {
+      session.roomPanel = null;
+      return { kind: 'room-close' };
+    }
+    if (hit === 'rerack') {
+      newGame(session);
+      return { kind: 'rerack' };
+    }
+    if (session.roomPanel && hit !== 'room-close' && hit !== 'room') {
+      return { kind: 'room-block' };
+    }
     if (hit === 'room') return handleRoomTap(session);
     if (session.phase === fsm.PHASE.Splash) {
       session.phase = fsm.PHASE.Aim;
@@ -720,6 +759,8 @@
     resize: resize,
     restart: newGame,
     newGame: newGame,
+    rack: rack,
+    continueShot: continueShot,
     createRoom: createRoom,
     joinRoom: joinRoom,
     inviteRoom: inviteRoom,

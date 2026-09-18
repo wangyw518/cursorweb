@@ -181,6 +181,66 @@ check('miss keeps positions, returns to Aim, and does not beat best', function (
   assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
 });
 
+check('after a miss settle → next aim, object balls stay (not racked)', function () {
+  var s = fresh();
+  var cueBall = balls.cueBall(s.balls);
+  var moved = [];
+  var i;
+  for (i = 0; i < s.balls.length; i++) {
+    var b = s.balls[i];
+    if (b.id === 'cue') continue;
+    b.x += 7 + i;
+    b.y += 5 - i;
+    moved.push({ id: b.id, x: b.x, y: b.y, pocketed: b.pocketed });
+  }
+  cueBall.x += 11;
+  cueBall.y -= 6;
+  var cueX = cueBall.x;
+  var cueY = cueBall.y;
+  sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.settle, null);
+  assert.strictEqual(s.matchOver, false);
+  for (i = 0; i < moved.length; i++) {
+    var live = balls.findById(s.balls, moved[i].id);
+    assert.ok(Math.abs(live.x - moved[i].x) < 0.01, live.id + ' x reracked');
+    assert.ok(Math.abs(live.y - moved[i].y) < 0.01, live.id + ' y reracked');
+    assert.strictEqual(live.pocketed, false);
+  }
+  assert.ok(Math.abs(cueBall.x - cueX) < 0.01);
+  assert.ok(Math.abs(cueBall.y - cueY) < 0.01);
+  var stillRack = s.balls.every(function (ball) {
+    if (ball.id === 'cue') return true;
+    var home = balls.rackPositions(s.table, ball.r).filter(function (p) { return p.n === ball.n; })[0];
+    return home && Math.abs(ball.x - home.x) < 0.4 && Math.abs(ball.y - home.y) < 0.4;
+  });
+  assert.strictEqual(stillRack, false);
+});
+
+check('continueShot vs rack is gated: miss continues, 新开一局 / 再来一局 racks', function () {
+  var s = fresh();
+  var one = balls.findByN(s.balls, 1);
+  one.x += 14;
+  one.y += 9;
+  var two = balls.findByN(s.balls, 2);
+  two.x -= 6;
+  var oneX = one.x;
+  var twoX = two.x;
+  sessionMod.continueShot(s);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - oneX) < 0.01);
+  assert.ok(Math.abs(balls.findByN(s.balls, 2).x - twoX) < 0.01);
+
+  var rerack = s.ui.rerack;
+  assert.strictEqual(rerack.label, '新开一局');
+  sessionMod.handlePointerDown(s, rerack.x + 8, rerack.y + 8);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
+  assert.strictEqual(balls.remainingCount(s.balls), 9);
+  var home1 = balls.rackPositions(s.table, one.r).filter(function (p) { return p.n === 1; })[0];
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - home1.x) < 0.4);
+});
+
 check('scratch respots cue in the kitchen and keeps object balls', function () {
   var s = fresh();
   var one = balls.findByN(s.balls, 1);
@@ -273,6 +333,20 @@ check('share stub is score-only and has no cash copy', function () {
   ['赚钱', '红包', '提现', '到账'].forEach(function (word) {
     assert.strictEqual(res.payload.text.indexOf(word), -1);
   });
+});
+
+check('好友对局 stub shows a roomId share placeholder', function () {
+  var s = fresh();
+  assert.strictEqual(s.ui.room.label, '好友对局');
+  assert.strictEqual(s.ui.roomSplash.label, '好友对局');
+  var made = sessionMod.createRoom(s);
+  assert.ok(made.roomId);
+  assert.ok(s.roomPanel);
+  assert.strictEqual(s.roomPanel.roomId, made.roomId);
+  assert.ok(s.roomPanel.hint.indexOf('占位') !== -1);
+  var invite = sessionMod.inviteRoom(s);
+  assert.strictEqual(invite.kind, 'invite');
+  assert.ok(invite.payload.query.indexOf('roomId=') === 0);
 });
 
 check('WeChat 2P room create / join / shareAppMessage roomId / sync after shot', function () {

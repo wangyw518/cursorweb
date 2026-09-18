@@ -15,7 +15,7 @@
     var pad = 14;
     var top = (viewport.safeTop || 20) + 6;
     var bottomSafe = viewport.safeBottom || 0;
-    var footerH = 58;
+    var footerH = 72;
     var playTop = top + 58;
     var playBottom = viewport.height - bottomSafe - footerH - 10;
     var cx = viewport.width * 0.5;
@@ -27,27 +27,34 @@
       mode: {
         x: pad,
         y: playBottom + 6,
-        w: 78,
+        w: 70,
         h: 26,
         label: '瞄准3D'
       },
       ai: {
-        x: pad + 86,
+        x: pad + 76,
         y: playBottom + 6,
-        w: 78,
+        w: 70,
         h: 26,
         label: '弱AI试杆'
       },
       room: {
-        x: pad + 172,
+        x: pad + 152,
         y: playBottom + 6,
         w: 78,
         h: 26,
-        label: '开房间'
+        label: '好友对局'
       },
-      hint: { x: viewport.width - pad, y: playBottom + 22 },
+      rerack: {
+        x: pad + 236,
+        y: playBottom + 6,
+        w: 78,
+        h: 26,
+        label: '新开一局'
+      },
+      hint: { x: viewport.width - pad, y: playBottom - 4 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
-      power: { x: pad + 258, y: playBottom + 14, w: Math.max(64, viewport.width - pad * 2 - 258), h: 6 },
+      power: { x: pad, y: playBottom + 36, w: Math.max(80, viewport.width - pad * 2), h: 6 },
       settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
       settleScore: { x: cx, y: cy - 86 },
       settleGap: { x: cx, y: cy - 28 },
@@ -56,7 +63,9 @@
       share: { x: cx - 72, y: cy + 84, w: 144, h: 34, label: '分享成绩' },
       splashCard: { x: cx - 132, y: cy - 132, w: 264, h: 268 },
       start: { x: cx - 72, y: cy + 20, w: 144, h: 40, label: '开始练习' },
-      roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '开房间' },
+      roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '好友对局' },
+      roomPanel: { x: cx - 132, y: cy - 90, w: 264, h: 168 },
+      roomClose: { x: cx - 72, y: cy + 28, w: 144, h: 34, label: '关闭' },
       playRect: {
         x: 10,
         y: playTop,
@@ -66,7 +75,11 @@
     };
   }
 
-  function hitTest(ui, x, y, phase) {
+  function hitTest(ui, x, y, phase, session) {
+    if (session && session.roomPanel) {
+      if (ui.roomClose && inRect(ui.roomClose, x, y)) return 'room-close';
+      if (ui.roomPanel && inRect(ui.roomPanel, x, y)) return 'room';
+    }
     if (phase === 'Splash') {
       if (ui.roomSplash && inRect(ui.roomSplash, x, y)) return 'room';
       return 'start';
@@ -74,6 +87,7 @@
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && inRect(ui.room, x, y)) return 'room';
+    if (ui.rerack && inRect(ui.rerack, x, y)) return 'rerack';
     if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
       if (inRect(ui.share, x, y)) return 'share';
@@ -156,8 +170,11 @@
         y: ui.room.y,
         w: ui.room.w,
         h: ui.room.h,
-        label: session.room ? '邀请好友' : ui.room.label
+        label: session.room ? '房间码' : ui.room.label
       }, colors, session.pressed === 'room');
+    }
+    if (ui.rerack && session.phase !== 'Splash') {
+      drawButton(ctx, ui.rerack, colors, session.pressed === 'rerack');
     }
 
     if (session.phase === 'Aim' && session.cue.dragging) {
@@ -283,6 +300,33 @@
     ctx.restore();
   }
 
+  function drawRoomPanel(ctx, session) {
+    if (!session.roomPanel || !session.roomPanel.roomId) return;
+    var ui = session.ui;
+    var colors = session.config.colors;
+    var card = ui.roomPanel;
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 9, 6, 0.45)';
+    ctx.fillRect(0, 0, session.viewport.width, session.viewport.height);
+    roundRect(ctx, card.x, card.y, card.w, card.h, 16);
+    ctx.fillStyle = '#24180F';
+    ctx.fill();
+    ctx.strokeStyle = colors.buttonBorder;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = colors.hud;
+    ctx.font = 'bold 16px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.fillText('好友对局', card.x + card.w * 0.5, card.y + 36);
+    ctx.font = '13px ' + FONT;
+    ctx.fillStyle = colors.hudDim;
+    ctx.fillText('房间码 ' + session.roomPanel.roomId, card.x + card.w * 0.5, card.y + 66);
+    ctx.font = '11px ' + FONT;
+    ctx.fillText(session.roomPanel.hint || '分享给好友（占位）', card.x + card.w * 0.5, card.y + 90);
+    drawButton(ctx, ui.roomClose, colors, session.pressed === 'room-close');
+    ctx.restore();
+  }
+
   function wrapText(ctx, text, x, y, maxW) {
     var chars = String(text || '').split('');
     var line = '';
@@ -311,6 +355,7 @@
     drawButton: drawButton,
     drawChrome: drawChrome,
     drawSettle: drawSettle,
-    drawSplash: drawSplash
+    drawSplash: drawSplash,
+    drawRoomPanel: drawRoomPanel
   };
 });

@@ -61,6 +61,17 @@
     return null;
   }
 
+  function inPocketMouth(body, pockets) {
+    var i;
+    for (i = 0; i < pockets.length; i++) {
+      var p = pockets[i];
+      if (hypot(body.x - p.x, body.y - p.y) <= p.r + body.r * 0.2) {
+        return p;
+      }
+    }
+    return null;
+  }
+
   function resolveCircleCircleStatic(body, cx, cy, cr, restitution) {
     var nx = body.x - cx;
     var ny = body.y - cy;
@@ -163,8 +174,22 @@
     }
 
     for (i = 0; i < balls.length; i++) {
+      var ball = balls[i];
+      if (ball.pocketed) continue;
+      var pocket = inPocket(ball, pockets);
+      if (pocket) {
+        ball.pocketed = true;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.pocket = pocket;
+        events.pockets.push({ ball: ball, pocket: pocket });
+      }
+    }
+
+    for (i = 0; i < balls.length; i++) {
       var a = balls[i];
       if (a.pocketed) continue;
+      if (inPocketMouth(a, pockets)) continue;
       for (j = 0; j < walls.length; j++) {
         var cush = resolveCushion(a, walls[j], cushE);
         if (cush.bounced) {
@@ -185,15 +210,14 @@
     }
 
     for (i = 0; i < balls.length; i++) {
-      var ball = balls[i];
-      if (ball.pocketed) continue;
-      var pocket = inPocket(ball, pockets);
-      if (pocket) {
-        ball.pocketed = true;
-        ball.vx = 0;
-        ball.vy = 0;
-        ball.pocket = pocket;
-        events.pockets.push({ ball: ball, pocket: pocket });
+      if (balls[i].pocketed) continue;
+      var late = inPocket(balls[i], pockets);
+      if (late) {
+        balls[i].pocketed = true;
+        balls[i].vx = 0;
+        balls[i].vy = 0;
+        balls[i].pocket = late;
+        events.pockets.push({ ball: balls[i], pocket: late });
       }
     }
 
@@ -331,6 +355,7 @@
     createBody: createBody,
     closestOnSeg: closestOnSeg,
     inPocket: inPocket,
+    inPocketMouth: inPocketMouth,
     resolveBallBall: resolveBallBall,
     resolveCushion: resolveCushion,
     firstHitBall: firstHitBall,

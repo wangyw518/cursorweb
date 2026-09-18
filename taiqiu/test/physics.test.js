@@ -80,44 +80,87 @@ check('9-ball rack has numbers 1-9 and lowest remaining is 1', function () {
   assert.strictEqual(balls.lowestNumbered(list).n, 2);
 });
 
-check('pocket centers sit on the cushion line / outside corners, not inward on cloth', function () {
+check('pocket centers sit on/outside the cushion nose, not inward on cloth', function () {
   var t = board();
   var felt = t.felt;
   var corners = t.pockets.filter(function (p) { return p.kind === 'corner'; });
   corners.forEach(function (p) {
-    var insideX = p.x > felt.x + 2 && p.x < felt.x + felt.w - 2;
-    var insideY = p.y > felt.y + 2 && p.y < felt.y + felt.h - 2;
-    assert.ok(!(insideX && insideY), p.id + ' should not sit inward on the cloth');
-    assert.ok(p.x < felt.x || p.x > felt.x + felt.w, p.id + ' corner x sits outside the cushion line');
-    assert.ok(p.y < felt.y || p.y > felt.y + felt.h, p.id + ' corner y sits outside the cushion line');
+    var insideX = p.x > felt.x + 0.5 && p.x < felt.x + felt.w - 0.5;
+    var insideY = p.y > felt.y + 0.5 && p.y < felt.y + felt.h - 0.5;
+    assert.ok(!(insideX && insideY), p.id + ' must not sit inward on the cloth');
+    assert.ok(p.x <= felt.x + 0.01 || p.x >= felt.x + felt.w - 0.01, p.id + ' corner x on/outside nose');
+    assert.ok(p.y <= felt.y + 0.01 || p.y >= felt.y + felt.h - 0.01, p.id + ' corner y on/outside nose');
   });
   var sides = t.pockets.filter(function (p) { return p.kind === 'side'; });
   sides.forEach(function (p) {
-    assert.ok(p.x < felt.x || p.x > felt.x + felt.w, p.id + ' side pocket should sit outside the felt');
+    assert.ok(p.x <= felt.x + 0.01 || p.x >= felt.x + felt.w - 0.01, p.id + ' side on/outside nose');
   });
 });
 
-check('pockets are oversized with a mouth wider than the ball', function () {
-  var t = board();
+check('HARD: pocketR > ballR and pocketR >= 1.85 * ballR', function () {
   var ballR = config.ballRadius;
-  assert.ok(config.pocketRadius >= ballR * 2, 'pocketR should be at least 2× ballR');
+  var radii = table.resolveRadii(config);
+  assert.ok(config.pocketRadius > ballR, 'config pocketR must exceed ballR');
+  assert.ok(config.pocketRadius >= ballR * table.MIN_POCKET_RATIO,
+    'config pocketR ' + config.pocketRadius + ' < 1.85× ballR');
+  assert.ok(radii.pocketR > radii.ballR);
+  assert.ok(radii.pocketR >= radii.ballR * 1.85);
+  var t = board();
   t.pockets.forEach(function (p) {
-    assert.ok(p.r >= ballR * 2, p.id + ' radius ' + p.r);
+    assert.ok(p.r > ballR, p.id + ' pocketR ' + p.r + ' must be > ballR ' + ballR);
+    assert.ok(p.r >= ballR * 1.85, p.id + ' pocketR ' + p.r + ' must be >= 1.85× ballR');
+    if (p.kind === 'corner') {
+      assert.ok(p.r >= ballR * 2.0, p.id + ' corner pocketR should be >= 2× ballR');
+    }
   });
   assert.ok(t.mouthGap >= ballR * 2.15, 'mouth gap ' + t.mouthGap);
   var cornerOpen = t.mouthGap * Math.SQRT2 - 2 * (config.wallRadius || 0);
   assert.ok(cornerOpen > ballR * 2, 'corner jaws must pass a ball, got ' + cornerOpen);
 });
 
+check('undersized pocketRadius is clamped so CI cannot ship pocketR <= ballR', function () {
+  var tiny = table.resolveRadii({ ballRadius: 8.2, pocketRadius: 7 });
+  assert.ok(tiny.pocketR > tiny.ballR);
+  assert.ok(tiny.pocketR >= tiny.ballR * 1.85);
+  var ui = hud.layout({
+    width: 375, height: 667, pixelRatio: 2, statusBarHeight: 20, safeTop: 20, safeBottom: 0
+  });
+  var t = table.layout({ width: 375, height: 667 }, { ballRadius: 8.2, pocketRadius: 7, railThickness: 24, wallRadius: 3.2 }, ui.playRect);
+  t.pockets.forEach(function (p) {
+    assert.ok(p.r > 8.2);
+    assert.ok(p.r >= 8.2 * 1.85);
+  });
+});
+
+check('cloth-side pocket opening is larger than the ball (not a sliver in the rail)', function () {
+  var t = board();
+  var ballR = config.ballRadius;
+  t.pockets.forEach(function (p) {
+    var open = table.clothOpening(p, t.felt);
+    assert.ok(open > ballR, p.id + ' cloth opening ' + open + ' must exceed ballR ' + ballR);
+  });
+});
+
 check('a ball aimed at a corner mouth falls in', function () {
   var t = board();
-  var p = t.pockets[0];
   var body = physics.createBody(t.felt.x + config.ballRadius + 3, t.felt.y + config.ballRadius + 3, config.ballRadius);
   body.vx = -240;
   body.vy = -240;
   var world = { balls: [body], walls: t.walls, pockets: t.pockets };
   var i;
   for (i = 0; i < 90; i++) physics.step(world, config.fixedDt, config);
+  assert.strictEqual(body.pocketed, true);
+});
+
+check('a ball rolling along the cushion into a corner is pocketed', function () {
+  var t = board();
+  var r = config.ballRadius;
+  var body = physics.createBody(t.felt.x + t.mouthGap + 8, t.felt.y + r + 3.4, r);
+  body.vx = -280;
+  body.vy = 0;
+  var world = { balls: [body], walls: t.walls, pockets: t.pockets };
+  var i;
+  for (i = 0; i < 140; i++) physics.step(world, config.fixedDt, config);
   assert.strictEqual(body.pocketed, true);
 });
 

@@ -423,6 +423,7 @@
     if (!(session.landFlash && session.landFlash.frames > 0)) {
       hud.drawSettle(ctx, session);
     }
+    if (hud.drawRoomPanel) hud.drawRoomPanel(ctx, session);
     consumeLandFlash(session);
   }
 

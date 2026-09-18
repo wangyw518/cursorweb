@@ -1,7 +1,8 @@
 /**
  * Portrait billiard table: felt, wood rails, chrome pockets, cushion segments.
- * Pockets are oversized (pocketR ≥ 2× ballR) with a wide mouth; centers sit
- * outside the cushion / felt line so a ball can fall cleanly.
+ * Pockets are oversized (pocketR ≥ 1.85× ballR; corners prefer 2.0–2.2×) with
+ * a wide mouth. Centers sit on/outside the cushion nose (outset) — never
+ * pulled inward onto the cloth to fake a hole.
  */
 (function (root, factory) {
   var api = factory();
@@ -10,11 +11,53 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  var MIN_POCKET_RATIO = 1.85;
+  var CORNER_POCKET_RATIO = 2.1;
+
+  function resolveRadii(config) {
+    var ballR = config && config.ballRadius != null ? config.ballRadius : 8.2;
+    var raw = config && config.pocketRadius != null ? config.pocketRadius : ballR * CORNER_POCKET_RATIO;
+    var pocketR = raw < ballR * MIN_POCKET_RATIO ? ballR * CORNER_POCKET_RATIO : raw;
+    var cornerR = Math.max(pocketR, ballR * 2.0);
+    var sideR = Math.max(pocketR, ballR * MIN_POCKET_RATIO);
+    return {
+      ballR: ballR,
+      pocketR: pocketR,
+      cornerR: cornerR,
+      sideR: sideR,
+      ratio: pocketR / ballR,
+      cornerRatio: cornerR / ballR,
+      sideRatio: sideR / ballR
+    };
+  }
+
+  /**
+   * Small outset so the hole lives in the rail, but a ball at the cushion
+   * nose still reaches the pocket (center on/outside the nose line).
+   */
+  function clampOutset(pocketR, ballR, kind, wallR) {
+    var wr = wallR || 0;
+    var maxOut;
+    if (kind === 'corner') {
+      // (ballR + out)² + (ballR + wr + out)² <= (pocketR * 0.96)²
+      // Conservative closed form: keep the nose-touch ball inside the hole.
+      maxOut = pocketR / Math.SQRT2 - ballR - wr * 0.35;
+    } else {
+      maxOut = pocketR - ballR - wr * 0.25;
+    }
+    if (!(maxOut > 0)) maxOut = 0;
+    var preferred = kind === 'corner' ? ballR * 0.18 : ballR * 0.14;
+    return Math.min(preferred, maxOut);
+  }
+
   function layout(viewport, config, playRect) {
     var rail = config.railThickness == null ? 24 : config.railThickness;
-    var ballR = config.ballRadius == null ? 8.2 : config.ballRadius;
-    var pocketR = config.pocketRadius == null ? 18.5 : config.pocketRadius;
     var wr = config.wallRadius == null ? 3.2 : config.wallRadius;
+    var radii = resolveRadii(config);
+    var ballR = radii.ballR;
+    var pocketR = radii.pocketR;
+    var cornerR = radii.cornerR;
+    var sideR = radii.sideR;
 
     var maxW = playRect.w;
     var maxH = playRect.h;
@@ -41,19 +84,19 @@
     var y1 = felt.y;
     var x2 = felt.x + felt.w;
     var y2 = felt.y + felt.h;
-    // Centers sit outside the cushion line so the hole is in the rail, not on cloth.
-    var cornerOut = pocketR * 0.65;
-    var sideOut = pocketR * 0.52;
+    // Centers on/outside the cushion nose — never inset onto the cloth.
+    var cornerOut = clampOutset(cornerR, ballR, 'corner', wr);
+    var sideOut = clampOutset(sideR, ballR, 'side', wr);
     // Wide mouth: jaws open more than a ball diameter so the ball can pass.
-    var gap = Math.max(pocketR * 1.2, ballR * 2.3);
+    var gap = Math.max(cornerR * 1.08, ballR * 2.5, 2 * ballR + wr * 2 + 4);
 
     var pockets = [
-      { id: 'tl', kind: 'corner', x: x1 - cornerOut, y: y1 - cornerOut, r: pocketR },
-      { id: 'tr', kind: 'corner', x: x2 + cornerOut, y: y1 - cornerOut, r: pocketR },
-      { id: 'ml', kind: 'side', x: x1 - sideOut, y: felt.cy, r: pocketR },
-      { id: 'mr', kind: 'side', x: x2 + sideOut, y: felt.cy, r: pocketR },
-      { id: 'bl', kind: 'corner', x: x1 - cornerOut, y: y2 + cornerOut, r: pocketR },
-      { id: 'br', kind: 'corner', x: x2 + cornerOut, y: y2 + cornerOut, r: pocketR }
+      { id: 'tl', kind: 'corner', x: x1 - cornerOut, y: y1 - cornerOut, r: cornerR },
+      { id: 'tr', kind: 'corner', x: x2 + cornerOut, y: y1 - cornerOut, r: cornerR },
+      { id: 'ml', kind: 'side', x: x1 - sideOut, y: felt.cy, r: sideR },
+      { id: 'mr', kind: 'side', x: x2 + sideOut, y: felt.cy, r: sideR },
+      { id: 'bl', kind: 'corner', x: x1 - cornerOut, y: y2 + cornerOut, r: cornerR },
+      { id: 'br', kind: 'corner', x: x2 + cornerOut, y: y2 + cornerOut, r: cornerR }
     ];
 
     var walls = [
@@ -85,8 +128,12 @@
       rail: rail,
       mouthGap: gap,
       pocketRadius: pocketR,
+      cornerPocketR: cornerR,
+      sidePocketR: sideR,
       cornerOut: cornerOut,
       sideOut: sideOut,
+      ballR: ballR,
+      pocketBallRatio: cornerR / ballR,
       kitchenY: y2 - felt.h * 0.22,
       rackY: y1 + felt.h * 0.28
     };
@@ -110,7 +157,22 @@
     };
   }
 
+  function clothOpening(pocket, felt) {
+    if (pocket.kind === 'side') {
+      var edgeX = pocket.x < felt.cx ? felt.x : felt.x + felt.w;
+      return pocket.r - Math.abs(pocket.x - edgeX);
+    }
+    var nx = pocket.x < felt.cx ? felt.x : felt.x + felt.w;
+    var ny = pocket.y < felt.cy ? felt.y : felt.y + felt.h;
+    return pocket.r - Math.hypot(pocket.x - nx, pocket.y - ny);
+  }
+
   return {
+    MIN_POCKET_RATIO: MIN_POCKET_RATIO,
+    CORNER_POCKET_RATIO: CORNER_POCKET_RATIO,
+    resolveRadii: resolveRadii,
+    clampOutset: clampOutset,
+    clothOpening: clothOpening,
     layout: layout,
     contains: contains,
     project: project
