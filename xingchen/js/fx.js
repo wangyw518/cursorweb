@@ -114,9 +114,9 @@
     for (i = 0; i < grid.cells.length; i++) {
       var cell = grid.cells[i];
       var flashing = flashCell && (flashCell === cell || flashCell.i === cell.i);
-      ctx.strokeStyle = flashing ? '#FFFFFF' : (colors.grid || '#1E3A5F');
-      ctx.globalAlpha = flashing ? 1 : 0.35;
-      ctx.lineWidth = flashing ? 3.2 : 1;
+      ctx.strokeStyle = flashing ? '#FFFFFF' : (colors.grid || '#2A4A72');
+      ctx.globalAlpha = flashing ? 1 : 0.62;
+      ctx.lineWidth = flashing ? 3.2 : 1.15;
       ctx.strokeRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
       if (flashing) {
         ctx.fillStyle = 'rgba(255,255,255,0.22)';
@@ -236,11 +236,11 @@
       var flashing = flashRing && flashRing === r;
       var mid = (r.innerR + r.outerR) * 0.5;
       ctx.shadowColor = flashing ? '#FFFFFF' : hex;
-      ctx.shadowBlur = flashing ? 18 : 12;
+      ctx.shadowBlur = flashing ? 18 : 3;
       ctx.beginPath();
       ctx.arc(r.x, r.y, mid, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 1 : 0.28;
+      ctx.globalAlpha = flashing ? 1 : 0.10;
       ctx.lineWidth = (r.outerR - r.innerR) + (flashing ? 5 : 0);
       ctx.stroke();
 
@@ -248,14 +248,14 @@
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.outerR, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 1 : 0.95;
-      ctx.lineWidth = flashing ? 3.6 : 2.3;
+      ctx.globalAlpha = flashing ? 1 : 0.28;
+      ctx.lineWidth = flashing ? 3.6 : 1.4;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(r.x, r.y, r.innerR, 0, Math.PI * 2);
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
-      ctx.globalAlpha = flashing ? 0.95 : 0.78;
+      ctx.globalAlpha = flashing ? 0.95 : 0.22;
       ctx.lineWidth = flashing ? 2.8 : 1.7;
       ctx.stroke();
       ctx.shadowBlur = 0;

@@ -152,7 +152,7 @@ async function main() {
   console.log('settle-play', JSON.stringify(live.settle));
   await shot('xingchen_settle_miss');
 
-  await evalExpr('(function(){var g=window.__xingchen; g.sessionMod.restart(g.session); var gold=g.session.rings.filter(function(r){return r.tier===3;})[0]; var x=gold.x+(gold.innerR+gold.outerR)*0.5; g.sessionMod.debugPlace(g.session,x,gold.y,0,0); for(var i=0;i<40;i++) g.sessionMod.update(g.session,1/60);})()');
+  await evalExpr('(function(){var g=window.__xingchen; g.sessionMod.restart(g.session); var relic=g.session.grid.cells.filter(function(c){return c.kind==="relic";})[0]; var x=relic.x+relic.w*0.5; var y=relic.y+relic.h*0.5; g.session.level.target=50; g.session.level.shots=1; g.session.level.remaining=1; g.sessionMod.debugPlace(g.session,x,y,0,0); for(var i=0;i<40;i++) g.sessionMod.update(g.session,1/60);})()');
   await sleep(80);
   live = await evalExpr('window.__xingchen.sessionMod.getDebugState(window.__xingchen.session)');
   console.log('settle-record', JSON.stringify(live.settle));
