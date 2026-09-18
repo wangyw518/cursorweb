@@ -233,15 +233,38 @@ check('瞄准3D button sits clear of the top-right WeChat capsule', function () 
   assert.ok(ui.mode.y > viewport().height * 0.55);
 });
 
-check('weak AI stub can fire a noisy shot at the object ball', function () {
+check('simple AI plans at the target center with distance power and a low foul rate', function () {
   var s = fresh();
   var cueBall = balls.cueBall(s.balls);
   var plan = ai.plan(cueBall, s.target, config, function () { return 0.5; });
   assert.ok(plan.ok);
   assert.ok(plan.vy < 0);
+  assert.ok(ai.powerForDistance(60) < ai.powerForDistance(240));
+  assert.strictEqual(plan.power, ai.powerForDistance(plan.dist, config));
+  assert.ok(ai.thinkDelay(function () { return 0; }, config) >= 0.6);
+  assert.ok(ai.thinkDelay(function () { return 1; }, config) <= 1.2);
+  assert.ok(ai.FOUL_RATE > 0 && ai.FOUL_RATE < 0.2);
+  var fouls = 0;
+  var i;
+  for (i = 0; i < 240; i++) {
+    if (ai.plan(cueBall, s.target, config, Math.random).foulAttempt) fouls += 1;
+  }
+  assert.ok(fouls > 0, 'foul rate must not be zero');
+  assert.ok(fouls < 80, 'foul rate must stay low, got ' + fouls);
   var res = sessionMod.fireAi(s);
   assert.strictEqual(res.kind, 'ai');
   assert.strictEqual(s.phase, fsm.PHASE.Shot);
+  assert.ok(typeof cue.strike === 'function');
+});
+
+check('Cue.strike is the only fire write on the cue ball', function () {
+  var ball = { x: 40, y: 80, vx: 0, vy: 0, r: 8, pocketed: false };
+  var other = { x: 90, y: 40, vx: 1, vy: 1 };
+  var struck = cue.strike(ball, { ax: 0, ay: -1, power: 0.5 }, config);
+  assert.strictEqual(struck.fired, true);
+  assert.ok(ball.vy < 0);
+  assert.strictEqual(other.x, 90);
+  assert.strictEqual(other.vx, 1);
 });
 
 check('sfx helpers are silent-safe without an audio context', function () {
@@ -466,12 +489,19 @@ check('firing enters Shot then returns to Aim without reracking', function () {
     Math.hypot(cueBall.x - s.table.felt.cx, cueBall.y - s.table.kitchenY) > 2);
 });
 
-check('splash shows disclaimer then start enters Aim', function () {
+check('splash shows disclaimer then default tap starts local AI', function () {
   storage.resetMemory();
   var s = sessionMod.create(viewport(), config);
   assert.strictEqual(s.phase, fsm.PHASE.Splash);
-  sessionMod.handlePointerDown(s, 180, 320);
+  assert.strictEqual(s.ui.aiSplash.label, '人机对战');
+  assert.strictEqual(s.ui.practice.label, '练习模式');
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.aiSplash.x + 8, s.ui.aiSplash.y + 8, 'Splash', s), 'start-ai');
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.practice.x + 8, s.ui.practice.y + 8, 'Splash', s), 'practice');
+  var res = sessionMod.handlePointerDown(s, 180, 320);
+  assert.strictEqual(res.kind, 'start-ai');
   assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.mode, 'ai');
+  assert.strictEqual(s.room, null);
 });
 
 check('share stub is score-only and has no cash copy', function () {
@@ -753,6 +783,114 @@ check('foul skips land flash and zone bonus UI', function () {
   assert.strictEqual(foul.starApplied, false);
   assert.strictEqual(foul.landingBonus, 0);
   assert.strictEqual(s.landFlash, null);
+});
+
+check('local AI mode reuses 2P rules without opening a room', function () {
+  var s = fresh();
+  var started = sessionMod.startAi(s);
+  assert.strictEqual(started.mode, 'ai');
+  assert.strictEqual(s.mode, 'ai');
+  assert.strictEqual(s.versus, true);
+  assert.strictEqual(s.localAi, true);
+  assert.strictEqual(s.room, null);
+  assert.strictEqual(s.names[1], '简单AI');
+  assert.strictEqual(hud.nameOf(s, 1), '简单AI');
+  assert.strictEqual(hud.turnLabel(s), '轮到你出杆');
+  assert.ok(s.aimDeadlineAt > Date.now() + 15000);
+  assert.strictEqual(sessionMod.canAim(s), true);
+
+  var one = balls.findByN(s.balls, 1);
+  one.x += 12;
+  var oneX = one.x;
+  var oneY = one.y;
+  sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
+  assert.strictEqual(s.turn, 1);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(sessionMod.canAim(s), false);
+  assert.strictEqual(hud.turnLabel(s), 'AI出杆中');
+  assert.ok(s.aiThink >= 0.6 && s.aiThink <= 1.2);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - oneX) < 0.01);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).y - oneY) < 0.01);
+  assert.ok(s.toast && (s.toast.text.indexOf('未进') !== -1 || s.toast.text.indexOf('换人') !== -1));
+
+  var wait = sessionMod.handlePointerDown(s, balls.cueBall(s.balls).x, balls.cueBall(s.balls).y);
+  assert.strictEqual(wait.kind, 'wait-turn');
+
+  var left = s.aiThink;
+  sessionMod.update(s, Math.max(0.01, left - 0.05));
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - oneX) < 0.01);
+  sessionMod.update(s, 0.2);
+  assert.strictEqual(s.phase, fsm.PHASE.Shot);
+  assert.ok(Math.hypot(balls.cueBall(s.balls).vx, balls.cueBall(s.balls).vy) > 1);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - oneX) < 0.01, 'AI must not write object balls');
+});
+
+check('local AI settle is 你赢了/你输了 with both 星币 and no room', function () {
+  var s = fresh();
+  s.displayName = '星券玩家甲乙';
+  sessionMod.startAi(s);
+  var win = sessionMod.debugForceStop(s, { pocketNine: true, firstContact: true });
+  assert.strictEqual(s.phase, fsm.PHASE.Settle);
+  assert.strictEqual(win.versus, true);
+  assert.strictEqual(win.outcome, 'win');
+  assert.strictEqual(hud.settleOutcome(s, win), '你赢了');
+  assert.ok(win.scores);
+  assert.strictEqual(s.room, null);
+  sessionMod.handlePointerDown(s, s.ui.replay.x + 8, s.ui.replay.y + 8);
+  assert.strictEqual(s.mode, 'ai');
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.room, null);
+  assert.strictEqual(s.scores[0], 0);
+
+  sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
+  assert.strictEqual(s.turn, 1);
+  var lose = sessionMod.debugForceStop(s, { pocketNine: true, firstContact: true });
+  assert.strictEqual(s.winner, 1);
+  assert.strictEqual(lose.outcome, 'lose');
+  assert.strictEqual(hud.settleOutcome(s, lose), '你输了');
+  var back = sessionMod.handlePointerDown(s, s.ui.back.x + 8, s.ui.back.y + 8);
+  assert.strictEqual(back.kind, 'back');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+});
+
+check('practice mode has no clock, no turn switch, and no win headline', function () {
+  var s = fresh();
+  var started = sessionMod.startPractice(s);
+  assert.strictEqual(started.mode, 'practice');
+  assert.strictEqual(s.versus, false);
+  assert.strictEqual(s.aimDeadlineAt, 0);
+  assert.strictEqual(hud.turnLabel(s), '');
+  sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
+  assert.strictEqual(s.turn, 0);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.settle, null);
+  var settle = sessionMod.debugForceStop(s, { pocketNine: true, firstContact: true });
+  assert.strictEqual(s.phase, fsm.PHASE.Settle);
+  assert.ok(settle.win);
+  assert.strictEqual(hud.settleOutcome(s, settle), '本局星币');
+  assert.ok((s.scores[0] || 0) >= settle.coins);
+  sessionMod.handlePointerDown(s, s.ui.replay.x + 8, s.ui.replay.y + 8);
+  assert.strictEqual(s.mode, 'practice');
+  assert.strictEqual(s.scores[0], 0);
+  assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
+});
+
+check('AI timeout is local, keeps object balls, and hands the table to 简单AI', function () {
+  var s = fresh();
+  sessionMod.startAi(s);
+  var one = balls.findByN(s.balls, 1);
+  one.x += 9;
+  var oneX = one.x;
+  s.aimDeadlineAt = Date.now() - 20;
+  var res = sessionMod.timeoutAim(s);
+  assert.strictEqual(res.kind, 'timeout');
+  assert.strictEqual(s.turn, 1);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.room, null);
+  assert.ok(Math.abs(balls.findByN(s.balls, 1).x - oneX) < 0.01);
+  assert.ok(s.banner && s.banner.kind === 'foul');
+  assert.strictEqual(hud.turnLabel(s), 'AI出杆中');
 });
 
 if (failures) {

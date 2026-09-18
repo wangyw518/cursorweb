@@ -52,6 +52,21 @@
     return seat === 1 ? '好友' : '房主';
   }
 
+  function aiLabel(session) {
+    var extra = session && session.config && session.config.ai;
+    return (extra && extra.label) || (ai && ai.LABEL) || '简单AI';
+  }
+
+  function isLocalAi(session) {
+    return !!(session && (session.localAi || session.mode === 'ai'));
+  }
+
+  function needsShotClock(session) {
+    if (!session || !session.versus) return false;
+    if (isLocalAi(session)) return true;
+    return !!(session.room && session.room.guestJoined);
+  }
+
   function applyLocalName(session, raw) {
     var name = String(raw || '').trim();
     if (!name) return session;
@@ -496,11 +511,34 @@
   }
 
   function newGame(session) {
+    var mode = session.mode;
+    var localAi = isLocalAi(session);
     session.scores = [0, 0];
     session.turn = 0;
     session.matchOver = false;
     session.winner = null;
+    session.aiThink = 0;
+    session.aiPlan = null;
+    session.remoteAim = null;
+    session.remoteBusy = null;
     rack(session);
+    if (localAi || mode === 'ai') {
+      session.mode = 'ai';
+      session.versus = true;
+      session.localAi = true;
+      session.hotseat = false;
+      session.room = null;
+      session.names = session.names || [session.displayName || '玩家', aiLabel(session)];
+      session.names[1] = aiLabel(session);
+      armAimClock(session);
+      return { kind: 'new-game', mode: 'ai' };
+    }
+    if (mode === 'practice') {
+      session.versus = false;
+      session.localAi = false;
+      session.aimDeadlineAt = 0;
+      return { kind: 'new-game', mode: 'practice' };
+    }
     pushRoom(session, 'new-game', session.mySeat || 0);
     return { kind: 'new-game' };
   }
@@ -533,6 +571,10 @@
       versus: false,
       hotseat: true,
       mySeat: 0,
+      mode: 'practice',
+      localAi: false,
+      aiThink: 0,
+      aiPlan: null,
       room: null,
       scores: [0, 0],
       matchOver: false,
@@ -590,6 +632,7 @@
     if (session.phase !== fsm.PHASE.Aim) return false;
     if (session.matchOver) return false;
     if (!session.versus) return true;
+    if (isLocalAi(session)) return session.turn === session.mySeat;
     if (session.hotseat && !(session.room && session.room.guestJoined)) return true;
     return session.turn === session.mySeat;
   }
@@ -610,21 +653,46 @@
     session.phase = fsm.PHASE.Aim;
     balls.haltBalls(session.balls);
     lockObjectBalls(session);
-    if (session.versus && session.room && session.room.guestJoined) armAimClock(session);
+    session.aiThink = 0;
+    session.aiPlan = null;
+    if (needsShotClock(session)) armAimClock(session);
     else session.aimDeadlineAt = 0;
+    if (isLocalAi(session) && session.turn !== session.mySeat) scheduleAi(session);
   }
 
   function armAimClock(session, deadlineAt) {
-    if (!session.versus) {
-      session.aimDeadlineAt = 0;
-      return session;
-    }
-    if (session.hotseat && !(session.room && session.room.guestJoined)) {
+    if (!needsShotClock(session)) {
       session.aimDeadlineAt = 0;
       return session;
     }
     session.aimDeadlineAt = deadlineAt || (Date.now() + aimTimeoutMs(session));
-    if (canAim(session)) pushAim(session, { kind: 'aim', deadlineAt: session.aimDeadlineAt });
+    if (canAim(session) && session.room && session.room.roomId) {
+      pushAim(session, { kind: 'aim', deadlineAt: session.aimDeadlineAt });
+    }
+    return session;
+  }
+
+  function scheduleAi(session) {
+    if (!isLocalAi(session) || session.phase !== fsm.PHASE.Aim || session.matchOver) return session;
+    if (session.turn === session.mySeat) return session;
+    var plan = ai.plan(findCue(session), session.target, session.config);
+    session.aiPlan = plan;
+    session.aiThink = ai.thinkDelay(null, session.config);
+    session.remoteBusy = 'thinking';
+    if (plan && plan.ok) {
+      session.cue.ax = plan.ax;
+      session.cue.ay = plan.ay;
+      session.cue.angle = plan.angle;
+      session.cue.power = 0;
+      session.remoteAim = {
+        kind: 'aim',
+        aimAngle: plan.angle,
+        ax: plan.ax,
+        ay: plan.ay,
+        power: 0,
+        fromSeat: 1
+      };
+    }
     return session;
   }
 
@@ -695,8 +763,8 @@
     if (session.phase !== fsm.PHASE.Aim || session.matchOver) return null;
     if (!session.versus) return null;
     if (!session.aimDeadlineAt || Date.now() < session.aimDeadlineAt) return null;
-    if (session.hotseat && !(session.room && session.room.guestJoined)) return null;
-    if (session.turn !== session.mySeat) {
+    if (!needsShotClock(session)) return null;
+    if (!isLocalAi(session) && session.turn !== session.mySeat) {
       if (!session._timeoutPosted) {
         session._timeoutPosted = true;
         pushTimeout(session, { ingest: true });
@@ -705,6 +773,9 @@
     }
     if (session.cue && session.cue.dragging) cue.cancelDrag(session.cue);
     session.preview = { points: [], ghost: null, bounces: 0 };
+    session.aiThink = 0;
+    session.aiPlan = null;
+    session.remoteAim = null;
     session.resolution = { legal: false, foul: true, reason: 'timeout', enterStarZone: false, win: false };
     session.lastShotEvents = [{ type: 'timeout' }];
     session.award = score.emptyAward('timeout');
@@ -712,7 +783,7 @@
     session.toast = { text: '超时未击球 · 换人', life: 1.8 };
     var from = session.turn;
     session._timeoutPosted = false;
-    pushTimeout(session, { ingest: false });
+    if (session.room && session.room.roomId) pushTimeout(session, { ingest: false });
     if (shouldSwitchTurn(session)) switchTurn(session);
     continueShot(session);
     return { kind: 'timeout', from: from, turn: session.turn };
@@ -878,6 +949,9 @@
         win: true,
         versus: !!session.versus,
         winner: session.winner,
+        outcome: session.versus
+          ? (session.winner === (session.mySeat || 0) ? 'win' : 'lose')
+          : null,
         starApplied: award.starApplied,
         pocketBonus: award.pocketBonus,
         landingBonus: award.landingBonus,
@@ -996,6 +1070,16 @@
       if (session.versus && session.aimDeadlineAt && Date.now() >= session.aimDeadlineAt) {
         timeoutAim(session);
       }
+      if (isLocalAi(session) && session.turn !== session.mySeat && !session.matchOver) {
+        if (!(session.aiThink > 0) && !session.aiPlan) scheduleAi(session);
+        if (session.aiThink > 0) {
+          session.aiThink -= dt;
+          if (session.aiThink <= 0) {
+            session.aiThink = 0;
+            fireAi(session);
+          }
+        }
+      }
       if (session.room) {
         session.syncAcc += dt;
         var watching = session.versus && !canAim(session);
@@ -1052,6 +1136,10 @@
   function attachHostRoom(session, made) {
     session.versus = true;
     session.hotseat = true;
+    session.localAi = false;
+    session.mode = 'room';
+    session.aiThink = 0;
+    session.aiPlan = null;
     session.mySeat = 0;
     session.turn = 0;
     session.scores = [0, 0];
@@ -1113,6 +1201,10 @@
   function attachGuestRoom(session, joined, roomId) {
     session.versus = true;
     session.hotseat = false;
+    session.localAi = false;
+    session.mode = 'room';
+    session.aiThink = 0;
+    session.aiPlan = null;
     session.mySeat = joined.seat != null ? joined.seat : 1;
     session.role = joined.role || 'guest';
     session.room = {
@@ -1193,10 +1285,8 @@
     }
     if (hit === 'room') return handleRoomTap(session);
     if (session.phase === fsm.PHASE.Splash) {
-      session.phase = fsm.PHASE.Aim;
-      fetchNick(session);
-      ensureBgm(session);
-      return { kind: 'start' };
+      if (hit === 'practice') return startPractice(session);
+      return startAi(session);
     }
     if (hit === 'aim3d') {
       toggleAim3d(session);
@@ -1265,66 +1355,124 @@
     session.preview = { points: [], ghost: null, bounces: 0 };
     if (!shot.fired) return { kind: 'cancel' };
     if (!canAim(session)) return { kind: 'wait-turn' };
+    return applyStrike(session, shot, { kind: 'fire' });
+  }
+
+  function applyStrike(session, shot, opts) {
+    opts = opts || {};
+    var cueBall = findCue(session);
+    if (!cueBall || !shot) return { kind: 'cancel' };
     guardObjectBalls(session);
+    var struck = cue.strike(cueBall, shot, session.config);
+    if (!struck || !struck.fired) return { kind: 'cancel' };
     session.lastShotInput = {
-      aimAngle: shot.angle,
-      power: shot.power,
+      aimAngle: struck.angle,
+      power: struck.power,
       spin: shot.spin || 0
     };
-    var cueBall = findCue(session);
-    cueBall.vx = shot.vx;
-    cueBall.vy = shot.vy;
     session.phase = fsm.PHASE.Shot;
     session.remoteBusy = null;
+    session.remoteAim = null;
+    session.aiThink = 0;
+    session.aiPlan = null;
     stopDetect.reset(session.stop);
     session.settleIn = 0;
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    session.powerFlash = 0;
+    session.powerWasFull = false;
+    if (session.cue) {
+      session.cue.dragging = false;
+      session.cue.power = 0;
+      session.cue.full = false;
+    }
     pushAim(session, {
       kind: 'firing',
-      aimAngle: shot.angle,
-      power: shot.power,
-      ax: shot.ax,
-      ay: shot.ay,
+      aimAngle: struck.angle,
+      power: struck.power,
+      ax: struck.ax,
+      ay: struck.ay,
       preview: null
     });
     if (sfx && sfx.cue) sfx.cue();
-    return { kind: 'fire', power: shot.power, phase: session.phase };
+    if (opts.kind === 'ai' && !isLocalAi(session)) {
+      session.toast = { text: '弱AI试杆', life: 1.0 };
+    }
+    return { kind: opts.kind || 'fire', power: struck.power, phase: session.phase };
+  }
+
+  function startAi(session) {
+    session.mode = 'ai';
+    session.versus = true;
+    session.localAi = true;
+    session.hotseat = false;
+    session.mySeat = 0;
+    session.turn = 0;
+    session.room = null;
+    session.roomPanel = null;
+    session.scores = [0, 0];
+    session.matchOver = false;
+    session.winner = null;
+    session.aiThink = 0;
+    session.aiPlan = null;
+    session.remoteAim = null;
+    session.remoteBusy = null;
+    fetchNick(session);
+    var me = session.displayName || (session.names && session.names[0]) || '玩家';
+    session.names = [me, aiLabel(session)];
+    applyLocalName(session, me);
+    session.names[1] = aiLabel(session);
+    rack(session);
+    session.phase = fsm.PHASE.Aim;
+    armAimClock(session);
+    ensureBgm(session);
+    session.toast = { text: '人机 · 简单AI', life: 1.4 };
+    return { kind: 'start-ai', mode: 'ai' };
+  }
+
+  function startPractice(session) {
+    session.mode = 'practice';
+    session.versus = false;
+    session.localAi = false;
+    session.hotseat = true;
+    session.mySeat = 0;
+    session.turn = 0;
+    session.room = null;
+    session.roomPanel = null;
+    session.scores = [0, 0];
+    session.matchOver = false;
+    session.winner = null;
+    session.aimDeadlineAt = 0;
+    session.aiThink = 0;
+    session.aiPlan = null;
+    session.remoteAim = null;
+    session.remoteBusy = null;
+    rack(session);
+    session.phase = fsm.PHASE.Aim;
+    fetchNick(session);
+    ensureBgm(session);
+    session.toast = { text: '练习模式', life: 1.2 };
+    return { kind: 'start', mode: 'practice' };
   }
 
   function fireAi(session) {
     if (session.phase !== fsm.PHASE.Aim) return { kind: 'none' };
-    if (!canAim(session)) {
+    var aiTurn = isLocalAi(session) && session.turn !== session.mySeat;
+    if (!aiTurn && !canAim(session)) {
       session.toast = { text: '对方思考中', life: 1.1 };
+      return { kind: 'wait-turn' };
+    }
+    if (!aiTurn && session.versus && session.room && session.room.guestJoined) {
+      session.toast = { text: hud.turnLabel ? hud.turnLabel(session) : '对方出杆', life: 1.1 };
       return { kind: 'wait-turn' };
     }
     var cueBall = findCue(session);
     var target = session.target;
-    var plan = ai.plan(cueBall, target, session.config);
-    if (!plan.ok) {
+    var plan = (session.aiPlan && session.aiPlan.ok) ? session.aiPlan : ai.plan(cueBall, target, session.config);
+    if (!plan || !plan.ok) {
       session.toast = { text: '弱AI无目标', life: 1.2 };
       return { kind: 'ai-skip' };
     }
-    guardObjectBalls(session);
-    session.lastShotInput = {
-      aimAngle: Math.atan2(plan.vy, plan.vx),
-      power: plan.power,
-      spin: 0
-    };
-    cueBall.vx = plan.vx;
-    cueBall.vy = plan.vy;
-    session.phase = fsm.PHASE.Shot;
-    session.remoteBusy = null;
-    stopDetect.reset(session.stop);
-    session.settleIn = 0;
-    session.preview = { points: [], ghost: null, bounces: 0 };
-    pushAim(session, {
-      kind: 'firing',
-      aimAngle: session.lastShotInput.aimAngle,
-      power: plan.power,
-      preview: null
-    });
-    if (sfx && sfx.cue) sfx.cue();
-    session.toast = { text: '弱AI试杆', life: 1.0 };
-    return { kind: 'ai', power: plan.power, phase: session.phase };
+    return applyStrike(session, plan, { kind: 'ai' });
   }
 
   function toggleAim3d(session) {
@@ -1358,6 +1506,9 @@
       settle: session.settle,
       turn: session.turn,
       versus: session.versus,
+      mode: session.mode || 'practice',
+      localAi: !!session.localAi,
+      aiThink: session.aiThink || 0,
       roomId: session.room ? session.room.roomId : null,
       winner: session.winner,
       scores: session.scores.slice(),
@@ -1441,6 +1592,11 @@
     lockObjectBalls: lockObjectBalls,
     toggleAim3d: toggleAim3d,
     fireAi: fireAi,
+    startAi: startAi,
+    startPractice: startPractice,
+    applyStrike: applyStrike,
+    scheduleAi: scheduleAi,
+    needsShotClock: needsShotClock,
     resolvePocket: resolvePocket,
     enterStarZone: enterStarZone,
     finishSettle: finishSettle,

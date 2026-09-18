@@ -43,12 +43,15 @@ Rewards are virtual **星币** only.
 
 ## Controls
 
+- Splash: **人机对战** (default highlight) and **练习模式** sit side by side. **好友对局** stays below. Neither solo mode starts a room server.
+- **人机 · 简单** (`mode=ai`, local): same 9-ball / 20s clock / continue / miss-foul switch / legal-9-wins rules as a friend room. HUD is `昵称 vs 简单AI` and `轮到你出杆 / AI出杆中`. The simple AI aims at the current target center with light noise, looks up power by distance, fouls rarely, thinks 0.6–1.2s, then fires through `Cue.strike` (never writes `balls[]` itself). Settle is 你赢了/你输了 plus both 星币; **再来一局 / 返回**.
+- **练习** (`mode=practice`): one player keeps the table. A miss does not switch or rerack. No shot clock and no 你赢了/你输了; HUD only shows this game’s 星币. **再来一局** racks and zeros the game total.
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull. The dashed preview is long enough to reach a far object ball (`previewLength` 720 / 3 bounces, or 1.25× table diagonal). Power uses on-screen drag length (bezel dead-zone), so a cue on any rail can still hit **满** / 100% without pulling the stick off-screen.
 - Release to shoot. A short pull cancels.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
-- Tap **弱AI试杆** for an optional noisy practice shot at the object ball.
+- In practice only, tap **弱AI试杆** for an optional noisy shot at the object ball (same `Cue.strike` path).
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). While aiming, the shooter posts `POST /room/aim` (~140ms) so the waiting seat draws a live aim line; after the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / aim timeout (25s, `aimTimeoutSec`) switches; a miss never reracks. HUD **音乐** toggles the original procedural lounge loop (default on; does not cover cue / pocket SFX).
+- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). While aiming, the shooter posts `POST /room/aim` (~140ms) so the waiting seat draws a live aim line; after the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / aim timeout (20s, `shotClockSec`) switches; a miss never reracks. HUD **音乐** toggles the original procedural lounge loop (default on; does not cover cue / pocket SFX).
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 

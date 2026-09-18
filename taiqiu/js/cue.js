@@ -212,6 +212,54 @@
     };
   }
 
+  /**
+   * Single fire entry: write cue-ball velocity only. Object balls stay
+   * untouched; callers must not assign balls[] themselves.
+   */
+  function strike(cueBall, shot, config) {
+    if (!cueBall || cueBall.pocketed || !shot) return { fired: false };
+    var ax = shot.ax;
+    var ay = shot.ay;
+    var vx = shot.vx;
+    var vy = shot.vy;
+    var power = shot.power;
+    if ((ax == null || ay == null) && vx != null && vy != null) {
+      var n = Math.hypot(vx, vy) || 1;
+      ax = vx / n;
+      ay = vy / n;
+    }
+    if ((ax == null || ay == null) && shot.angle != null) {
+      ax = Math.cos(shot.angle);
+      ay = Math.sin(shot.angle);
+    }
+    if (ax == null || ay == null) return { fired: false };
+    var len = Math.hypot(ax, ay) || 1;
+    ax /= len;
+    ay /= len;
+    var spdMax = (config && config.powerSpeed) || 1280;
+    if (power == null && vx != null && vy != null) {
+      power = Math.hypot(vx, vy) / spdMax;
+    }
+    if (!(power > 0)) return { fired: false };
+    if (power > 1) power = 1;
+    var spd = spdMax * power;
+    if (vx == null || vy == null) {
+      vx = ax * spd;
+      vy = ay * spd;
+    }
+    cueBall.vx = vx;
+    cueBall.vy = vy;
+    return {
+      fired: true,
+      power: power,
+      ax: ax,
+      ay: ay,
+      vx: vx,
+      vy: vy,
+      angle: Math.atan2(ay, ax)
+    };
+  }
+
   function stickPose(cue, cueBall, space) {
     if (!cueBall) return null;
     var back = 36 + cue.power * 54;
@@ -249,6 +297,7 @@
     moveDrag: moveDrag,
     cancelDrag: cancelDrag,
     endDrag: endDrag,
+    strike: strike,
     stickPose: stickPose,
     nearRim: nearRim
   };

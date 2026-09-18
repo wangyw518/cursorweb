@@ -73,9 +73,11 @@
       back: { x: cx - 72, y: cy + 76, w: 144, h: 34, label: '返回' },
       share: { x: cx - 72, y: cy + 116, w: 144, h: 32, label: '分享成绩' },
       count: { x: cx, y: top + 78 },
-      splashCard: { x: cx - 132, y: cy - 132, w: 264, h: 268 },
-      start: { x: cx - 72, y: cy + 20, w: 144, h: 40, label: '开始练习' },
-      roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '好友对局' },
+      splashCard: { x: cx - 132, y: cy - 148, w: 264, h: 300 },
+      aiSplash: { x: cx - 124, y: cy + 12, w: 116, h: 42, label: '人机对战' },
+      start: { x: cx - 124, y: cy + 12, w: 116, h: 42, label: '人机对战' },
+      practice: { x: cx + 8, y: cy + 12, w: 116, h: 42, label: '练习模式' },
+      roomSplash: { x: cx - 72, y: cy + 64, w: 144, h: 36, label: '好友对局' },
       roomPanel: { x: cx - 132, y: cy - 110, w: 264, h: 220 },
       roomInvite: { x: cx - 72, y: cy + 8, w: 144, h: 34, label: '邀请好友' },
       roomClose: { x: cx - 72, y: cy + 50, w: 144, h: 34, label: '关闭' },
@@ -102,11 +104,14 @@
     }
     if (phase === 'Splash') {
       if (ui.roomSplash && inRect(ui.roomSplash, x, y)) return 'room';
-      return 'start';
+      if (ui.practice && inRect(ui.practice, x, y)) return 'practice';
+      if (ui.aiSplash && inRect(ui.aiSplash, x, y)) return 'start-ai';
+      if (ui.start && inRect(ui.start, x, y)) return 'start-ai';
+      return 'start-ai';
     }
     if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (inRect(ui.mode, x, y)) return 'aim3d';
-    if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
+    if (ui.ai && (!session || (!session.versus && session.mode !== 'ai')) && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && inRect(ui.room, x, y)) return 'room';
     if (ui.rerack && inRect(ui.rerack, x, y)) return 'rerack';
     return null;
@@ -136,9 +141,18 @@
     return s.slice(0, cap) + '…';
   }
 
+  function isAiMode(session) {
+    return !!(session && (session.localAi || session.mode === 'ai'));
+  }
+
+  function isPractice(session) {
+    return !!(session && session.mode === 'practice' && !session.versus);
+  }
+
   function turnLabel(session) {
     if (!session.versus) return '';
     var mine = ownTurn(session);
+    if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
     var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
     if (rem) return '对方瞄准中';
     if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
@@ -147,8 +161,8 @@
 
   function settleOutcome(session, s) {
     s = s || session.settle || {};
-    if (!session.versus && !s.versus) {
-      return (s.win || s.reason === 'nine') ? '你赢了' : '本杆星币';
+    if (isPractice(session) || (!session.versus && !s.versus)) {
+      return '本局星币';
     }
     if (s.outcome === 'win') return '你赢了';
     if (s.outcome === 'lose') return '你输了';
@@ -164,9 +178,14 @@
   }
 
   function nameOf(session, seat) {
+    if (isAiMode(session) && seat === 1) return '简单AI';
     var names = session && session.names;
-    var raw = names && names[seat] ? names[seat] : seatFallback(seat);
-    return truncateName(raw) || seatFallback(seat);
+    var raw = names && names[seat] ? names[seat] : '';
+    if (!raw && isAiMode(session) && seat === 0) {
+      raw = session.displayName || '玩家';
+    }
+    if (!raw) raw = seatFallback(seat);
+    return truncateName(raw) || (isAiMode(session) && seat === 0 ? '玩家' : seatFallback(seat));
   }
 
   function ownTurn(session) {
@@ -220,7 +239,9 @@
     var bestText = session.versus
       ? (nameOf(session, 0) + ' ' + ((session.scores && session.scores[0]) || 0) +
         ' · ' + nameOf(session, 1) + ' ' + ((session.scores && session.scores[1]) || 0))
-      : ('最佳 ' + (session.best || 0) + ' 星币');
+      : (isPractice(session)
+        ? ('本局 ' + ((session.scores && session.scores[0]) || 0) + ' 星币')
+        : ('最佳 ' + (session.best || 0) + ' 星币'));
     ctx.fillText(bestText, ui.best.x, ui.best.y);
 
     if (session.versus && session.phase !== 'Splash' && session.phase !== 'Settle') {
@@ -240,7 +261,7 @@
       h: ui.mode.h,
       label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
     }, colors, session.pressed === 'aim3d' || session.aim3d);
-    if (ui.ai) {
+    if (ui.ai && !session.versus && session.mode !== 'ai') {
       drawButton(ctx, {
         x: ui.ai.x,
         y: ui.ai.y,
@@ -354,7 +375,9 @@
     ctx.font = '13px ' + FONT;
     ctx.textAlign = 'center';
     var title = '本杆星币';
-    if (s.win || s.reason === 'nine') {
+    if (isPractice(session) || (!session.versus && !s.versus)) {
+      title = '本局星币';
+    } else if (s.win || s.reason === 'nine') {
       title = settleOutcome(session, s);
     } else if (!s.legal) {
       if (s.reason === 'scratch') title = '犯规 · 白球入袋';
@@ -379,7 +402,10 @@
       ctx.fillStyle = colors.hud;
       ctx.fillText('本杆 ' + String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 32);
     } else {
-      ctx.fillText(String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
+      var shown = (isPractice(session) && session.scores)
+        ? (session.scores[0] || 0)
+        : (s.coins != null ? s.coins : s.points);
+      ctx.fillText(String(shown) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
     }
 
     ctx.font = '13px ' + FONT;
@@ -425,11 +451,18 @@
     ctx.fillText(session.config.title || '星券台球', ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 48);
     ctx.font = '13px ' + FONT;
     ctx.fillStyle = colors.hudDim;
-    ctx.fillText('俯视九球练习 · 落点加成', ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 78);
+    ctx.fillText('俯视九球 · 落点加成', ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 78);
     ctx.font = '10px ' + FONT;
     ctx.fillStyle = colors.disclaimer;
     wrapText(ctx, session.config.disclaimer, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 108, 220);
-    drawButton(ctx, ui.start, colors, session.pressed === 'start');
+    if (ui.aiSplash) {
+      drawButton(ctx, ui.aiSplash, colors, true);
+    } else {
+      drawButton(ctx, ui.start, colors, session.pressed === 'start' || session.pressed === 'start-ai');
+    }
+    if (ui.practice) {
+      drawButton(ctx, ui.practice, colors, session.pressed === 'practice');
+    }
     if (ui.roomSplash) {
       drawButton(ctx, ui.roomSplash, colors, session.pressed === 'room');
     }
@@ -502,6 +535,8 @@
     nameOf: nameOf,
     seatFallback: seatFallback,
     ownTurn: ownTurn,
-    remainSec: remainSec
+    remainSec: remainSec,
+    isAiMode: isAiMode,
+    isPractice: isPractice
   };
 });

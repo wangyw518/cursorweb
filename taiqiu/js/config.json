@@ -35,6 +35,13 @@
   "shotClockSec": 20,
   "aimTimeoutSec": 20,
   "bgm": true,
+  "ai": {
+    "label": "简单AI",
+    "foulRate": 0.08,
+    "thinkMin": 0.6,
+    "thinkMax": 1.2,
+    "aimJitter": 0.055
+  },
   "room": {
     "pollMs": 450,
     "aimPollMs": 140,
