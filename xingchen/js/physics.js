@@ -132,6 +132,7 @@
 
   function collideWorld(body, walls, obstacles, restitution) {
     var hit = false;
+    var hitObstacles = [];
     var i;
     for (i = 0; i < walls.length; i++) {
       var w = walls[i];
@@ -139,22 +140,26 @@
     }
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
-      if (resolveCircleCircle(body, o.x, o.y, o.r, restitution)) hit = true;
+      if (o.broken) continue;
+      if (resolveCircleCircle(body, o.x, o.y, o.r, restitution)) {
+        hit = true;
+        hitObstacles.push(o);
+      }
     }
-    return hit;
+    return { hit: hit, hitObstacles: hitObstacles };
   }
 
   function stepOnce(body, walls, obstacles, dt, config) {
     clampSpeed(body, config.maxSpeed || 980);
     body.x += body.vx * dt;
     body.y += body.vy * dt;
-    var hit = collideWorld(body, walls, obstacles, config.restitution == null ? 0.74 : config.restitution);
+    var col = collideWorld(body, walls, obstacles, config.restitution == null ? 0.74 : config.restitution);
     clampSpeed(body, config.maxSpeed || 980);
     var friction = config.friction == null ? 2.05 : config.friction;
     var damp = Math.exp(-friction * dt);
     body.vx *= damp;
     body.vy *= damp;
-    return hit;
+    return col;
   }
 
   function step(world, dt, config) {
@@ -163,11 +168,16 @@
     var sub = Math.max(1, Math.min(6, Math.ceil((speed * dt) / Math.max(2, body.r * 0.55))));
     var slice = dt / sub;
     var hit = false;
+    var hitObstacles = [];
     var i;
     for (i = 0; i < sub; i++) {
-      if (stepOnce(body, world.walls, world.obstacles, slice, config)) hit = true;
+      var col = stepOnce(body, world.walls, world.obstacles, slice, config);
+      if (col.hit) hit = true;
+      if (col.hitObstacles && col.hitObstacles.length) {
+        hitObstacles = hitObstacles.concat(col.hitObstacles);
+      }
     }
-    return { hit: hit, substeps: sub };
+    return { hit: hit, substeps: sub, hitObstacles: hitObstacles };
   }
 
   function raycastWorld(ox, oy, dx, dy, walls, obstacles, ballR, maxDist) {
@@ -182,6 +192,7 @@
     }
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
+      if (o.broken) continue;
       var t = raycastCircle(ox, oy, dx, dy, o.x, o.y, o.r + ballR);
       if (t != null && t <= maxDist && (!best || t < best.t)) {
         var hx = ox + dx * t - o.x;

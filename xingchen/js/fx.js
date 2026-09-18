@@ -96,6 +96,19 @@
     rg.addColorStop(1, rgba(colors.tableOuter || '#070B18', 0));
     ctx.fillStyle = rg;
     ctx.fill();
+    var aurora = ctx.createRadialGradient(
+      b.x + b.w * 0.28,
+      b.y + b.h * 0.22,
+      8,
+      b.x + b.w * 0.32,
+      b.y + b.h * 0.28,
+      b.w * 0.7
+    );
+    aurora.addColorStop(0, rgba(colors.epic || '#C084FC', 0.10));
+    aurora.addColorStop(0.55, rgba(colors.ice || '#67E8F9', 0.05));
+    aurora.addColorStop(1, rgba('#070B18', 0));
+    ctx.fillStyle = aurora;
+    ctx.fill();
     ctx.restore();
   }
 
@@ -143,11 +156,128 @@
     ctx.restore();
   }
 
+  function drawSigil(ctx, cell, hex) {
+    var cx = cell.x + cell.w * 0.5;
+    var cy = cell.y + cell.h * 0.42;
+    var s = Math.min(cell.w, cell.h) * 0.22;
+    ctx.save();
+    ctx.strokeStyle = hex;
+    ctx.fillStyle = hex;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (cell.tier === 0) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s * 0.7, cy + s * 0.55);
+      ctx.lineTo(cx - s * 0.7, cy + s * 0.55);
+      ctx.closePath();
+      ctx.stroke();
+    } else if (cell.tier === 1) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx + s, cy);
+      ctx.lineTo(cx, cy + s);
+      ctx.lineTo(cx - s, cy);
+      ctx.closePath();
+      ctx.stroke();
+    } else if (cell.tier === 2) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s);
+      ctx.lineTo(cx, cy + s);
+      ctx.moveTo(cx - s, cy);
+      ctx.lineTo(cx + s, cy);
+      ctx.stroke();
+    } else {
+      var k;
+      ctx.beginPath();
+      for (k = 0; k < 5; k++) {
+        var a = -Math.PI / 2 + k * Math.PI * 0.4 * 2;
+        var px = cx + Math.cos(a) * s;
+        var py = cy + Math.sin(a) * s;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawCells(ctx, cells, colors, flashCell) {
+    if (!cells) return;
+    ctx.save();
+    var i;
+    for (i = 0; i < cells.length; i++) {
+      var c = cells[i];
+      var hex = colors[c.key] || colors.bronze || '#D4A574';
+      var flashing = flashCell && (flashCell === c || flashCell.id === c.id);
+      roundRect(ctx, c.x, c.y, c.w, c.h, 7);
+      var g = ctx.createLinearGradient(c.x, c.y, c.x, c.y + c.h);
+      g.addColorStop(0, rgba(hex, flashing ? 0.42 : 0.18));
+      g.addColorStop(1, rgba('#070B18', flashing ? 0.35 : 0.55));
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.shadowColor = flashing ? '#FFFFFF' : hex;
+      ctx.shadowBlur = flashing ? 16 : 8;
+      ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
+      ctx.globalAlpha = flashing ? 1 : 0.88;
+      ctx.lineWidth = flashing ? 2.4 : 1.15;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = flashing ? 1 : 0.92;
+      drawSigil(ctx, c, flashing ? '#FFFFFF' : hex);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = flashing ? '#FFFFFF' : hex;
+      ctx.font = '10px "WenQuanYi Micro Hei", "Droid Sans Fallback", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(c.points), c.x + c.w * 0.5, c.y + c.h * 0.78);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function drawTargets(ctx, targets, colors, now) {
+    if (!targets) return;
+    ctx.save();
+    var i;
+    for (i = 0; i < targets.length; i++) {
+      var t = targets[i];
+      if (t.collected) continue;
+      var hex = colors[t.colorKey] || colors.targetCyan || '#22D3EE';
+      var pulse = 1 + Math.sin((now || 0) * 4 + i) * 0.08;
+      var glow = ctx.createRadialGradient(t.x, t.y, 1, t.x, t.y, t.r * 3.2 * pulse);
+      glow.addColorStop(0, rgba(hex, 0.7));
+      glow.addColorStop(1, rgba(hex, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * 2.8 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      var core = ctx.createRadialGradient(t.x - 2, t.y - 2, 1, t.x, t.y, t.r);
+      core.addColorStop(0, '#FFFFFF');
+      core.addColorStop(0.45, hex);
+      core.addColorStop(1, '#1A1030');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = hex;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawObstacles(ctx, obstacles, colors) {
     ctx.save();
     var i;
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
+      if (o.broken) continue;
       ctx.shadowColor = rgba(colors.obstacleRim || '#7DD3FC', 0.55);
       ctx.shadowBlur = 14;
       var g = ctx.createRadialGradient(o.x - o.r * 0.28, o.y - o.r * 0.32, 1, o.x, o.y, o.r);
@@ -248,13 +378,17 @@
     ctx.restore();
   }
 
-  function drawBall(ctx, ball, colors, pulse) {
+  function drawBall(ctx, ball, colors, pulse, skillId) {
     var p = pulse == null ? 1 : pulse;
+    var glowHex = colors.ballGlow || '#7DD3FC';
+    if (skillId === 'fire') glowHex = colors.fire || '#FB923C';
+    else if (skillId === 'ice') glowHex = colors.ice || '#67E8F9';
+    else if (skillId === 'split') glowHex = colors.split || '#F0ABFC';
     ctx.save();
     var glow = ctx.createRadialGradient(ball.x, ball.y, 1, ball.x, ball.y, ball.r * 3.6 * p);
-    glow.addColorStop(0, rgba(colors.ballGlow || '#7DD3FC', 0.7));
-    glow.addColorStop(0.4, rgba(colors.ballGlow || '#7DD3FC', 0.22));
-    glow.addColorStop(1, rgba(colors.ballGlow || '#7DD3FC', 0));
+    glow.addColorStop(0, rgba(glowHex, 0.7));
+    glow.addColorStop(0.4, rgba(glowHex, 0.22));
+    glow.addColorStop(1, rgba(glowHex, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.r * 3.1 * p, 0, Math.PI * 2);
@@ -400,6 +534,8 @@
     drawWalls: drawWalls,
     drawObstacles: drawObstacles,
     drawRings: drawRings,
+    drawCells: drawCells,
+    drawTargets: drawTargets,
     drawLauncher: drawLauncher,
     drawBall: drawBall,
     drawAim: drawAim,

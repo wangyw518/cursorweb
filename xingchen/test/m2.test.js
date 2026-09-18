@@ -39,12 +39,11 @@ check('spawnBurst returns a capped particle list', function () {
   assert.ok(burst[0].hex);
 });
 
-check('score event flashes the ring white for 1 frame then bursts', function () {
+check('score event flashes the sigil white for 1 frame then bursts', function () {
   storage.resetMemory();
   var session = sessionMod.create(viewport(), config);
-  var gold = session.rings.filter(function (r) { return r.tier === 3; })[0];
-  var x = gold.x + (gold.innerR + gold.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, gold.y, 0, 0);
+  var epic = session.cells.filter(function (c) { return c.tier === 3; })[0];
+  sessionMod.debugPlace(session, epic.x + epic.w * 0.5, epic.y + epic.h * 0.5, 0, 0);
   var i;
   for (i = 0; i < 20; i++) {
     sessionMod.update(session, config.fixedDt);
@@ -52,13 +51,13 @@ check('score event flashes the ring white for 1 frame then bursts', function () 
   }
   assert.ok(session.award);
   assert.strictEqual(session.flashFrames, 1);
-  assert.ok(session.flashRing, 'flash targets the scored ring');
+  assert.ok(session.flashCell, 'flash targets the scored cell');
   assert.ok(session.pendingBurst, 'burst is queued behind the flash frame');
   assert.strictEqual(session.particles.length, 0);
 
   sessionMod.update(session, config.fixedDt);
   assert.strictEqual(session.flashFrames, 0);
-  assert.strictEqual(session.flashRing, null);
+  assert.strictEqual(session.flashCell, null);
   assert.ok(session.particles.length > 0, 'burst emits after the white frame');
 });
 

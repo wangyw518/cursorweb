@@ -4,6 +4,11 @@
     typeof require === 'function' ? require('./table') : root.XingchenTable,
     typeof require === 'function' ? require('./obstacles') : root.XingchenObstacles,
     typeof require === 'function' ? require('./scoreRings') : root.XingchenScoreRings,
+    typeof require === 'function' ? require('./cells') : root.XingchenCells,
+    typeof require === 'function' ? require('./targets') : root.XingchenTargets,
+    typeof require === 'function' ? require('./skills') : root.XingchenSkills,
+    typeof require === 'function' ? require('./stamina') : root.XingchenStamina,
+    typeof require === 'function' ? require('./level') : root.XingchenLevel,
     typeof require === 'function' ? require('./launcher') : root.XingchenLauncher,
     typeof require === 'function' ? require('./stopDetect') : root.XingchenStopDetect,
     typeof require === 'function' ? require('./score') : root.XingchenScore,
@@ -18,6 +23,11 @@
   table,
   obstacles,
   scoreRings,
+  cells,
+  targets,
+  skills,
+  stamina,
+  level,
   launcher,
   stopDetect,
   score,
@@ -32,6 +42,8 @@
     var board = table.layout(viewport, config, ui.playRect);
     var rocks = obstacles.create(board, config);
     var rings = scoreRings.create(board, config);
+    var grid = cells.create(board, config);
+    var orbs = targets.create(board, config, rocks);
     var gun = launcher.create(board.dock, config);
     var ball = launcher.restBall(gun, config.ballRadius || 9);
     return {
@@ -39,10 +51,16 @@
       table: board,
       obstacles: rocks,
       rings: rings,
+      cells: grid,
+      targets: orbs,
       launcher: gun,
       ball: ball,
       dust: fx.makeDust(board.bounds, 52)
     };
+  }
+
+  function persistMeta(session) {
+    storage.save({ best: session.best, stamina: session.stamina });
   }
 
   function create(viewport, config) {
@@ -55,13 +73,27 @@
       table: world.table,
       obstacles: world.obstacles,
       rings: world.rings,
+      cells: world.cells,
+      targets: world.targets,
       launcher: world.launcher,
       ball: world.ball,
+      balls: [world.ball],
       dust: world.dust,
       stop: stopDetect.create(),
+      stops: [stopDetect.create()],
       phase: 'aim',
       now: 0,
       best: saved && saved.best ? saved.best : 0,
+      stamina: saved && saved.stamina != null ? saved.stamina : stamina.maxOf(config),
+      level: level.create(config),
+      skill: null,
+      activeSkill: null,
+      shotPlan: null,
+      shotConfig: config,
+      shotBonus: 0,
+      shotCommitted: false,
+      fireArmed: false,
+      modal: null,
       award: null,
       settle: null,
       settleIn: 0,
@@ -70,6 +102,7 @@
       toast: null,
       flash: 0,
       flashRing: null,
+      flashCell: null,
       flashFrames: 0,
       pendingBurst: null,
       preview: { points: [], bounces: 0 },
@@ -87,12 +120,29 @@
     return session;
   }
 
-  function worldOf(session) {
+  function aliveObstacles(session) {
+    return obstacles.alive(session.obstacles);
+  }
+
+  function worldOf(session, ball) {
     return {
-      ball: session.ball,
+      ball: ball || session.ball,
       walls: session.table.walls,
-      obstacles: session.obstacles
+      obstacles: aliveObstacles(session)
     };
+  }
+
+  function resetCue(session) {
+    session.ball = launcher.restBall(session.launcher, session.config.ballRadius || 9);
+    session.balls = [session.ball];
+    session.stop = stopDetect.create();
+    session.stops = [session.stop];
+    session.shotPlan = null;
+    session.shotConfig = session.config;
+    session.shotBonus = 0;
+    session.activeSkill = null;
+    session.fireArmed = false;
+    session.shotCommitted = false;
   }
 
   function refreshPreview(session) {
@@ -110,39 +160,42 @@
     return session.preview;
   }
 
-  function resize(session, viewport) {
-    session.viewport = viewport;
-    if (session.phase === 'settle') {
-      session.ui = hud.layout(viewport);
-      return;
-    }
-    var world = buildWorld(viewport, session.config);
-    session.ui = world.ui;
-    session.table = world.table;
-    session.obstacles = world.obstacles;
-    session.rings = world.rings;
-    session.launcher = world.launcher;
-    session.ball = world.ball;
-    session.dust = world.dust;
-    session.phase = 'aim';
-    stopDetect.reset(session.stop);
-    session.preview = { points: [], bounces: 0 };
-  }
-
-  function restart(session) {
-    var saved = storage.load();
+  function restoreBoard(session, keepProgress) {
     var world = buildWorld(session.viewport, session.config);
     session.ui = world.ui;
     session.table = world.table;
     session.obstacles = world.obstacles;
     session.rings = world.rings;
+    session.cells = world.cells;
+    session.targets = world.targets;
     session.launcher = world.launcher;
-    session.ball = world.ball;
     session.dust = world.dust;
-    stopDetect.reset(session.stop);
+    resetCue(session);
+    if (!keepProgress) {
+      session.level = level.create(session.config);
+    }
+    session.preview = { points: [], bounces: 0 };
+  }
+
+  function resize(session, viewport) {
+    session.viewport = viewport;
+    if (session.phase === 'settle' || session.modal === 'empty') {
+      session.ui = hud.layout(viewport);
+      return;
+    }
+    restoreBoard(session, true);
     session.phase = 'aim';
-    session.now = 0;
+  }
+
+  function restart(session) {
+    var saved = storage.load();
     session.best = saved && saved.best ? saved.best : 0;
+    session.stamina = saved && saved.stamina != null ? saved.stamina : stamina.maxOf(session.config);
+    restoreBoard(session, false);
+    session.phase = session.stamina > 0 ? 'aim' : 'aim';
+    session.modal = session.stamina > 0 ? null : 'empty';
+    session.now = 0;
+    session.skill = null;
     session.award = null;
     session.settle = null;
     session.settleIn = 0;
@@ -151,9 +204,9 @@
     session.toast = null;
     session.flash = 0;
     session.flashRing = null;
+    session.flashCell = null;
     session.flashFrames = 0;
     session.pendingBurst = null;
-    session.preview = { points: [], bounces: 0 };
     session.pressed = null;
     return { kind: 'restart' };
   }
@@ -163,29 +216,31 @@
     var y = session.ball.y;
     var hex = award.oob
       ? (session.config.colors.ringPurple || '#C084FC')
-      : (award.ring ? fx.ringHex(award.ring, session.config.colors) : session.config.colors.scorePop);
-    session.flashRing = award.ring || null;
+      : (award.cell
+        ? (session.config.colors[award.cell.key] || session.config.colors.scorePop)
+        : session.config.colors.scorePop);
+    session.flashCell = award.cell || null;
+    session.flashRing = award.cell || award.ring || null;
     session.flashFrames = 1;
     session.flash = award.oob ? 0.18 : 0.28;
     session.pendingBurst = { x: x, y: y, hex: hex };
     session.popups = [{
       x: x,
       y: y - 16,
-      text: award.oob ? '0' : (award.edge ? '+' + award.score + ' 擦边' : '+' + award.score),
+      text: award.oob && award.score === 0 ? '0' : '+' + award.score,
       life: 1,
       hex: hex
     }];
-    if (award.oob) {
-      session.toast = { text: '偏离星表', ttl: 1.1, hex: session.config.colors.ringPurple };
-    } else if (award.edge) {
-      session.toast = { text: '擦边 ×1.2', ttl: 0.9, hex: session.config.colors.aim };
-    } else if (!award.miss && award.score > 0) {
-      var names = session.config.tierNames || [];
+    if (award.oob && award.score === 0) {
+      session.toast = { text: '偏离奇境', ttl: 1.1, hex: session.config.colors.ringPurple };
+    } else if (award.cell) {
       session.toast = {
-        text: (names[award.tier] || '') + '  +' + award.score,
-        ttl: 0.9,
+        text: award.cell.name + '  +' + award.cellScore + (award.bonus ? '  辉+' + award.bonus : ''),
+        ttl: 0.95,
         hex: hex
       };
+    } else if (award.bonus) {
+      session.toast = { text: '辉球  +' + award.bonus, ttl: 0.9, hex: hex };
     }
   }
 
@@ -202,47 +257,119 @@
     }
   }
 
-  function finishFlight(session, award) {
-    session.award = award;
-    session.ball.vx = 0;
-    session.ball.vy = 0;
-    emitScoreFx(session, award);
+  function openSettle(session) {
     var prevBest = storage.load().best || 0;
-    var isNew = award.score > prevBest;
-    var best = isNew ? award.score : prevBest;
-    if (isNew) storage.save({ best: award.score });
+    var isNew = session.level.score > prevBest;
+    var best = isNew ? session.level.score : prevBest;
+    if (isNew) {
+      session.best = best;
+      persistMeta(session);
+    }
     session.best = best;
     session.settle = {
-      score: award.score,
+      score: session.level.score,
       best: best,
-      gap: isNew ? 0 : prevBest - award.score,
+      gap: isNew ? 0 : Math.max(0, prevBest - session.level.score),
       isNew: isNew,
-      oob: !!award.oob,
-      edge: !!award.edge,
-      tier: award.tier,
-      miss: !!award.miss
+      oob: !!(session.award && session.award.oob),
+      edge: false,
+      tier: session.award ? session.award.tier : -1,
+      miss: !!(session.award && session.award.miss),
+      won: !!session.level.won,
+      target: session.level.target
     };
     session.settleIn = (session.config.settleDelayMs || 280) / 1000;
     session.phase = 'scored';
     return session.settle;
   }
 
+  function finishShot(session, award) {
+    session.award = award;
+    if (!session.shotCommitted) {
+      level.consumeShot(session.level);
+    }
+    session.shotCommitted = false;
+    level.applyScore(session.level, award.score);
+    emitScoreFx(session, award);
+    if (session.level.over) {
+      return openSettle(session);
+    }
+    session.settle = null;
+    session.settleIn = (session.config.settleDelayMs || 280) / 1000;
+    session.phase = 'scored';
+    return session.award;
+  }
+
   function settleNow(session, award) {
     if (session.phase === 'settle' || session.phase === 'scored') return session.settle;
-    return finishFlight(session, award || score.outOfBounds());
+    var extra = session.shotBonus || 0;
+    return finishShot(session, award || score.outOfBounds(extra));
+  }
+
+  function applyRestore(session, result) {
+    session.stamina = result.stamina;
+    persistMeta(session);
+    session.pressed = result.kind;
+    session.pressedLeft = 0.16;
+    session.toast = {
+      text: result.kind === 'share' ? '分享助力 +' + result.gained + ' 星力' : '星辉注入 +' + result.gained,
+      ttl: 1.1,
+      hex: session.config.colors.stamina
+    };
+    if (session.stamina > 0 && session.modal === 'empty') {
+      session.modal = null;
+    }
+    return result;
+  }
+
+  function handleShare(session) {
+    stamina.tryPlatformShare();
+    return applyRestore(session, stamina.shareAssist(session.stamina, session.config));
+  }
+
+  function handleAd(session) {
+    stamina.tryPlatformAd();
+    return applyRestore(session, stamina.watchAd(session.stamina, session.config));
   }
 
   function handlePointerDown(session, x, y) {
-    var action = hud.hitTest(session.ui, x, y, session.phase === 'scored' ? 'settle' : session.phase);
+    var phaseForHit = session.phase === 'scored' ? 'settle' : session.phase;
+    var action = hud.hitTest(session.ui, x, y, phaseForHit, session.modal, session.stamina);
+
+    if ((action === 'share' || action === 'ad') && (session.modal === 'empty' || session.stamina <= 0)) {
+      return action === 'share' ? handleShare(session) : handleAd(session);
+    }
+
+    if (session.modal === 'empty') return { kind: 'empty-block' };
+
     if (session.phase === 'settle' || session.phase === 'scored') {
       if (action === 'replay' && session.phase === 'settle') {
+        if (session.stamina <= 0) {
+          session.modal = 'empty';
+          return { kind: 'empty' };
+        }
         session.pressed = 'replay';
         session.pressedLeft = 0.12;
         return restart(session);
       }
       return { kind: 'settle-block' };
     }
+
+    if (session.phase === 'aim' && action && action.indexOf('skill:') === 0) {
+      session.skill = skills.toggle(session.skill, action.slice(6));
+      return { kind: 'skill', skill: session.skill };
+    }
+
     if (session.phase !== 'aim') return { kind: 'busy' };
+
+    if (!stamina.canShoot(session.stamina)) {
+      session.modal = 'empty';
+      return { kind: 'empty' };
+    }
+    if (session.level.shotsLeft <= 0) {
+      return { kind: 'busy' };
+    }
+
     var onTable = table.contains(session.table.bounds, x, y);
     var grabbed = launcher.inGrab(
       session.launcher,
@@ -267,6 +394,30 @@
     return { kind: 'aim', power: session.launcher.power, angle: session.launcher.angle };
   }
 
+  function spawnFlightBalls(session, plan, origin) {
+    var list = [];
+    var stops = [];
+    var i;
+    for (i = 0; i < plan.balls.length; i++) {
+      var spec = plan.balls[i];
+      list.push({
+        x: origin.x,
+        y: origin.y,
+        vx: spec.vx,
+        vy: spec.vy,
+        r: origin.r,
+        done: false,
+        award: null,
+        kind: spec.kind
+      });
+      stops.push(stopDetect.create());
+    }
+    session.balls = list;
+    session.ball = list[0];
+    session.stops = stops;
+    session.stop = stops[0];
+  }
+
   function handlePointerUp(session, x, y) {
     if (session.phase !== 'charging') return { kind: 'idle' };
     if (x != null && y != null) launcher.moveDrag(session.launcher, x, y, session.ball);
@@ -276,11 +427,25 @@
       session.phase = 'aim';
       return { kind: 'cancel', power: shot.power };
     }
-    session.ball.vx = shot.vx;
-    session.ball.vy = shot.vy;
-    stopDetect.reset(session.stop);
+    if (!stamina.canShoot(session.stamina)) {
+      session.phase = 'aim';
+      session.modal = 'empty';
+      return { kind: 'empty' };
+    }
+    var spent = stamina.spend(session.stamina, session.config);
+    session.stamina = spent.stamina;
+    persistMeta(session);
+    var plan = skills.plan(session.skill, shot, session.config);
+    session.shotPlan = plan;
+    session.activeSkill = plan.skill;
+    session.fireArmed = !!plan.breakOnHit;
+    session.shotConfig = skills.shotConfig(session.config, plan.frictionMul);
+    session.shotBonus = 0;
+    session.shotCommitted = true;
+    level.consumeShot(session.level);
+    spawnFlightBalls(session, plan, session.ball);
     session.phase = 'flight';
-    return { kind: 'fire', power: shot.power, angle: shot.angle, vx: shot.vx, vy: shot.vy };
+    return { kind: 'fire', power: shot.power, angle: shot.angle, vx: shot.vx, vy: shot.vy, skill: plan.skill };
   }
 
   function updateParticles(session, dt) {
@@ -308,6 +473,87 @@
     session.popups = next;
   }
 
+  function collectHits(session, ball) {
+    var hits = targets.collect(session.targets, ball);
+    var i;
+    for (i = 0; i < hits.length; i++) {
+      session.shotBonus += hits[i].bonus;
+      session.popups.push({
+        x: hits[i].x,
+        y: hits[i].y - 10,
+        text: '+' + hits[i].bonus,
+        life: 0.9,
+        hex: session.config.colors[hits[i].colorKey] || session.config.colors.scorePop
+      });
+      var burst = fx.spawnBurst(hits[i].x, hits[i].y, session.config, session.config.colors[hits[i].colorKey], { count: 14 });
+      var j;
+      for (j = 0; j < burst.length; j++) {
+        if (session.particles.length >= (session.config.burstParticleCap || 64)) session.particles.shift();
+        session.particles.push(burst[j]);
+      }
+    }
+  }
+
+  function awardForBall(session, ball) {
+    if (table.isOutOfBounds(session.table.bounds, ball.x, ball.y)) {
+      return score.outOfBounds(0);
+    }
+    return score.fromCell(cells.pick(session.cells, ball.x, ball.y), session.config, 0);
+  }
+
+  function maybeBreak(session, hitObstacles) {
+    if (!session.fireArmed || !hitObstacles || !hitObstacles.length) return;
+    var broken = obstacles.breakFirst(session.obstacles, hitObstacles);
+    if (!broken) return;
+    session.fireArmed = false;
+    var hex = session.config.colors.fire || '#FB923C';
+    var burst = fx.spawnBurst(broken.x, broken.y, session.config, hex, { count: 22 });
+    var i;
+    for (i = 0; i < burst.length; i++) {
+      if (session.particles.length >= (session.config.burstParticleCap || 64)) session.particles.shift();
+      session.particles.push(burst[i]);
+    }
+    session.toast = { text: '炎破', ttl: 0.7, hex: hex };
+  }
+
+  function updateFlight(session, dt) {
+    var live = 0;
+    var i;
+    session.lastHit = false;
+    for (i = 0; i < session.balls.length; i++) {
+      var ball = session.balls[i];
+      if (ball.done) continue;
+      var result = physics.step(worldOf(session, ball), dt, session.shotConfig || session.config);
+      if (result.hit) session.lastHit = true;
+      maybeBreak(session, result.hitObstacles);
+      collectHits(session, ball);
+      if (table.isOutOfBounds(session.table.bounds, ball.x, ball.y)) {
+        ball.done = true;
+        ball.award = score.outOfBounds(0);
+        continue;
+      }
+      var spd = stopDetect.speedOf(ball);
+      stopDetect.tick(session.stops[i], spd, dt, session.config.stopSpeed, session.config.stopHoldMs);
+      if (stopDetect.isStopped(session.stops[i])) {
+        ball.done = true;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.award = awardForBall(session, ball);
+      } else {
+        live += 1;
+      }
+    }
+    session.ball = session.balls[0];
+    session.stop = session.stops[0];
+    if (live > 0) return;
+
+    var awards = [];
+    for (i = 0; i < session.balls.length; i++) {
+      awards.push(session.balls[i].award || score.fromCell({ cell: null }, session.config, 0));
+    }
+    finishShot(session, score.mergeBallAwards(awards, session.shotBonus));
+  }
+
   function update(session, dt) {
     session.now += dt;
     if (session.flashFrames > 0) {
@@ -315,6 +561,7 @@
       if (session.flashFrames <= 0) {
         pushBurst(session);
         session.flashRing = null;
+        session.flashCell = null;
       }
     }
     if (session.flash > 0 && session.flashFrames <= 0) {
@@ -333,31 +580,20 @@
 
     if (session.phase === 'scored') {
       session.settleIn -= dt;
-      if (session.settleIn <= 0) session.phase = 'settle';
+      if (session.settleIn <= 0) {
+        if (session.level.over) {
+          session.phase = 'settle';
+          if (session.stamina <= 0) session.modal = 'empty';
+        } else {
+          resetCue(session);
+          session.phase = 'aim';
+        }
+      }
       return;
     }
 
     if (session.phase !== 'flight') return;
-
-    var result = physics.step(worldOf(session), dt, session.config);
-    session.lastHit = !!result.hit;
-
-    if (table.isOutOfBounds(session.table.bounds, session.ball.x, session.ball.y)) {
-      finishFlight(session, score.outOfBounds());
-      return;
-    }
-
-    var spd = stopDetect.speedOf(session.ball);
-    stopDetect.tick(session.stop, spd, dt, session.config.stopSpeed, session.config.stopHoldMs);
-    if (stopDetect.isStopped(session.stop)) {
-      var pick = scoreRings.pick(
-        session.rings,
-        session.ball.x,
-        session.ball.y,
-        session.config.edgePx
-      );
-      finishFlight(session, score.fromPick(pick, session.config));
-    }
+    updateFlight(session, dt);
   }
 
   function render(session, ctx) {
@@ -366,35 +602,53 @@
     fx.fillDeepSpace(ctx, vp.width, vp.height, colors);
     fx.drawTable(ctx, session.table, colors);
     fx.drawDust(ctx, session.dust);
+    fx.drawCells(ctx, session.cells, colors, session.flashCell);
     fx.drawVoids(ctx, session.table, colors);
     fx.drawWalls(ctx, session.table.walls, colors);
-    fx.drawRings(ctx, session.rings, colors, session.flashRing);
     fx.drawObstacles(ctx, session.obstacles, colors);
+    fx.drawTargets(ctx, session.targets, colors, session.now);
     fx.drawLauncher(ctx, session.launcher, colors);
     if (session.phase === 'charging') {
       fx.drawPreview(ctx, session.preview.points, colors);
       fx.drawAim(ctx, session.ball, session.launcher, colors);
     }
     var pulse = session.phase === 'aim' ? 1 + Math.sin(session.now * 3.2) * 0.04 : 1;
-    fx.drawBall(ctx, session.ball, colors, pulse);
-    fx.drawParticles(ctx, session.particles);
     var i;
+    if (session.phase === 'flight' || session.phase === 'scored') {
+      for (i = 0; i < session.balls.length; i++) {
+        if (session.balls[i] && (!session.balls[i].done || session.phase === 'scored')) {
+          fx.drawBall(ctx, session.balls[i], colors, pulse, session.activeSkill || session.skill);
+        }
+      }
+    } else {
+      fx.drawBall(ctx, session.ball, colors, pulse, session.skill);
+    }
+    fx.drawParticles(ctx, session.particles);
     for (i = 0; i < session.popups.length; i++) fx.drawPopup(ctx, session.popups[i]);
     if (session.flashFrames > 0) {
       fx.drawFlash(ctx, vp.width, vp.height, session.flash || 0.22, '#FFFFFF');
     }
+    var showPhase = session.phase === 'scored'
+      ? (session.level.over ? 'flight' : 'flight')
+      : session.phase;
     hud.draw(ctx, session.ui, {
-      phase: session.phase === 'scored' ? 'flight' : session.phase,
+      title: session.config.displayName || '奇境弹球',
+      phase: showPhase,
       best: session.best,
       charging: session.phase === 'charging',
       power: session.launcher.power,
       hint: hud.hintFor(
-        session.phase === 'scored' ? 'flight' : session.phase,
-        session.phase === 'charging'
+        showPhase,
+        session.phase === 'charging',
+        session.skill
       ),
       toast: session.toast,
       settle: session.settle,
-      pressed: session.pressed
+      pressed: session.pressed,
+      skill: session.skill,
+      stamina: session.stamina,
+      level: session.level,
+      modal: session.modal
     }, colors, vp);
   }
 
@@ -402,6 +656,7 @@
     return {
       phase: session.phase,
       ball: { x: session.ball.x, y: session.ball.y, vx: session.ball.vx, vy: session.ball.vy, r: session.ball.r },
+      balls: session.balls.length,
       power: session.launcher.power,
       angle: session.launcher.angle,
       dragging: session.launcher.dragging,
@@ -410,6 +665,10 @@
       award: session.award,
       settle: session.settle,
       best: session.best,
+      stamina: session.stamina,
+      skill: session.skill,
+      level: session.level,
+      modal: session.modal,
       flashFrames: session.flashFrames,
       particleCount: session.particles.length,
       stop: { holdMs: session.stop.holdMs, stopped: session.stop.stopped }
@@ -417,14 +676,30 @@
   }
 
   function debugPlace(session, x, y, vx, vy) {
-    session.ball.x = x;
-    session.ball.y = y;
-    session.ball.vx = vx || 0;
-    session.ball.vy = vy || 0;
+    session.ball = {
+      x: x,
+      y: y,
+      vx: vx || 0,
+      vy: vy || 0,
+      r: session.config.ballRadius || 9,
+      done: false,
+      award: null,
+      kind: 'main'
+    };
+    session.balls = [session.ball];
+    session.stop = stopDetect.create();
+    session.stops = [session.stop];
     session.phase = 'flight';
-    stopDetect.reset(session.stop);
     session.award = null;
     session.settle = null;
+    session.shotBonus = 0;
+    session.shotCommitted = false;
+    session.shotConfig = session.skill === 'ice'
+      ? skills.shotConfig(session.config, session.config.iceFrictionMul)
+      : session.config;
+    session.activeSkill = session.skill;
+    session.fireArmed = session.skill === 'fire';
+    session.modal = null;
     return session;
   }
 

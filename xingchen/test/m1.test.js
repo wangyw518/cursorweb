@@ -111,17 +111,17 @@ check('OOB (center past bounds) scores 0 immediately and beats stop detect', fun
   assert.strictEqual(session.stop.stopped, false);
 });
 
-check('stopped on a gold band awards 200 and writes local best', function () {
+check('stopped on an epic sigil awards 180 and writes local best', function () {
   var session = freshSession();
-  var gold = session.rings.filter(function (r) { return r.tier === 3; })[0];
-  var x = gold.x + (gold.innerR + gold.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, gold.y, 0, 0);
+  var epic = session.cells.filter(function (c) { return c.tier === 3; })[0];
+  sessionMod.debugPlace(session, epic.x + epic.w * 0.5, epic.y + epic.h * 0.5, 0, 0);
   var award = tickUntilSettled(session, 20);
   assert.ok(award);
   assert.strictEqual(award.tier, 3);
-  assert.strictEqual(award.score, 200);
+  assert.strictEqual(award.score, 180);
+  assert.ok(session.level.won);
   assert.strictEqual(session.settle.isNew, true);
-  assert.strictEqual(storage.load().best, 200);
+  assert.strictEqual(storage.load().best, 180);
 });
 
 check('settle shows gap to best when not a record; replay restores aim', function () {
@@ -129,13 +129,13 @@ check('settle shows gap to best when not a record; replay restores aim', functio
   storage.save({ best: 200 });
   var session = sessionMod.create(viewport(), config);
   assert.strictEqual(session.best, 200);
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
+  var bronze = session.cells.filter(function (c) { return c.tier === 0; })[0];
+  session.level.shotsLeft = 1;
+  sessionMod.debugPlace(session, bronze.x + bronze.w * 0.5, bronze.y + bronze.h * 0.5, 0, 0);
   tickUntilSettled(session, 20);
-  assert.strictEqual(session.settle.score, 10);
+  assert.strictEqual(session.settle.score, 20);
   assert.strictEqual(session.settle.isNew, false);
-  assert.strictEqual(session.settle.gap, 190);
+  assert.strictEqual(session.settle.gap, 180);
 
   var i;
   for (i = 0; i < 30; i++) sessionMod.update(session, config.fixedDt);
@@ -164,17 +164,19 @@ check('session has no timer field in the loop', function () {
   assert.strictEqual(session.remainingMs, undefined);
 });
 
-check('tiers are 10/30/80/200', function () {
+check('ring tiers stay 10/30/80/200; cell tiers are 20/50/100/180', function () {
   assert.deepStrictEqual(config.tiers, [10, 30, 80, 200]);
+  assert.deepStrictEqual(config.cellTiers, [20, 50, 100, 180]);
   assert.strictEqual(score.tierPoints(0, config), 10);
   assert.strictEqual(score.tierPoints(3, config), 200);
+  assert.strictEqual(score.cellPoints(0, config), 20);
+  assert.strictEqual(score.cellPoints(3, config), 180);
 });
 
 check('stop hold is 120ms before a table stop scores', function () {
   var session = freshSession();
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
+  var bronze = session.cells.filter(function (c) { return c.tier === 0; })[0];
+  sessionMod.debugPlace(session, bronze.x + bronze.w * 0.5, bronze.y + bronze.h * 0.5, 0, 0);
   sessionMod.update(session, 0.06);
   assert.strictEqual(session.phase, 'flight');
   assert.ok(session.stop.holdMs >= 60);

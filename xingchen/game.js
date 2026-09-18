@@ -1,6 +1,6 @@
 /**
- * 星尘弹射 Xingchen — M0/M1/M2 entry.
- * WeChat native Canvas 2D. Custom 2D physics only. No Matter.js.
+ * 奇境弹球 Xingchen — WeChat native Canvas 2D.
+ * Custom 2D physics only. No Matter.js. Virtual 星力, no cash / gambling.
  */
 (function () {
   'use strict';
