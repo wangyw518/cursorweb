@@ -162,7 +162,7 @@
   function turnLabel(session) {
     if (!session.versus) return '';
     var mine = ownTurn(session);
-    if (isAiMode(session)) return mine ? '轮到你' : 'AI出杆中';
+    if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
     var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
     if (rem) return '对方瞄准中';
     if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
