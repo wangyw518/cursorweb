@@ -1498,9 +1498,10 @@
     session.remoteAim = null;
     session.remoteBusy = null;
     fetchNick(session);
-    var me = session.displayName || (session.names && session.names[0]) || '玩家';
+    var me = session.displayName || '玩家';
     session.names = [me, aiLabel(session)];
-    applyLocalName(session, me);
+    if (session.displayName) applyLocalName(session, me);
+    session.names[0] = me;
     session.names[1] = aiLabel(session);
     rack(session);
     session.phase = fsm.PHASE.Aim;

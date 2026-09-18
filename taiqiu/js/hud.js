@@ -516,6 +516,12 @@
     wrapText(ctx, session.config.disclaimer, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 108, 220);
     if (ui.aiSplash) {
       drawButton(ctx, ui.aiSplash, colors, true);
+      ctx.save();
+      roundRect(ctx, ui.aiSplash.x - 2, ui.aiSplash.y - 2, ui.aiSplash.w + 4, ui.aiSplash.h + 4, 12);
+      ctx.strokeStyle = '#F5D76E';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
     } else {
       drawButton(ctx, ui.start, colors, session.pressed === 'start' || session.pressed === 'start-ai');
     }

@@ -819,7 +819,9 @@ check('local AI mode reuses 2P rules without opening a room', function () {
   assert.strictEqual(s.versus, true);
   assert.strictEqual(s.localAi, true);
   assert.strictEqual(s.room, null);
+  assert.strictEqual(s.names[0], '玩家');
   assert.strictEqual(s.names[1], '简单AI');
+  assert.strictEqual(hud.nameOf(s, 0), '玩家');
   assert.strictEqual(hud.nameOf(s, 1), '简单AI');
   assert.strictEqual(hud.turnLabel(s), '轮到你');
   assert.ok(s.aimDeadlineAt > Date.now() + 15000);
