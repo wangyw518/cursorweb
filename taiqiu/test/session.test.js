@@ -174,6 +174,59 @@ check('zone pick under cue center uses StarZone names', function () {
   assert.ok(['新星', '流星', '彗星', '恒星'].indexOf(picked.label) !== -1);
 });
 
+function mockCtx() {
+  var noop = function () {};
+  var grad = { addColorStop: noop };
+  return new Proxy({
+    createLinearGradient: function () { return grad; },
+    createRadialGradient: function () { return grad; },
+    measureText: function () { return { width: 10 }; }
+  }, {
+    get: function (target, key) {
+      if (key in target) return target[key];
+      return noop;
+    },
+    set: function () { return true; }
+  });
+}
+
+check('legal StarZone land flash is a 1-frame tile stroke, not particles only', function () {
+  var s = fresh();
+  var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
+  var settle = sessionMod.debugForceStop(s, {
+    pocketTarget: true,
+    firstContact: true,
+    x: zone.x,
+    y: zone.y
+  });
+  assert.strictEqual(settle.pocketBonus, config.pocketBonus);
+  assert.strictEqual(settle.landingBonus, 36);
+  assert.strictEqual(settle.coins, config.pocketBonus + 36);
+  assert.ok(s.landFlash);
+  assert.strictEqual(s.landFlash.tileId, zone.id);
+  assert.strictEqual(s.landFlash.frames, 1);
+  assert.ok(s.particles.length > 0);
+  sessionMod.render(s, mockCtx());
+  assert.strictEqual(s.landFlash, null);
+  sessionMod.render(s, mockCtx());
+  assert.strictEqual(s.landFlash, null);
+});
+
+check('foul skips land flash and zone bonus UI', function () {
+  var s = fresh();
+  var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
+  var foul = sessionMod.debugForceStop(s, {
+    pocketTarget: true,
+    firstContact: false,
+    x: zone.x,
+    y: zone.y
+  });
+  assert.strictEqual(foul.foul, true);
+  assert.strictEqual(foul.starApplied, false);
+  assert.strictEqual(foul.landingBonus, 0);
+  assert.strictEqual(s.landFlash, null);
+});
+
 if (failures) {
   console.error(failures + ' failed');
   process.exit(1);

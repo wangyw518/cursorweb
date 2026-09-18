@@ -166,6 +166,20 @@
     ctx.stroke();
   }
 
+  function tileHasLandFlash(session, tile) {
+    return !!(
+      session.landFlash &&
+      session.landFlash.frames > 0 &&
+      session.landFlash.tileId === tile.id
+    );
+  }
+
+  function consumeLandFlash(session) {
+    if (!session.landFlash) return;
+    session.landFlash.frames -= 1;
+    if (session.landFlash.frames <= 0) session.landFlash = null;
+  }
+
   function drawTiles(ctx, session) {
     var colors = session.config.colors;
     var i;
@@ -174,21 +188,31 @@
       var p = table.project(t.x, t.y, session.table, session.viewMode);
       var s = t.size * 0.5 * p.s;
       var hex = zoneColor(t.kind, colors);
+      var flashing = tileHasLandFlash(session, t);
       ctx.save();
-      ctx.globalAlpha = 0.16;
       drawDiamond(ctx, p.x, p.y, s);
-      ctx.fillStyle = hex;
-      ctx.fill();
-      ctx.globalAlpha = 0.55;
-      ctx.strokeStyle = hex;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      if (flashing) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+        ctx.fill();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 3.2;
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = hex;
+        ctx.fill();
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = hex;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
       ctx.globalAlpha = 0.9;
-      drawZoneMark(ctx, t, p, s, hex);
+      drawZoneMark(ctx, t, p, s, flashing ? '#FFFFFF' : hex);
       ctx.font = (8 * p.s) + 'px ' + FONT;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = hex;
+      ctx.fillStyle = flashing ? '#FFFFFF' : hex;
       ctx.fillText(t.label, p.x, p.y + s * 0.72);
       ctx.restore();
     }
@@ -368,12 +392,16 @@
     fx.draw(ctx, session.particles);
     hud.drawChrome(ctx, session);
     hud.drawSplash(ctx, session);
-    hud.drawSettle(ctx, session);
+    if (!(session.landFlash && session.landFlash.frames > 0)) {
+      hud.drawSettle(ctx, session);
+    }
+    consumeLandFlash(session);
   }
 
   return {
     draw: draw,
     drawTiles: drawTiles,
-    drawBall: drawBall
+    drawBall: drawBall,
+    tileHasLandFlash: tileHasLandFlash
   };
 });

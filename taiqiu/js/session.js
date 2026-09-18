@@ -93,6 +93,7 @@
       pocketedLowest: false
     };
     session.particles = [];
+    session.landFlash = null;
     session.pressed = null;
     session.preview = { points: [], ghost: null, bounces: 0 };
     refreshTarget(session);
@@ -118,6 +119,7 @@
       settleIn: 0,
       resolution: null,
       particles: [],
+      landFlash: null,
       pressed: null,
       preview: { points: [], ghost: null, bounces: 0 },
       shot: { cushions: 0, pocketed: [], firstContactId: null, targetId: null, scratch: false, pocketedLowest: false }
@@ -182,10 +184,13 @@
 
   function finishSettle(session, applyStar) {
     var cueBall = findCue(session);
-    var zone = null;
+    var landed = null;
     if (applyStar && cueBall && !cueBall.pocketed) {
-      zone = tiles.pickAt(session.tiles, cueBall.x, cueBall.y) || tiles.defaultZone();
+      landed = tiles.pickAt(session.tiles, cueBall.x, cueBall.y);
     }
+    var zone = applyStar && cueBall && !cueBall.pocketed
+      ? (landed || tiles.defaultZone())
+      : null;
     var award = score.settle({
       pocketedLowest: session.shot.pocketedLowest,
       scratch: session.shot.scratch,
@@ -222,6 +227,10 @@
       best: session.best
     };
     session.phase = fsm.PHASE.Settle;
+    session.landFlash = null;
+    if (applyStar && award.legal && !award.foul && landed) {
+      session.landFlash = { tileId: landed.id, frames: 1 };
+    }
 
     var burstX = cueBall ? cueBall.x : session.table.felt.cx;
     var burstY = cueBall ? cueBall.y : session.table.felt.cy;
@@ -371,7 +380,10 @@
       pocketed: session.shot.pocketed.slice(),
       resolution: session.resolution,
       award: session.award,
-      settle: session.settle
+      settle: session.settle,
+      landFlash: session.landFlash
+        ? { tileId: session.landFlash.tileId, frames: session.landFlash.frames }
+        : null
     };
   }
 
