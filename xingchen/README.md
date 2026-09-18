@@ -1,4 +1,4 @@
-# 星尘弹射 Xingchen（Star Dust Launcher）
+# 星尘弹射 Xingchen（奇境弹球）
 
 WeChat native Canvas 2D mini-game. Pure client, custom lightweight 2D physics only (no Matter.js / Cocos / Unity).
 Main package is code-only. Sibling packages `xinggui/` and `minigame/` are not imported or modified.
@@ -17,24 +17,27 @@ Do not import the repository root. The playable project root is `xingchen/`.
 
 `dev/` and `test/` are pack-ignored browser smoke / node tests. They are not part of the WeChat package.
 
-## Loop (frozen GDD)
+## Loop
 
-Drag aim + power → fire one ball → collide on statics → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score the ring band → settle (gap to best / 新纪录) → 再来一局.
+Drag aim + power → fire one ball → collide on statics → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score **grid treasure + ring band** → next rod, or settle when the K-shot target is met / missed.
 
-No timer. One shot per round.
+- **Level:** score-in-K-shots. L1 `80 / 3` rods, L2 `160 / 3`, L3 `240 / 4`.
+- **Stamina:** 30. Starting a level costs 1. Share stub +1, 星尘补给 ad stub +5. Regen 1 / 10 min locally.
+- **Grid:** 5×6 treasure cells (星尘 / 晶核 / 星云屑 / 古星遗物). Landing collects the cell. Not filled-disk rings.
+- **Skills (once per level):** 炎核 burns 3×3, 霜核 doubles the cell and raises friction, 裂核 splits into 3 balls.
+- **Rings:** annular bands still add 10 / 30 / 80 / 200, edge `×1.2`.
+- **Out of table:** ball center past bounds scores 0 for that rod (beats stop-detect).
+- **Trajectory preview:** reflection polyline vs statics. Not a full sim.
 
-- **Out of table:** ball center past the table rectangle scores **0 immediately** and beats stop-detect.
-- **Rings:** annular bands only (between inner / outer radius), not filled disks.
-- **Overlap:** highest tier wins; same tier → smaller ring.
-- **Tiers:** 10 / 30 / 80 / 200.
-- **Edge:** center within `±edgePx` of a rim → `×1.2`.
-- **Trajectory preview:** reflection polyline vs static walls / obstacles. Not a full physics sim.
+No timer. No cash / coin / gambling copy.
 
 ## Controls
 
-- Drag from the cue ball / launcher capsule. Pull back to aim; fire direction is opposite the pull.
+- Tap 炎核 / 霜核 / 裂核 to arm (once per level).
+- Drag from the cue ball / table. Pull back to aim; fire direction is opposite the pull.
 - Release to launch. A short pull cancels.
-- Corner rifts are open: the ball can leave the table (偏离星表 → 0).
+- Corner rifts: 偏离星表 → that rod is 0.
+- Settle: 再试一次 / 下一关, 分享, 星尘补给 (stubs).
 
 ## Layout
 
@@ -52,51 +55,24 @@ xingchen/
     scoreRings.js
     stopDetect.js
     score.js
+    grid.js
+    skills.js
+    level.js
+    stamina.js
+    share.js
+    ads.js
     session.js
     hud.js
     fx.js
     storage.js
-  dev/preview.html      # browser smoke, pack-ignored
-  test/                 # node logic checks, pack-ignored
+  dev/preview.html
+  test/
   README.md
 ```
 
 ## Visual freeze
 
-| Surface | Value |
-| --- | --- |
-| Table | `#070B18` → `#141B3A` deep space (no green felt) |
-| Rings | green / blue / purple / gold |
-| Cue ball | white core + `#7DD3FC` glow |
-| Aim / preview | `#67E8F9` |
-| Launcher | neon capsule |
-
-No cash / coin / gambling imagery or copy.
-
-## Config freeze (`js/config.json`)
-
-| Key | Value | Notes |
-| --- | --- | --- |
-| `fixedDt` | `1/60` | Accumulator in `game.js` |
-| `stopSpeed` / `stopHoldMs` | `12` / `120` | Rest detection |
-| `friction` / `restitution` | `2.05` / `0.74` | Custom integrator |
-| `maxSpeed` | `980` | Velocity clamp |
-| `tiers` | `[10, 30, 80, 200]` | 新星 / 彗星 / 星云 / 恒星 |
-| `edgePx` / `edgeMultiplier` | `3` / `1.2` | Rim bonus |
-| `previewBounces` / `previewLength` | `5` / `320` | Reflection polyline |
-
-## Milestones
-
-- **M0** — aim → fire → collide → stop feel, reflection preview.
-- **M1** — annular rings, edge bonus, OOB 0, settle, local best.
-- **M2** — scored ring flashes white 1 frame, then burst particles.
-
-## Browser smoke
-
-```bash
-python3 -m http.server 8766 --directory xingchen
-# open http://127.0.0.1:8766/dev/preview.html
-```
+Deep space table `#070B18` → `#141B3A`. Neon rings + treasure glyphs. Cue ball white + `#7DD3FC`. Aim `#67E8F9`. Launcher capsule. No green felt, no cash / coin / gambling imagery.
 
 ## Local logic check
 
@@ -104,4 +80,12 @@ python3 -m http.server 8766 --directory xingchen
 node xingchen/test/m0.test.js
 node xingchen/test/m1.test.js
 node xingchen/test/m2.test.js
+node xingchen/test/m3.test.js
+```
+
+## Browser smoke
+
+```bash
+python3 -m http.server 8766 --directory xingchen
+# http://127.0.0.1:8766/dev/preview.html
 ```

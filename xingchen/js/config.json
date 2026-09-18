@@ -24,6 +24,29 @@
   "burstLifeMs": 420,
   "hitStopFrames": 2,
   "settleDelayMs": 280,
+  "gridCols": 5,
+  "gridRows": 6,
+  "staminaMax": 30,
+  "staminaCost": 1,
+  "staminaRegenMs": 600000,
+  "shareGrant": 1,
+  "adGrant": 5,
+  "splitAngle": 0.28,
+  "splitPowerScale": 0.78,
+  "iceFrictionMul": 2.4,
+  "iceScoreMul": 2,
+  "levels": [
+    { "id": 1, "target": 80, "shots": 3 },
+    { "id": 2, "target": 160, "shots": 3 },
+    { "id": 3, "target": 240, "shots": 4 }
+  ],
+  "cellKinds": {
+    "empty": { "points": 0, "name": "" },
+    "dust": { "points": 8, "name": "星尘" },
+    "crystal": { "points": 18, "name": "晶核" },
+    "nebula": { "points": 36, "name": "星云屑" },
+    "relic": { "points": 60, "name": "古星遗物" }
+  },
   "colors": {
     "bgOuter": "#070B18",
     "bgInner": "#141B3A",
@@ -47,6 +70,14 @@
     "obstacleRim": "#7DD3FC",
     "bumper": "#38BDF8",
     "capsule": "#0B1224",
-    "capsuleRim": "#67E8F9"
+    "capsuleRim": "#67E8F9",
+    "grid": "#1E3A5F",
+    "cellDust": "#7DD3FC",
+    "cellCrystal": "#5EEAD4",
+    "cellNebula": "#A78BFA",
+    "cellRelic": "#F5C542",
+    "skillFire": "#FB7185",
+    "skillIce": "#7DD3FC",
+    "skillSplit": "#C4B5FD"
   }
 }

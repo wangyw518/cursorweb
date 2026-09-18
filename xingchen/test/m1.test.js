@@ -119,23 +119,27 @@ check('stopped on a gold band awards 200 and writes local best', function () {
   var award = tickUntilSettled(session, 20);
   assert.ok(award);
   assert.strictEqual(award.tier, 3);
-  assert.strictEqual(award.score, 200);
+  assert.strictEqual(award.ringScore, 200);
+  assert.ok(award.score >= 200);
   assert.strictEqual(session.settle.isNew, true);
-  assert.strictEqual(storage.load().best, 200);
+  assert.strictEqual(session.settle.won, true);
+  assert.ok(storage.load().best >= 200);
 });
 
 check('settle shows gap to best when not a record; replay restores aim', function () {
   storage.resetMemory();
-  storage.save({ best: 200 });
-  var session = sessionMod.create(viewport(), config);
+  storage.save({ best: 200, stamina: 30, lastRegenAt: 0, levelId: 1 });
+  var session = sessionMod.create(viewport(), config, { level: { target: 500, shots: 1 } });
   assert.strictEqual(session.best, 200);
   var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
   var x = green.x + (green.innerR + green.outerR) * 0.5;
   sessionMod.debugPlace(session, x, green.y, 0, 0);
   tickUntilSettled(session, 20);
-  assert.strictEqual(session.settle.score, 10);
+  assert.ok(session.settle);
+  assert.strictEqual(session.settle.lost, true);
+  assert.ok(session.settle.score < 200);
   assert.strictEqual(session.settle.isNew, false);
-  assert.strictEqual(session.settle.gap, 190);
+  assert.ok(session.settle.gap > 0);
 
   var i;
   for (i = 0; i < 30; i++) sessionMod.update(session, config.fixedDt);
@@ -180,7 +184,10 @@ check('stop hold is 120ms before a table stop scores', function () {
   assert.ok(session.stop.holdMs >= 60);
   assert.strictEqual(stopDetect.isStopped(session.stop), false);
   sessionMod.update(session, 0.06);
-  assert.ok(session.phase === 'scored' || session.phase === 'settle');
+  assert.ok(session.award, 'shot resolves after the hold');
+  assert.ok(
+    session.phase === 'aim' || session.phase === 'scored' || session.phase === 'settle'
+  );
 });
 
 if (failures) {

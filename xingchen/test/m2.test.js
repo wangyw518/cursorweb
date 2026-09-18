@@ -48,7 +48,7 @@ check('score event flashes the ring white for 1 frame then bursts', function () 
   var i;
   for (i = 0; i < 20; i++) {
     sessionMod.update(session, config.fixedDt);
-    if (session.phase === 'scored' || session.phase === 'settle') break;
+    if (session.award) break;
   }
   assert.ok(session.award);
   assert.strictEqual(session.flashFrames, 1);

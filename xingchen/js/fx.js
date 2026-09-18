@@ -99,6 +99,51 @@
     ctx.restore();
   }
 
+  function cellHex(kind, colors) {
+    if (kind === 'dust') return colors.cellDust || '#7DD3FC';
+    if (kind === 'crystal') return colors.cellCrystal || '#5EEAD4';
+    if (kind === 'nebula') return colors.cellNebula || '#A78BFA';
+    if (kind === 'relic') return colors.cellRelic || '#F5C542';
+    return colors.grid || '#1E3A5F';
+  }
+
+  function drawGrid(ctx, grid, colors) {
+    if (!grid) return;
+    ctx.save();
+    var i;
+    for (i = 0; i < grid.cells.length; i++) {
+      var cell = grid.cells[i];
+      ctx.strokeStyle = colors.grid || '#1E3A5F';
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
+      if (cell.kind === 'empty' || cell.collected) continue;
+      var hex = cellHex(cell.kind, colors);
+      var cx = cell.x + cell.w * 0.5;
+      var cy = cell.y + cell.h * 0.5;
+      ctx.globalAlpha = cell.frost ? 0.95 : 0.8;
+      ctx.fillStyle = hex;
+      ctx.beginPath();
+      if (cell.kind === 'relic') {
+        ctx.moveTo(cx, cy - 5);
+        ctx.lineTo(cx + 4, cy + 1);
+        ctx.lineTo(cx, cy + 5);
+        ctx.lineTo(cx - 4, cy + 1);
+        ctx.closePath();
+      } else {
+        ctx.arc(cx, cy, cell.kind === 'nebula' ? 4.2 : 3.2, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      if (cell.frost) {
+        ctx.strokeStyle = colors.skillIce || '#7DD3FC';
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(cell.x + 3, cell.y + 3, cell.w - 6, cell.h - 6);
+      }
+    }
+    ctx.restore();
+  }
+
   function drawVoids(ctx, table, colors) {
     ctx.save();
     var i;
@@ -396,6 +441,8 @@
     makeDust: makeDust,
     drawDust: drawDust,
     drawTable: drawTable,
+    drawGrid: drawGrid,
+    cellHex: cellHex,
     drawVoids: drawVoids,
     drawWalls: drawWalls,
     drawObstacles: drawObstacles,

@@ -155,10 +155,10 @@ check('session aim → fire → collide → stop feel', function () {
   for (i = 0; i < 240; i++) {
     sessionMod.update(session, config.fixedDt);
     if (session.lastHit) sawHit = true;
-    if (session.phase === 'scored' || session.phase === 'settle') break;
+    if (session.award) break;
   }
-  assert.ok(session.phase === 'scored' || session.phase === 'settle', 'ball eventually stops');
   assert.ok(session.award, 'stop yields an award');
+  assert.ok(session.phase === 'aim' || session.phase === 'scored' || session.phase === 'settle');
   assert.ok(sawHit || session.award.oob || session.award.score >= 0);
 });
 

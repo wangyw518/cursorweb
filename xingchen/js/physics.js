@@ -157,17 +157,30 @@
     return hit;
   }
 
-  function step(world, dt, config) {
-    var body = world.ball;
+  function stepBody(body, walls, obstacles, dt, config) {
     var speed = hypot(body.vx, body.vy);
     var sub = Math.max(1, Math.min(6, Math.ceil((speed * dt) / Math.max(2, body.r * 0.55))));
     var slice = dt / sub;
     var hit = false;
     var i;
     for (i = 0; i < sub; i++) {
-      if (stepOnce(body, world.walls, world.obstacles, slice, config)) hit = true;
+      if (stepOnce(body, walls, obstacles, slice, config)) hit = true;
     }
     return { hit: hit, substeps: sub };
+  }
+
+  function step(world, dt, config) {
+    var balls = world.balls && world.balls.length ? world.balls : [world.ball];
+    var hit = false;
+    var maxSub = 1;
+    var i;
+    for (i = 0; i < balls.length; i++) {
+      if (balls[i].done) continue;
+      var one = stepBody(balls[i], world.walls, world.obstacles, dt, config);
+      if (one.hit) hit = true;
+      if (one.substeps > maxSub) maxSub = one.substeps;
+    }
+    return { hit: hit, substeps: maxSub };
   }
 
   function raycastWorld(ox, oy, dx, dy, walls, obstacles, ballR, maxDist) {

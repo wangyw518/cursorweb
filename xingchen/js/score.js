@@ -46,9 +46,33 @@
       edge: false,
       multiplier: 1,
       score: 0,
+      ringScore: 0,
+      gridScore: 0,
       tier: -1,
       oob: true,
       miss: false
+    };
+  }
+
+  function combine(ringAward, gridAward, skill) {
+    var ring = ringAward || fromPick(null, null);
+    var grid = (gridAward && gridAward.points) || 0;
+    var ringScore = ring.oob ? 0 : (ring.score || 0);
+    var total = ringScore + grid;
+    return {
+      points: ring.points || 0,
+      edge: !!ring.edge,
+      multiplier: ring.multiplier || 1,
+      ringScore: ringScore,
+      gridScore: grid,
+      score: total,
+      tier: ring.tier,
+      oob: !!ring.oob,
+      miss: total === 0 && !ring.oob,
+      ring: ring.ring,
+      harvested: (gridAward && gridAward.cells) || [],
+      names: (gridAward && gridAward.names) || [],
+      skill: skill || null
     };
   }
 
@@ -56,6 +80,7 @@
     tierPoints: tierPoints,
     fromPick: fromPick,
     outOfBounds: outOfBounds,
+    combine: combine,
     DEFAULT_TIERS: DEFAULT_TIERS
   };
 });
