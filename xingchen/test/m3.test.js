@@ -120,6 +120,13 @@ check('ice skill uses higher friction than a normal shot', function () {
   );
 });
 
+check('HUD keeps stats above skill buttons', function () {
+  var ui = hud.layout(viewport());
+  var ice = ui.skills[1];
+  assert.ok(ui.stats.y + ui.stats.h < ice.y, 'stats row must not overlap 霜凝');
+  assert.ok(ice.y + ice.h <= ui.playRect.y, 'skills stay above the table');
+});
+
 check('split plans two angled balls; session can select 双生', function () {
   var plan = skills.plan('split', { vx: 0, vy: -400 }, config);
   assert.strictEqual(plan.balls.length, 2);

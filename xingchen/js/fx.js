@@ -217,8 +217,8 @@
       var flashing = flashCell && (flashCell === c || flashCell.id === c.id);
       roundRect(ctx, c.x, c.y, c.w, c.h, 7);
       var g = ctx.createLinearGradient(c.x, c.y, c.x, c.y + c.h);
-      g.addColorStop(0, rgba(hex, flashing ? 0.42 : 0.18));
-      g.addColorStop(1, rgba('#070B18', flashing ? 0.35 : 0.55));
+      g.addColorStop(0, rgba(hex, flashing ? 0.50 : 0.26));
+      g.addColorStop(1, rgba('#070B18', flashing ? 0.30 : 0.48));
       ctx.fillStyle = g;
       ctx.fill();
       ctx.shadowColor = flashing ? '#FFFFFF' : hex;

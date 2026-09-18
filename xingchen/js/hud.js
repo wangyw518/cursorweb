@@ -16,22 +16,22 @@
     var top = (viewport.safeTop || 20) + 8;
     var bottomSafe = viewport.safeBottom || 0;
     var legendH = 20;
-    var skillH = 32;
-    var playTop = top + 86;
+    var skillH = 34;
+    var playTop = top + 104;
     var playBottom = viewport.height - bottomSafe - 16 - legendH;
     var cx = viewport.width * 0.5;
     var cy = viewport.height * 0.46;
-    var skillW = 72;
+    var skillW = 78;
     var skillGap = 10;
     var skillStart = cx - (skillW * 1.5 + skillGap);
     return {
       title: { x: pad, y: top + 18 },
       best: { x: viewport.width - pad, y: top + 18 },
-      stats: { x: pad, y: top + 40, w: viewport.width - pad * 2, h: 18 },
+      stats: { x: pad, y: top + 38, w: viewport.width - pad * 2, h: 16 },
       skills: [
-        { id: 'fire', x: skillStart, y: top + 52, w: skillW, h: skillH, label: '炎破' },
-        { id: 'ice', x: skillStart + skillW + skillGap, y: top + 52, w: skillW, h: skillH, label: '霜凝' },
-        { id: 'split', x: skillStart + (skillW + skillGap) * 2, y: top + 52, w: skillW, h: skillH, label: '双生' }
+        { id: 'fire', x: skillStart, y: top + 60, w: skillW, h: skillH, label: '炎破' },
+        { id: 'ice', x: skillStart + skillW + skillGap, y: top + 60, w: skillW, h: skillH, label: '霜凝' },
+        { id: 'split', x: skillStart + (skillW + skillGap) * 2, y: top + 60, w: skillW, h: skillH, label: '双生' }
       ],
       hint: { x: cx, y: playBottom + 14 },
       toast: { x: cx, y: playTop + 22 },
@@ -104,13 +104,13 @@
     ctx.fillStyle = selected ? 'rgba(18,24,58,0.95)' : 'rgba(11,16,36,0.72)';
     ctx.fill();
     ctx.shadowColor = selected ? hex : 'transparent';
-    ctx.shadowBlur = selected ? 12 : 0;
-    ctx.strokeStyle = selected ? hex : 'rgba(138,160,200,0.35)';
-    ctx.lineWidth = selected ? 1.8 : 1;
+    ctx.shadowBlur = selected ? 14 : 0;
+    ctx.strokeStyle = selected ? hex : 'rgba(168,188,220,0.55)';
+    ctx.lineWidth = selected ? 2 : 1.15;
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = selected ? hex : (colors.hud || '#E8F3FF');
-    ctx.font = (selected ? '700 ' : '') + '13px ' + FONT;
+    ctx.font = '700 15px ' + FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(btn.label, btn.x + btn.w * 0.5, btn.y + btn.h * 0.5 + 1);
@@ -277,7 +277,7 @@
       ctx.fillText(score + ' / ' + target, ui.stats.x, ui.stats.y + 12);
       ctx.textAlign = 'center';
       ctx.fillStyle = colors.hudDim || '#8AA0C8';
-      ctx.fillText('弹  ' + left + '/' + max, viewport.width * 0.5, ui.stats.y + 12);
+      ctx.fillText('剩 ' + left + ' 弹 / ' + max, viewport.width * 0.5, ui.stats.y + 12);
       ctx.textAlign = 'right';
       ctx.fillStyle = colors.stamina || '#A5B4FC';
       ctx.fillText('星力  ' + (state.stamina == null ? 0 : state.stamina), ui.best.x, ui.stats.y + 12);
