@@ -2,6 +2,11 @@
  * WeChat cloud function `taiqiuRoom`.
  * event.action = create | join | aim | shot | state
  * Persists to collection `taiqiu_rooms` when cloud DB is available.
+ *
+ * Locked contracts match js/roomStore.js:
+ *   POST aim {roomId, shotSeq, angle, power, aimLine?} — Aim|Pull only, no balls[] mutate
+ *   GET state?sinceSeq= — Aim/Pull + sinceSeq>=shotSeq strips object-ball coords
+ *   create/join/shot return deadlineAt; shotClock foul swaps turn, no rerack
  */
 'use strict';
 
@@ -31,10 +36,37 @@ function tokenFor(roomId, seat) {
   return roomId + (seat === 0 ? ':h' : ':g');
 }
 
+function roleOfSeat(seat) {
+  return seat === 1 ? 'guest' : 'host';
+}
+
 function nextTurn(fromSeat, reason) {
   if (reason === 'legal' || reason === 'nine' || reason === 'sync') return fromSeat;
   if (reason === 'new-game') return 0;
   return fromSeat === 0 ? 1 : 0;
+}
+
+function clipNick(raw) {
+  var s = String(raw || '').replace(/^\s+|\s+$/g, '');
+  if (s.length > 32) s = s.slice(0, 32);
+  return s;
+}
+
+function stampTurn(state) {
+  state.turnRole = roleOfSeat(state.turn);
+  state.turnOpenId = (state.openIds && state.openIds[state.turn]) || '';
+  return state;
+}
+
+function cueOnly(list) {
+  if (!list) return list;
+  return list.filter(function (b) {
+    return b && (b.id === 'cue' || b.n === 0);
+  });
+}
+
+function aimingPhase(phase) {
+  return phase === 'Aim' || phase === 'Pull';
 }
 
 function emptyState(roomId) {
@@ -44,6 +76,7 @@ function emptyState(roomId) {
     guestJoined: false,
     turn: 0,
     turnRole: 'host',
+    turnOpenId: '',
     seq: 0,
     shotSeq: 0,
     balls: null,
@@ -56,9 +89,19 @@ function emptyState(roomId) {
     lastReason: null,
     lastSeat: null,
     names: ['房主', '好友'],
+    nicknames: { host: '房主', guest: '好友' },
+    openIds: ['', ''],
     aimSeq: 0,
     aim: null,
-    aimDeadlineAt: 0
+    aimDeadlineAt: 0,
+    deadlineAt: 0,
+    shotClockSec: 20,
+    winnerOpenId: null,
+    stars: null,
+    foulCode: null,
+    foulHint: '',
+    pocketScore: 0,
+    zoneBonus: 0
   };
 }
 
@@ -87,15 +130,46 @@ async function write(roomId, state) {
   return clone(state);
 }
 
+function applyDueTimeout(state) {
+  if (!state || state.matchOver || state.phase === 'Settle') return state;
+  var due = state.deadlineAt || state.aimDeadlineAt;
+  if (!due || Date.now() < due) return state;
+  if (!aimingPhase(state.phase)) return state;
+  state.turn = state.turn === 0 ? 1 : 0;
+  stampTurn(state);
+  state.lastReason = 'timeout';
+  state.foulCode = 'shotClock';
+  state.foulHint = '犯规 · 超时';
+  state.aim = null;
+  state.phase = 'Aim';
+  state.shotSeq = (state.shotSeq || 0) + 1;
+  state.seq += 1;
+  state.deadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+  state.aimDeadlineAt = state.deadlineAt;
+  return state;
+}
+
 async function create(payload) {
   payload = payload || {};
   var roomId = payload.roomId || randomId();
   var state = emptyState(roomId);
   if (payload.balls) state.balls = payload.balls;
+  if (payload.ballsSnapshot) {
+    state.balls = payload.ballsSnapshot;
+    state.ballsSnapshot = payload.ballsSnapshot;
+  }
   if (payload.scores) state.scores = payload.scores;
   if (payload.targetN != null) state.targetN = payload.targetN;
   if (payload.names) state.names = payload.names;
-  if (payload.hostName || payload.name) state.names[0] = String(payload.hostName || payload.name);
+  if (payload.hostName || payload.name || payload.nick || payload.displayName) {
+    state.names[0] = clipNick(payload.hostName || payload.name || payload.nick || payload.displayName);
+  }
+  if (payload.shotClockSec > 0) state.shotClockSec = payload.shotClockSec;
+  if (payload.openId) state.openIds[0] = String(payload.openId);
+  state.nicknames = { host: state.names[0], guest: state.names[1] };
+  stampTurn(state);
+  state.deadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+  state.aimDeadlineAt = state.deadlineAt;
   await write(roomId, state);
   return { ok: true, action: 'create', roomId: roomId, role: 'host', seat: 0, token: tokenFor(roomId, 0), state: state };
 }
@@ -105,15 +179,21 @@ async function join(roomIdOrPayload) {
   var guestName = null;
   if (roomIdOrPayload && typeof roomIdOrPayload === 'object') {
     roomId = roomIdOrPayload.roomId;
-    guestName = roomIdOrPayload.name || roomIdOrPayload.guestName;
+    guestName = roomIdOrPayload.nick || roomIdOrPayload.displayName || roomIdOrPayload.name || roomIdOrPayload.guestName;
   }
   var state = await read(roomId);
   if (!state) return { ok: false, action: 'join', reason: 'missing', roomId: roomId };
   state.guestJoined = true;
   if (guestName) {
     state.names = state.names || ['房主', '好友'];
-    state.names[1] = String(guestName);
+    state.names[1] = clipNick(guestName);
   }
+  if (roomIdOrPayload && roomIdOrPayload.openId) {
+    state.openIds = state.openIds || ['', ''];
+    state.openIds[1] = String(roomIdOrPayload.openId);
+  }
+  state.nicknames = { host: state.names[0], guest: state.names[1] };
+  stampTurn(state);
   state.seq += 1;
   await write(roomId, state);
   return { ok: true, action: 'join', roomId: roomId, role: 'guest', seat: 1, token: tokenFor(roomId, 1), state: state };
@@ -150,12 +230,9 @@ async function shot(payload) {
   }
   if (!reason) reason = 'miss';
   if (reason === 'timeout') {
-    var due = state.aimDeadlineAt;
+    var due = state.deadlineAt || state.aimDeadlineAt;
     if (!due || Date.now() + 250 < due) {
       return { ok: false, action: 'shot', reason: 'too-early', roomId: roomId, state: state };
-    }
-    if (payload.token && payload.token !== tokenFor(roomId, 0) && payload.token !== tokenFor(roomId, 1)) {
-      return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
     }
     fromSeat = state.turn;
   } else if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
@@ -170,7 +247,7 @@ async function shot(payload) {
   if (payload.phase) state.phase = payload.phase;
   if (payload.targetN != null) state.targetN = payload.targetN;
   state.turn = nextTurn(fromSeat, reason);
-  state.turnRole = state.turn === 1 ? 'guest' : 'host';
+  stampTurn(state);
   state.matchOver = reason === 'nine';
   state.winner = reason === 'nine' ? fromSeat : (reason === 'new-game' ? null : state.winner);
   if (reason === 'new-game') {
@@ -181,13 +258,24 @@ async function shot(payload) {
     state.targetN = payload.targetN != null ? payload.targetN : 1;
     state.shotSeq = 0;
     state.turn = 0;
-    state.turnRole = 'host';
+    stampTurn(state);
   }
-  if (reason === 'nine') state.phase = payload.phase || 'Settle';
+  if (reason === 'nine') {
+    state.phase = payload.phase || 'Settle';
+    state.winnerOpenId = (state.openIds && state.openIds[fromSeat]) || payload.winnerOpenId || null;
+    state.stars = { host: state.scores[0] || 0, guest: state.scores[1] || 0 };
+  }
   state.aim = null;
-  state.aimDeadlineAt = reason === 'timeout'
-    ? (payload.nextDeadlineAt || (Date.now() + 25000))
-    : 0;
+  state.foulCode = reason === 'timeout' ? 'shotClock' : (reason === 'scratch' || reason === 'whiff' || reason === 'order' || reason === 'foul' ? reason : null);
+  state.foulHint = reason === 'timeout' ? '犯规 · 超时' : '';
+  state.pocketScore = payload.pocketScore || 0;
+  state.zoneBonus = payload.zoneBonus || 0;
+  state.deadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+  state.aimDeadlineAt = state.deadlineAt;
+  if (reason === 'nine') {
+    state.aimDeadlineAt = 0;
+    state.deadlineAt = 0;
+  }
   if (payload.names) state.names = payload.names;
   state.lastReason = reason;
   state.lastSeat = fromSeat;
@@ -216,35 +304,66 @@ async function aim(payload) {
   if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
     return { ok: false, action: 'aim', reason: 'bad-token', roomId: roomId };
   }
+  applyDueTimeout(state);
+  stampTurn(state);
+  if (payload.openId && state.turnOpenId && payload.openId !== state.turnOpenId) {
+    return { ok: false, action: 'aim', reason: 'not-your-turn', roomId: roomId, state: state };
+  }
   if (!state.matchOver && state.turn !== fromSeat) {
     return { ok: false, action: 'aim', reason: 'not-your-turn', roomId: roomId, state: state };
+  }
+  if (payload.kind !== 'firing' && !aimingPhase(state.phase) && state.phase !== 'Shot') {
+    return { ok: false, action: 'aim', reason: 'bad-phase', roomId: roomId, state: state };
   }
   var incoming = payload.aimSeq != null ? payload.aimSeq : (state.aimSeq || 0) + 1;
   if (state.aimSeq != null && incoming < state.aimSeq) {
     return { ok: false, action: 'aim', reason: 'stale-aim', roomId: roomId, state: state };
   }
+  var ang = payload.aimAngle != null ? payload.aimAngle : payload.angle;
   state.aimSeq = incoming;
   state.aim = {
     aimSeq: incoming,
+    shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq,
     fromSeat: fromSeat,
     kind: payload.kind || 'aim',
-    aimAngle: payload.aimAngle,
+    aimAngle: ang,
+    angle: ang,
     power: payload.power || 0,
+    aimLine: payload.aimLine || [],
     preview: payload.preview || null,
-    deadlineAt: payload.deadlineAt || state.aimDeadlineAt || 0
+    aiming: true,
+    updatedAt: Date.now()
   };
-  if (payload.deadlineAt) state.aimDeadlineAt = payload.deadlineAt;
   if (payload.kind === 'firing') state.phase = 'Shot';
-  else if (state.phase !== 'Settle') state.phase = 'Aim';
+  else if (state.phase !== 'Settle') {
+    state.phase = (payload.kind === 'charging' || payload.kind === 'Pull' || (payload.power || 0) > 0.03) ? 'Pull' : 'Aim';
+  }
   state.seq += 1;
   await write(roomId, state);
-  return { ok: true, action: 'aim', roomId: roomId, state: state };
+  var out = clone(state);
+  out.balls = cueOnly(out.balls);
+  out.ballsSnapshot = cueOnly(out.ballsSnapshot);
+  return { ok: true, action: 'aim', roomId: roomId, state: out };
 }
 
-async function stateOf(roomId) {
+async function stateOf(payload) {
+  var roomId = payload && typeof payload === 'object' ? payload.roomId : payload;
+  var sinceSeq = payload && typeof payload === 'object' ? payload.sinceSeq : null;
   var state = await read(roomId);
   if (!state) return { ok: false, action: 'state', reason: 'missing', roomId: roomId };
-  return { ok: true, action: 'state', roomId: roomId, state: state };
+  applyDueTimeout(state);
+  stampTurn(state);
+  await write(roomId, state);
+  var snap = clone(state);
+  snap.deadlineAt = snap.deadlineAt || snap.aimDeadlineAt;
+  snap.nicknames = snap.nicknames || { host: (snap.names && snap.names[0]) || '房主', guest: (snap.names && snap.names[1]) || '好友' };
+  if (sinceSeq != null) sinceSeq = parseInt(sinceSeq, 10);
+  if (aimingPhase(snap.phase) && sinceSeq === sinceSeq && sinceSeq >= (snap.shotSeq || 0)) {
+    snap.balls = cueOnly(snap.balls);
+    snap.ballsSnapshot = cueOnly(snap.ballsSnapshot);
+    snap.slim = true;
+  }
+  return { ok: true, action: 'state', roomId: roomId, state: snap };
 }
 
 exports.main = async function (event) {
@@ -254,6 +373,6 @@ exports.main = async function (event) {
   if (action === 'join') return join(event);
   if (action === 'aim') return aim(event);
   if (action === 'shot') return shot(event);
-  if (action === 'state') return stateOf(event.roomId);
+  if (action === 'state') return stateOf(event);
   return { ok: false, reason: 'unknown-action', action: action };
 };

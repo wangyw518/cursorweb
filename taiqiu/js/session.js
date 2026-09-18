@@ -184,8 +184,14 @@
     var felt = session.table && session.table.felt;
     var length = cfg.previewLength == null ? 720 : cfg.previewLength;
     var span = cfg.previewTableSpan == null ? 1.25 : cfg.previewTableSpan;
+    var frac = cfg.aimLineMinFrac != null ? cfg.aimLineMinFrac : 0.55;
     if (felt && felt.w && felt.h) {
+      length = Math.max(length, Math.min(felt.w, felt.h) * frac);
       length = Math.max(length, Math.hypot(felt.w, felt.h) * span);
+    }
+    var cueBall = session.balls ? balls.cueBall(session.balls) : null;
+    if (cueBall && session.target) {
+      length = Math.max(length, Math.hypot(session.target.x - cueBall.x, session.target.y - cueBall.y));
     }
     return {
       previewLength: length,
@@ -316,7 +322,12 @@
       matchOver: !!session.matchOver,
       winner: session.winner,
       guestJoined: !!(session.room && session.room.guestJoined),
-      names: session.names ? session.names.slice() : null
+      names: session.names ? session.names.slice() : null,
+      nicknames: session.names ? { host: session.names[0], guest: session.names[1] } : null,
+      openId: session.myOpenId || '',
+      winnerOpenId: session.myOpenId || null,
+      pocketScore: session.award ? session.award.pocketBonus : 0,
+      zoneBonus: session.award ? session.award.landingBonus : 0
     };
   }
 
@@ -368,14 +379,29 @@
     var applyBallsNow = !!snap && (
       session.phase !== fsm.PHASE.Aim || isAuthoritativeBalls(session, state, opts)
     );
+    if (state.foulCode === 'shotClock') applyBallsNow = false;
     if (applyBallsNow) {
       roomApi.applyBalls(session.balls, snap, felt);
       lockObjectBalls(session);
+      if (!opts.join && state.lastSeat != null && state.lastSeat !== session.mySeat &&
+          (state.pocketScore || state.zoneBonus)) {
+        var cueAt = findCue(session);
+        spawnScorePops(session, {
+          legal: true,
+          starApplied: !!(state.zoneBonus),
+          pocketScore: state.pocketScore,
+          pocketBonus: state.pocketScore,
+          zoneBonus: state.zoneBonus,
+          landingBonus: state.zoneBonus,
+          zoneLabel: '落点'
+        }, cueAt ? cueAt.x : 0, cueAt ? cueAt.y : 0);
+      }
     }
     if (state.scores) session.scores = state.scores.slice();
     if (state.turnRole === 'guest') session.turn = 1;
     else if (state.turnRole === 'host') session.turn = 0;
     else if (state.turn != null) session.turn = state.turn;
+    if (state.turnOpenId != null) session.turnOpenId = state.turnOpenId;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
     if (state.nicknames) {
@@ -388,14 +414,26 @@
     else if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
     if (state.winnerOpenId) session.winnerOpenId = state.winnerOpenId;
     if (state.stars) session.roomStars = state.stars;
+    if (state.pocketScore != null) session.pocketScore = state.pocketScore;
+    if (state.zoneBonus != null) session.zoneBonus = state.zoneBonus;
     if (state.foulCode || state.foulHint) {
-      session.banner = {
-        text: state.foulHint || (state.foulCode === 'shotClock' ? '犯规 · 超时' : '犯规'),
-        kind: 'foul',
-        life: 2.0
-      };
+      var foulKey = String(state.shotSeq != null ? state.shotSeq : '') + ':' + (state.foulCode || state.foulHint);
+      if (session._lastFoulKey !== foulKey) {
+        session._lastFoulKey = foulKey;
+        session.banner = {
+          text: state.foulHint || (state.foulCode === 'shotClock' ? '犯规 · 超时' : '犯规'),
+          kind: 'foul',
+          code: state.foulCode || '',
+          detail: foulPenalty(state.foulCode),
+          life: 2.2
+        };
+        if (sfx && sfx.foul) sfx.foul();
+        if (state.foulCode === 'shotClock' && session.cue && session.cue.dragging) {
+          cue.cancelDrag(session.cue);
+          session.preview = { points: [], ghost: null, bounces: 0 };
+        }
+      }
     }
-    if (session.aimDeadlineAt && session.aimDeadlineAt > Date.now()) session._timeoutPosted = false;
     if (session.room) {
       if (state.shotSeq != null) session.room.lastSeq = state.shotSeq;
       else if (state.seq != null) session.room.lastSeq = state.seq;
@@ -425,16 +463,12 @@
         session.settle.winner = state.winner != null ? state.winner : session.settle.winner;
         session.settle.versus = true;
       }
-    } else if (state.phase === fsm.PHASE.Aim || state.phase === fsm.PHASE.Settle) {
-      session.phase = state.phase;
+    } else if (state.phase === fsm.PHASE.Aim || state.phase === 'Pull' || state.phase === fsm.PHASE.Settle) {
+      session.phase = state.phase === 'Pull' ? fsm.PHASE.Aim : state.phase;
     }
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
     if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
-    if (session.phase === fsm.PHASE.Aim && session.versus && !session.matchOver &&
-        session.room && session.room.guestJoined && !session.aimDeadlineAt && canAim(session)) {
-      armAimClock(session);
-    }
     return session;
   }
 
@@ -472,9 +506,18 @@
 
   function pullRoom(session) {
     if (!session.room || !session.room.roomId) return null;
-    return roomApi.state(session.room.roomId, function (res) {
+    var sinceSeq = session.room.lastSeq != null ? session.room.lastSeq : 0;
+    return roomApi.state({ roomId: session.room.roomId, sinceSeq: sinceSeq }, function (res) {
       ingestState(session, res);
     });
+  }
+
+  function foulPenalty(code) {
+    if (code === 'shotClock') return '交换击球权 · 台面保持';
+    if (code === 'scratch') return '白球回置 · 交换击球权';
+    if (code === 'order' || code === 'whiff') return '交换击球权 · 台面保持';
+    if (code) return '交换击球权';
+    return '';
   }
 
   /**
@@ -594,7 +637,10 @@
       banner: null,
       lastAimPush: 0,
       powerFlash: 0,
-      powerWasFull: false
+      powerWasFull: false,
+      turnOpenId: '',
+      pocketScore: 0,
+      zoneBonus: 0
     };
     resetRound(session);
     fetchNick(session);
@@ -634,6 +680,7 @@
     if (!session.versus) return true;
     if (isLocalAi(session)) return session.turn === session.mySeat;
     if (session.hotseat && !(session.room && session.room.guestJoined)) return true;
+    if (session.turnOpenId && session.myOpenId) return session.turnOpenId === session.myOpenId;
     return session.turn === session.mySeat;
   }
 
@@ -665,9 +712,9 @@
       session.aimDeadlineAt = 0;
       return session;
     }
-    session.aimDeadlineAt = deadlineAt || (Date.now() + aimTimeoutMs(session));
-    if (canAim(session) && session.room && session.room.roomId) {
-      pushAim(session, { kind: 'aim', deadlineAt: session.aimDeadlineAt });
+    if (deadlineAt) session.aimDeadlineAt = deadlineAt;
+    else if (isLocalAi(session) || !(session.room && session.room.guestJoined)) {
+      session.aimDeadlineAt = Date.now() + aimTimeoutMs(session);
     }
     return session;
   }
@@ -700,25 +747,26 @@
     extra = extra || {};
     if (!session.room || !session.room.roomId) return null;
     if (!session.versus) return null;
-    if (extra.kind !== 'firing' && !canAim(session)) return null;
+    if (!canAim(session) && extra.kind !== 'firing') return null;
     session.aimSeq = (session.aimSeq || 0) + 1;
     session.lastAimPush = Date.now();
+    var ang = extra.aimAngle != null ? extra.aimAngle : (extra.angle != null ? extra.angle : (session.cue ? session.cue.angle : 0));
     var payload = {
       roomId: session.room.roomId,
+      shotSeq: session.room.lastSeq || 0,
+      angle: extra.angle != null ? extra.angle : ang,
+      power: extra.power != null ? extra.power : (session.cue ? session.cue.power : 0),
+      aimLine: extra.aimLine || (session.preview && session.preview.points) || [],
       fromSeat: session.mySeat,
       role: session.mySeat === 1 ? 'guest' : 'host',
       token: session.room.token,
+      openId: session.myOpenId || '',
       aimSeq: session.aimSeq,
-      kind: extra.kind || (session.cue && session.cue.dragging ? 'charging' : 'aim'),
-      shotSeq: session.room.lastSeq || 0,
-      aimAngle: extra.aimAngle != null ? extra.aimAngle : (extra.angle != null ? extra.angle : (session.cue ? session.cue.angle : 0)),
-      angle: extra.angle != null ? extra.angle : (extra.aimAngle != null ? extra.aimAngle : (session.cue ? session.cue.angle : 0)),
-      power: extra.power != null ? extra.power : (session.cue ? session.cue.power : 0),
-      aimLine: extra.aimLine || (session.preview && session.preview.points) || [],
+      kind: extra.kind || (session.cue && session.cue.dragging ? 'Pull' : 'aim'),
+      aimAngle: extra.aimAngle != null ? extra.aimAngle : ang,
       ax: extra.ax != null ? extra.ax : (session.cue ? session.cue.ax : 0),
       ay: extra.ay != null ? extra.ay : (session.cue ? session.cue.ay : -1),
       preview: extra.preview !== undefined ? extra.preview : compactPreview(session.preview),
-      deadlineAt: extra.deadlineAt || session.aimDeadlineAt || 0,
       names: session.names
     };
     return roomApi.aim(session.room.roomId, payload, function (res) {
@@ -764,29 +812,29 @@
     if (!session.versus) return null;
     if (!session.aimDeadlineAt || Date.now() < session.aimDeadlineAt) return null;
     if (!needsShotClock(session)) return null;
-    if (!isLocalAi(session) && session.turn !== session.mySeat) {
-      if (!session._timeoutPosted) {
-        session._timeoutPosted = true;
-        pushTimeout(session, { ingest: true });
-      }
-      return { kind: 'timeout-wait' };
-    }
     if (session.cue && session.cue.dragging) cue.cancelDrag(session.cue);
     session.preview = { points: [], ghost: null, bounces: 0 };
     session.aiThink = 0;
     session.aiPlan = null;
-    session.remoteAim = null;
-    session.resolution = { legal: false, foul: true, reason: 'timeout', enterStarZone: false, win: false };
-    session.lastShotEvents = [{ type: 'timeout' }];
-    session.award = score.emptyAward('timeout');
-    session.banner = { text: '超时未击球 · 换人', kind: 'foul', life: 2.2 };
-    session.toast = { text: '超时未击球 · 换人', life: 1.8 };
-    var from = session.turn;
-    session._timeoutPosted = false;
-    if (session.room && session.room.roomId) pushTimeout(session, { ingest: false });
-    if (shouldSwitchTurn(session)) switchTurn(session);
-    continueShot(session);
-    return { kind: 'timeout', from: from, turn: session.turn };
+    if (isLocalAi(session)) {
+      session.remoteAim = null;
+      session.resolution = { legal: false, foul: true, reason: 'timeout', enterStarZone: false, win: false };
+      session.lastShotEvents = [{ type: 'timeout' }];
+      session.award = score.emptyAward('timeout');
+      session.banner = {
+        text: '犯规 · 超时',
+        kind: 'foul',
+        code: 'shotClock',
+        detail: foulPenalty('shotClock'),
+        life: 2.2
+      };
+      if (sfx && sfx.foul) sfx.foul();
+      if (shouldSwitchTurn(session)) switchTurn(session);
+      continueShot(session);
+      return { kind: 'timeout', turn: session.turn };
+    }
+    pullRoom(session);
+    return { kind: 'timeout-wait' };
   }
 
   /**
@@ -854,16 +902,16 @@
     if (award && award.foul && sfx && sfx.foul) sfx.foul();
     if (!award) return null;
     if (award.reason === 'scratch') {
-      return { text: session.versus ? '犯规 · 白球入袋（刮库）· 换人' : '犯规 · 白球入袋（刮库）', kind: 'foul', life: 2.4 };
+      return { text: session.versus ? '犯规 · 白球入袋（刮库）· 换人' : '犯规 · 白球入袋（刮库）', kind: 'foul', code: 'scratch', detail: foulPenalty('scratch'), life: 2.4 };
     }
     if (award.reason === 'order') {
-      return { text: session.versus ? '犯规 · 打错目标球 · 换人' : '犯规 · 打错目标球', kind: 'foul', life: 2.4 };
+      return { text: session.versus ? '犯规 · 打错目标球 · 换人' : '犯规 · 打错目标球', kind: 'foul', code: 'order', detail: foulPenalty('order'), life: 2.4 };
     }
     if (award.reason === 'whiff') {
-      return { text: session.versus ? '犯规 · 未碰目标球 · 换人' : '犯规 · 未碰目标球', kind: 'foul', life: 2.4 };
+      return { text: session.versus ? '犯规 · 未碰目标球 · 换人' : '犯规 · 未碰目标球', kind: 'foul', code: 'whiff', detail: foulPenalty('whiff'), life: 2.4 };
     }
     if (award.reason === 'timeout') {
-      return { text: '超时未击球 · 换人', kind: 'foul', life: 2.2 };
+      return { text: '犯规 · 超时', kind: 'foul', code: 'shotClock', detail: foulPenalty('shotClock'), life: 2.2 };
     }
     if (award.foul) {
       if (sfx && sfx.foul) sfx.foul();
@@ -874,15 +922,17 @@
 
   function spawnScorePops(session, award, x, y) {
     if (!award || !fx.spawnPop) return;
-    if (award.legal && award.pocketBonus) {
-      fx.spawnPop(session.particles, x, y - 12, '目标球 +' + award.pocketBonus, session.config.colors.scorePop);
+    var pocket = award.pocketScore != null && award.pocketScore > 0 ? award.pocketScore : award.pocketBonus;
+    var zone = award.zoneBonus != null && award.zoneBonus > 0 ? award.zoneBonus : award.landingBonus;
+    if (award.legal && pocket) {
+      fx.spawnPop(session.particles, x, y - 12, '目标球 +' + pocket, session.config.colors.scorePop);
     }
-    if (award.starApplied && award.landingBonus) {
+    if (award.starApplied && zone) {
       fx.spawnPop(
         session.particles,
         x,
         y + 10,
-        '落点·' + (award.zoneLabel || '新星') + ' +' + award.landingBonus,
+        '落点·' + (award.zoneLabel || '新星') + ' +' + zone,
         session.config.colors.scorePop
       );
     }
@@ -1153,7 +1203,18 @@
       aimSeq: made.state && made.state.aimSeq != null ? made.state.aimSeq : 0
     };
     fetchNick(session);
-    if (made.state && made.state.names) session.names = made.state.names.slice();
+    if (made.state) {
+      if (made.state.names) session.names = made.state.names.slice();
+      if (made.state.deadlineAt != null) session.aimDeadlineAt = made.state.deadlineAt;
+      else if (made.state.aimDeadlineAt != null) session.aimDeadlineAt = made.state.aimDeadlineAt;
+      if (made.state.turnOpenId) session.turnOpenId = made.state.turnOpenId;
+      if (made.state.nicknames) {
+        session.names = [
+          made.state.nicknames.host || session.names[0],
+          made.state.nicknames.guest || session.names[1]
+        ];
+      }
+    }
     applyLocalName(session, session.displayName || session.names[0]);
     session.roomPanel = {
       roomId: made.roomId,
@@ -1183,7 +1244,10 @@
       targetN: session.target ? session.target.n : 1,
       names: session.names,
       hostName: session.displayName || (session.names && session.names[0]) || seatFallback(0),
-      name: session.displayName || (session.names && session.names[0]) || seatFallback(0)
+      name: session.displayName || (session.names && session.names[0]) || seatFallback(0),
+      nick: session.displayName || (session.names && session.names[0]) || seatFallback(0),
+      displayName: session.displayName || (session.names && session.names[0]) || seatFallback(0),
+      openId: session.myOpenId || ''
     }, function (res) {
       if (res && res.ok && res.roomId && !(session.room && session.room.roomId)) {
         attachHostRoom(session, res);
@@ -1229,7 +1293,10 @@
     fetchNick(session);
     var payload = {
       roomId: roomId,
-      name: session.displayName || (session.config.room && session.config.room.guestDisplayName) || seatFallback(1)
+      name: session.displayName || (session.config.room && session.config.room.guestDisplayName) || seatFallback(1),
+      nick: session.displayName || (session.config.room && session.config.room.guestDisplayName) || seatFallback(1),
+      displayName: session.displayName || (session.config.room && session.config.room.guestDisplayName) || seatFallback(1),
+      openId: session.myOpenId || ''
     };
     var joined = roomApi.join(payload, function (res) {
       if (res && res.ok && !(session.room && session.room.roomId === roomId && session.mySeat === 1)) {

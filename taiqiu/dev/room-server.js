@@ -93,7 +93,8 @@ function createHandler(store) {
     }
     if (req.method === 'GET' && url === '/room/state') {
       var roomId = parsed.query && parsed.query.roomId;
-      return send(res, 200, store.dispatch('state', { roomId: roomId }));
+      var sinceSeq = parsed.query && parsed.query.sinceSeq;
+      return send(res, 200, store.dispatch('state', { roomId: roomId, sinceSeq: sinceSeq }));
     }
 
     if (req.method === 'POST' && url === '/api/rooms') {
@@ -175,7 +176,7 @@ if (require.main === module) {
     console.log('  POST /room/join');
     console.log('  POST /room/aim');
     console.log('  POST /room/shot');
-    console.log('  GET  /room/state?roomId=');
+    console.log('  GET  /room/state?roomId=&sinceSeq=');
   });
 }
 

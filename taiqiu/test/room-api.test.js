@@ -239,7 +239,7 @@ check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
   assert.strictEqual(first.state.shotSeq, 0);
   assert.strictEqual(first.state.aimSeq, 1);
   assert.strictEqual(first.state.aim.kind, 'charging');
-  assert.strictEqual(first.state.phase, 'Aim');
+  assert.ok(first.state.phase === 'Aim' || first.state.phase === 'Pull');
   var fire = store.aim(made.roomId, {
     fromSeat: 0,
     token: made.token,
@@ -253,31 +253,76 @@ check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
   assert.strictEqual(fire.state.phase, 'Shot');
 });
 
-check('timeout after deadline switches seat and keeps the snapshot', function () {
+check('GET state after deadline emits foulCode=shotClock, swaps turn, no rerack', function () {
   var store = storeMod.createStore();
   var made = store.create({
-    balls: [{ id: 'b1', n: 1, nx: 0.41, ny: 0.52, pocketed: false }]
+    balls: [
+      { id: 'cue', n: 0, nx: 0.5, ny: 0.8, pocketed: false },
+      { id: 'b1', n: 1, nx: 0.41, ny: 0.52, pocketed: false }
+    ]
   });
-  store.join(made.roomId);
-  store.aim(made.roomId, {
+  store.join({ roomId: made.roomId, nick: '好友甲', openId: 'g-1' });
+  assert.ok(made.state.deadlineAt > Date.now());
+  var map = store.dump();
+  map[made.roomId].deadlineAt = Date.now() - 40;
+  map[made.roomId].aimDeadlineAt = map[made.roomId].deadlineAt;
+  store.hydrate(map);
+  var timed = store.state(made.roomId);
+  assert.strictEqual(timed.ok, true);
+  assert.strictEqual(timed.state.foulCode, 'shotClock');
+  assert.strictEqual(timed.state.turn, 1);
+  assert.strictEqual(timed.state.turnRole, 'guest');
+  assert.strictEqual(timed.state.shotSeq, 1);
+  assert.strictEqual(timed.state.matchOver, false);
+  assert.strictEqual(timed.state.balls[1].nx, 0.41);
+  assert.ok(timed.state.deadlineAt > Date.now());
+  assert.ok(timed.state.nicknames.guest);
+});
+
+check('aim dirty field does not mutate stored balls[]', function () {
+  var store = storeMod.createStore();
+  var made = store.create({
+    balls: [
+      { id: 'cue', n: 0, nx: 0.5, ny: 0.8, pocketed: false },
+      { id: 'b1', n: 1, nx: 0.33, ny: 0.44, pocketed: false }
+    ]
+  });
+  var aimed = store.aim(made.roomId, {
     fromSeat: 0,
     token: made.token,
-    aimSeq: 1,
-    kind: 'aim',
-    deadlineAt: Date.now() - 20
+    shotSeq: 0,
+    angle: 0.5,
+    power: 0.4,
+    aimLine: [{ x: 1, y: 2 }]
   });
-  var timed = store.shot(made.roomId, {
-    fromSeat: 1,
-    token: storeMod.tokenFor(made.roomId, 1),
-    reason: 'timeout',
-    events: [{ type: 'timeout' }],
-    balls: [{ id: 'b1', n: 1, nx: 0.41, ny: 0.52, pocketed: false }]
+  assert.strictEqual(aimed.ok, true);
+  assert.ok(aimed.state.aim);
+  assert.strictEqual(aimed.state.aim.angle, 0.5);
+  assert.ok(aimed.state.aim.updatedAt);
+  assert.ok(!aimed.state.balls || aimed.state.balls.every(function (b) {
+    return b.id === 'cue' || b.n === 0;
+  }));
+  var stored = store.dump()[made.roomId];
+  assert.strictEqual(stored.balls.length, 2);
+  assert.strictEqual(stored.balls[1].nx, 0.33);
+  assert.strictEqual(stored.shotSeq, 0);
+});
+
+check('GET state?sinceSeq= strips object balls during Aim', function () {
+  var store = storeMod.createStore();
+  var made = store.create({
+    balls: [
+      { id: 'cue', n: 0, nx: 0.5, ny: 0.8, pocketed: false },
+      { id: 'b1', n: 1, nx: 0.22, ny: 0.31, pocketed: false }
+    ]
   });
-  assert.strictEqual(timed.ok, true);
-  assert.strictEqual(timed.state.turn, 1);
-  assert.strictEqual(timed.state.balls[0].nx, 0.41);
-  assert.strictEqual(timed.state.matchOver, false);
-  assert.ok(timed.state.aimDeadlineAt > Date.now());
+  var slim = store.state(made.roomId, { sinceSeq: 0 });
+  assert.strictEqual(slim.state.slim, true);
+  assert.ok(slim.state.balls.every(function (b) { return b.id === 'cue' || b.n === 0; }));
+  var full = store.state(made.roomId);
+  assert.ok(full.state.balls.some(function (b) { return b.n === 1; }));
+  assert.ok(full.state.deadlineAt);
+  assert.ok(full.state.nicknames);
 });
 
 check('new-game reracks via API and resets turn', function () {

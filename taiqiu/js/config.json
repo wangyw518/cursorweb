@@ -16,6 +16,7 @@
   "previewBounces": 3,
   "previewLength": 720,
   "previewTableSpan": 1.25,
+  "aimLineMinFrac": 0.55,
   "wallRadius": 3.2,
   "pocketRadius": 17.22,
   "railThickness": 24,

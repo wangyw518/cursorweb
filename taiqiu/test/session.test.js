@@ -611,11 +611,12 @@ check('zone pick under cue center uses StarZone names', function () {
 function mockCtx() {
   var noop = function () {};
   var grad = { addColorStop: noop };
-  var log = { strokes: [], fills: [], lineWidths: [] };
+  var log = { strokes: [], fills: [], lineWidths: [], texts: [] };
   return new Proxy({
     createLinearGradient: function () { return grad; },
     createRadialGradient: function () { return grad; },
     measureText: function () { return { width: 10 }; },
+    fillText: function (text) { log.texts.push(String(text)); },
     _log: log
   }, {
     get: function (target, key) {
@@ -630,6 +631,14 @@ function mockCtx() {
       return true;
     }
   });
+}
+
+function expireRoomClock(roomId) {
+  var dump = roomApi.mock.store.dump();
+  dump[roomId].deadlineAt = Date.now() - 80;
+  dump[roomId].aimDeadlineAt = dump[roomId].deadlineAt;
+  roomApi.mock.store.hydrate(dump);
+  if (roomApi.mock._flush) roomApi.mock._flush();
 }
 
 check('legal StarZone land flash is a 1-frame tile stroke, not particles only', function () {
@@ -681,7 +690,7 @@ check('versus HUD names fall back to 房主/好友 and never P1/P2', function ()
   assert.strictEqual(JSON.stringify(dbg).indexOf('P1'), -1);
 });
 
-check('aim timeout switches turn, keeps object balls, and banners', function () {
+check('aim timeout is display-only; server shotClock swaps turn without rerack', function () {
   var host = fresh();
   sessionMod.createRoom(host);
   var guest = sessionMod.create(viewport(), config, { skipSplash: true });
@@ -689,29 +698,44 @@ check('aim timeout switches turn, keeps object balls, and banners', function () 
   sessionMod.pullRoom(host);
   var one = balls.findByN(host.balls, 1);
   one.x += 15;
+  sessionMod.lockObjectBalls(host);
   var oneX = one.x;
-  var due = Date.now() - 50;
-  roomApi.aim(host.room.roomId, {
-    fromSeat: 0,
-    token: host.room.token,
-    aimSeq: 1,
-    kind: 'aim',
-    aimAngle: -1.2,
-    power: 0.2,
-    deadlineAt: due
-  });
-  host.aimDeadlineAt = due;
+  expireRoomClock(host.room.roomId);
+  host.aimDeadlineAt = Date.now() - 80;
+  var beforeTurn = host.turn;
   var res = sessionMod.timeoutAim(host);
   assert.ok(res);
-  assert.strictEqual(res.kind, 'timeout');
+  assert.strictEqual(res.kind, 'timeout-wait');
   assert.strictEqual(host.turn, 1);
+  assert.notStrictEqual(host.turn, beforeTurn);
   assert.strictEqual(host.phase, fsm.PHASE.Aim);
   assert.ok(Math.abs(balls.findByN(host.balls, 1).x - oneX) < 0.01);
   assert.ok(host.banner && host.banner.kind === 'foul');
   assert.ok(host.banner.text.indexOf('超时') !== -1);
+  assert.ok(host.banner.detail);
+  assert.ok(host.aimDeadlineAt > Date.now());
+  var guestOneX = balls.findByN(guest.balls, 1).x;
   sessionMod.pullRoom(guest);
   assert.strictEqual(guest.turn, 1);
-  assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - oneX) < 0.01);
+  assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - guestOneX) < 0.01);
+});
+
+check('versus HUD chips use nicks and 轮到你出杆, never P1/P2', function () {
+  var s = fresh();
+  sessionMod.createRoom(s);
+  s.versus = true;
+  s.names = ['星券台球玩家甲', 'Li'];
+  s.turn = 0;
+  s.room.guestJoined = true;
+  s.hotseat = false;
+  var ctx = mockCtx();
+  hud.drawChrome(ctx, s);
+  var blob = ctx._log.texts.join('|');
+  assert.ok(blob.indexOf('星券台球玩家…') !== -1);
+  assert.ok(blob.indexOf('Li') !== -1);
+  assert.ok(blob.indexOf('轮到你出杆') !== -1);
+  assert.strictEqual(blob.indexOf('P1'), -1);
+  assert.strictEqual(blob.indexOf('P2'), -1);
 });
 
 check('aim preview does not advance shotSeq', function () {
@@ -795,7 +819,7 @@ check('local AI mode reuses 2P rules without opening a room', function () {
   assert.strictEqual(s.room, null);
   assert.strictEqual(s.names[1], '简单AI');
   assert.strictEqual(hud.nameOf(s, 1), '简单AI');
-  assert.strictEqual(hud.turnLabel(s), '轮到你出杆');
+  assert.strictEqual(hud.turnLabel(s), '轮到你');
   assert.ok(s.aimDeadlineAt > Date.now() + 15000);
   assert.strictEqual(sessionMod.canAim(s), true);
 

@@ -62,6 +62,8 @@
       hint: { x: viewport.width - pad, y: playTop + 10 },
       turn: { x: cx, y: top + 68 },
       clock: { x: viewport.width - pad, y: top + 36 },
+      name0: { x: pad, y: top + 36, w: 102, h: 22 },
+      name1: { x: pad + 110, y: top + 36, w: 102, h: 22 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 34, w: Math.max(80, viewport.width - pad * 2 - 52), h: 10 },
       powerLabel: { x: viewport.width - pad, y: playBottom + 43 },
@@ -93,6 +95,10 @@
   function hitTest(ui, x, y, phase, session) {
     if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
+      if (session && (session.mode === 'practice' || (session.settle && session.settle.practice))) {
+        if (inRect(ui.settleCard, x, y)) return 'settle-block';
+        return 'settle-block';
+      }
       if (ui.back && inRect(ui.back, x, y)) return 'back';
       if ((!session || !session.versus) && inRect(ui.share, x, y)) return 'share';
       if (inRect(ui.settleCard, x, y)) return 'settle-block';
@@ -152,7 +158,7 @@
   function turnLabel(session) {
     if (!session.versus) return '';
     var mine = ownTurn(session);
-    if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
+    if (isAiMode(session)) return mine ? '轮到你' : 'AI出杆中';
     var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
     if (rem) return '对方瞄准中';
     if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
@@ -161,8 +167,9 @@
 
   function settleOutcome(session, s) {
     s = s || session.settle || {};
-    if (isPractice(session) || (!session.versus && !s.versus)) {
-      return '本局星币';
+    if (isPractice(session) || s.practice) return '本局星币';
+    if (!session.versus && !s.versus) {
+      return (s.win || s.reason === 'nine') ? '你赢了' : '本杆星币';
     }
     if (s.outcome === 'win') return '你赢了';
     if (s.outcome === 'lose') return '你输了';
@@ -199,6 +206,26 @@
     return Math.max(0, Math.ceil((at - Date.now()) / 1000));
   }
 
+  function drawNameChip(ctx, box, session, seat, colors) {
+    if (!box) return;
+    var active = session.versus && session.turn === seat &&
+      !(session.hotseat && !(session.room && session.room.guestJoined) && seat === 1);
+    var label = nameOf(session, seat) + ' ' + ((session.scores && session.scores[seat]) || 0);
+    ctx.save();
+    roundRect(ctx, box.x, box.y, box.w, box.h, 8);
+    ctx.fillStyle = active ? 'rgba(61, 42, 24, 0.92)' : 'rgba(24, 18, 12, 0.55)';
+    ctx.fill();
+    ctx.strokeStyle = active ? '#F5D76E' : (colors.buttonBorder || '#D4B483');
+    ctx.lineWidth = active ? 2 : 1;
+    ctx.stroke();
+    ctx.fillStyle = active ? '#F5D76E' : (colors.hud || '#F4E8D4');
+    ctx.font = (active ? 'bold 12px ' : '12px ') + FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, box.x + box.w * 0.5, box.y + box.h * 0.5 + 1);
+    ctx.restore();
+  }
+
   function drawButton(ctx, btn, colors, pressed) {
     ctx.save();
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 10);
@@ -229,28 +256,39 @@
     ctx.fillStyle = colors.hudDim;
     ctx.font = '12px ' + FONT;
     var mine = ownTurn(session);
-    var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
-    if (session.versus) targetText = turnLabel(session) + ' · ' + targetText;
-    ctx.fillText(targetText, ui.target.x, ui.target.y);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = colors.hud;
-    ctx.font = '12px ' + FONT;
-    var bestText = session.versus
-      ? (nameOf(session, 0) + ' ' + ((session.scores && session.scores[0]) || 0) +
-        ' · ' + nameOf(session, 1) + ' ' + ((session.scores && session.scores[1]) || 0))
-      : (isPractice(session)
-        ? ('本局 ' + ((session.scores && session.scores[0]) || 0) + ' 星币')
-        : ('最佳 ' + (session.best || 0) + ' 星币'));
-    ctx.fillText(bestText, ui.best.x, ui.best.y);
+    if (isPractice(session)) {
+      ctx.fillStyle = colors.hud;
+      ctx.font = 'bold 13px ' + FONT;
+      ctx.fillText('练习  ·  ' + ((session.scores && session.scores[0]) || 0) + ' 星币', ui.target.x, ui.target.y);
+      ctx.fillStyle = colors.hudDim;
+      ctx.font = '12px ' + FONT;
+      ctx.fillText(lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成', ui.best.x, ui.best.y);
+    } else if (session.versus) {
+      drawNameChip(ctx, ui.name0 || { x: ui.best.x, y: ui.target.y - 14, w: 102, h: 22 }, session, 0, colors);
+      drawNameChip(ctx, ui.name1 || { x: ui.best.x + 110, y: ui.target.y - 14, w: 102, h: 22 }, session, 1, colors);
+      ctx.fillStyle = mine ? '#F5D76E' : colors.hudDim;
+      ctx.font = 'bold 12px ' + FONT;
+      ctx.textAlign = 'left';
+      ctx.fillText(turnLabel(session) + (lowest ? (' · 目标 ' + lowest.n + ' 号') : ''), ui.target.x, ui.turn ? ui.turn.y - 2 : ui.best.y + 16);
+    } else {
+      var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
+      ctx.fillText(targetText, ui.target.x, ui.target.y);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = colors.hud;
+      ctx.font = '12px ' + FONT;
+      ctx.fillText('最佳 ' + (session.best || 0) + ' 星币', ui.best.x, ui.best.y);
+    }
 
     if (session.versus && session.phase !== 'Splash' && session.phase !== 'Settle') {
       var clock = remainSec(session);
       if (clock > 0 && session.phase === 'Aim') {
+        ctx.save();
         ctx.textAlign = 'center';
         ctx.fillStyle = clock <= 5 ? '#F87171' : '#F5D76E';
+        if (clock <= 5) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(Date.now() / 160));
         ctx.font = (clock <= 5 ? 'bold 34px ' : 'bold 26px ') + FONT;
         ctx.fillText(String(clock), ui.count ? ui.count.x : session.viewport.width * 0.5, ui.count ? ui.count.y : ui.title.y + 62);
+        ctx.restore();
       }
     }
 
@@ -335,13 +373,20 @@
     }
 
     if (session.banner && session.banner.text) {
+      var hasDetail = !!(session.banner.detail);
+      var bh = hasDetail ? 40 : 26;
       ctx.fillStyle = session.banner.kind === 'foul' ? 'rgba(120, 28, 28, 0.86)' : 'rgba(36, 24, 15, 0.82)';
-      roundRect(ctx, 18, ui.title.y + 56, session.viewport.width - 36, 26, 8);
+      roundRect(ctx, 18, ui.title.y + 52, session.viewport.width - 36, bh, 8);
       ctx.fill();
       ctx.fillStyle = '#FDE68A';
       ctx.font = 'bold 13px ' + FONT;
       ctx.textAlign = 'center';
-      ctx.fillText(session.banner.text, session.viewport.width * 0.5, ui.title.y + 73);
+      ctx.fillText(session.banner.text, session.viewport.width * 0.5, ui.title.y + (hasDetail ? 68 : 70));
+      if (hasDetail) {
+        ctx.font = '11px ' + FONT;
+        ctx.fillStyle = '#FECACA';
+        ctx.fillText(session.banner.detail, session.viewport.width * 0.5, ui.title.y + 84);
+      }
     } else if (session.toast && session.toast.text) {
       ctx.fillStyle = colors.hud;
       ctx.font = '12px ' + FONT;
@@ -390,11 +435,13 @@
 
     ctx.font = 'bold 32px ' + FONT;
     ctx.fillStyle = '#F5D76E';
-    if (s.versus && s.scores) {
+    if (s.versus && (s.scores || s.stars)) {
+      var hostStar = (s.stars && (s.stars.host != null ? s.stars.host : s.stars[0])) || (s.scores && s.scores[0]) || 0;
+      var guestStar = (s.stars && (s.stars.guest != null ? s.stars.guest : s.stars[1])) || (s.scores && s.scores[1]) || 0;
       ctx.font = 'bold 18px ' + FONT;
       ctx.fillText(
-        nameOf({ names: s.names }, 0) + ' ' + (s.scores[0] || 0) +
-          '  ·  ' + nameOf({ names: s.names }, 1) + ' ' + (s.scores[1] || 0),
+        nameOf({ names: s.names }, 0) + ' ' + hostStar +
+          '  ·  ' + nameOf({ names: s.names }, 1) + ' ' + guestStar,
         ui.settleScore.x,
         ui.settleScore.y + 8
       );
@@ -425,9 +472,11 @@
     ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 16);
 
     drawButton(ctx, ui.replay, colors, session.pressed === 'replay');
-    if (ui.back) drawButton(ctx, ui.back, colors, session.pressed === 'back');
-    if (!session.versus && ui.share) {
-      drawButton(ctx, ui.share, colors, session.pressed === 'share');
+    if (!isPractice(session) && !s.practice) {
+      if (ui.back) drawButton(ctx, ui.back, colors, session.pressed === 'back');
+      if (!session.versus && ui.share) {
+        drawButton(ctx, ui.share, colors, session.pressed === 'share');
+      }
     }
     ctx.restore();
   }
@@ -537,6 +586,7 @@
     ownTurn: ownTurn,
     remainSec: remainSec,
     isAiMode: isAiMode,
-    isPractice: isPractice
+    isPractice: isPractice,
+    drawNameChip: drawNameChip
   };
 });

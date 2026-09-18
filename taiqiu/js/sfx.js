@@ -89,7 +89,14 @@
     });
   }
 
+  function vibe() {
+    try {
+      if (typeof wx !== 'undefined' && wx.vibrateShort) wx.vibrateShort({ type: 'medium' });
+    } catch (err) {}
+  }
+
   function foul() {
+    vibe();
     return gated('foul', 180, function () {
       return tone(196, 0.10, 'square', 0.07) && tone(131, 0.16, 'triangle', 0.055, 0.05);
     });

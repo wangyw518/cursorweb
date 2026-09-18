@@ -240,7 +240,10 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = flashing ? '#FFFFFF' : hex;
-      ctx.fillText(t.label + ' +' + t.bonusXingbi, p.x, p.y + s * 0.78);
+      ctx.fillText(t.label, p.x, p.y + s * 0.78);
+      ctx.font = 'bold ' + Math.max(7, 8 * p.s) + 'px ' + FONT;
+      ctx.textAlign = 'right';
+      ctx.fillText('+' + t.bonusXingbi, p.x + s * 0.72, p.y - s * 0.58);
       ctx.restore();
     }
   }

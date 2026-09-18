@@ -9,8 +9,8 @@
  *   POST /room/create → { roomId, role: 'host', state }
  *   POST /room/join   { roomId } → { role: 'guest', state }
  *   POST /room/shot   { roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }
- *   POST /room/aim    { roomId, fromSeat, token, aimSeq, kind, aimAngle, power, ax, ay, preview }
- *   GET  /room/state?roomId= → full authoritative snapshot (plus names / aim / aimSeq)
+ *   POST /room/aim    { roomId, shotSeq, angle, power, aimLine? } (Aim|Pull only; no balls[])
+ *   GET  /room/state?roomId=&sinceSeq= → snapshot; Aim/Pull + sinceSeq>=shotSeq strips object balls
  *
  * Turn rules (authoritative on the room):
  *   legal pocket of 1–8 → same seat continues
@@ -159,7 +159,11 @@
     if (!next.names) next.names = ['房主', '好友'];
     if (!next.nicknames) next.nicknames = { host: next.names[0], guest: next.names[1] };
     if (next.deadlineAt == null) next.deadlineAt = next.aimDeadlineAt || 0;
+    if (next.aimDeadlineAt == null) next.aimDeadlineAt = next.deadlineAt || 0;
+    if (next.turnOpenId == null) next.turnOpenId = '';
     if (next.aim && next.aim.angle == null && next.aim.aimAngle != null) next.aim.angle = next.aim.aimAngle;
+    if (next.aim && next.aim.aimAngle == null && next.aim.angle != null) next.aim.aimAngle = next.aim.angle;
+    if (next.phase === 'Pull') next.phase = 'Aim';
     return next;
   }
 
@@ -227,7 +231,10 @@
       winnerOpenId: state.winnerOpenId,
       stars: state.stars,
       foulCode: state.foulCode,
-      foulHint: state.foulHint
+      foulHint: state.foulHint,
+      turnOpenId: state.turnOpenId,
+      pocketScore: state.pocketScore,
+      zoneBonus: state.zoneBonus
     };
   }
 
@@ -256,6 +263,12 @@
       winner: payload.winner,
       guestJoined: payload.guestJoined,
       names: payload.names,
+      nick: payload.nick,
+      displayName: payload.displayName,
+      openId: payload.openId,
+      winnerOpenId: payload.winnerOpenId,
+      pocketScore: payload.pocketScore,
+      zoneBonus: payload.zoneBonus,
       nextDeadlineAt: payload.nextDeadlineAt
     };
   }
@@ -324,10 +337,13 @@
     return res;
   };
 
-  LocalMockRoom.prototype.state = function (roomId) {
-    if (roomId && typeof roomId === 'object') roomId = roomId.roomId;
+  LocalMockRoom.prototype.state = function (roomId, opts) {
+    if (roomId && typeof roomId === 'object' && roomId.roomId) {
+      opts = opts || roomId;
+      roomId = roomId.roomId;
+    }
     this._hydrate();
-    return decorateGet(this.store.state(roomId));
+    return decorateGet(this.store.state(roomId, opts || {}));
   };
 
   LocalMockRoom.prototype.reset = function () {
@@ -439,7 +455,10 @@
     if (roomId && typeof roomId === 'object') {
       payload = {
         roomId: roomId.roomId,
-        name: roomId.name || roomId.guestName
+        name: roomId.name || roomId.guestName || roomId.nick || roomId.displayName,
+        nick: roomId.nick || roomId.displayName || roomId.name,
+        displayName: roomId.displayName || roomId.nick || roomId.name,
+        openId: roomId.openId || roomId.openid
       };
     }
     if (usingHttp()) return httpCall('POST', '/room/join', payload, cb);
@@ -473,11 +492,21 @@
 
   function state(roomId, cb) {
     var id = roomId;
-    if (roomId && typeof roomId === 'object') id = roomId.roomId;
-    if (usingHttp()) {
-      return httpCall('GET', '/room/state?roomId=' + encodeURIComponent(id), null, cb);
+    var sinceSeq;
+    if (typeof cb !== 'function' && arguments.length >= 2 && typeof arguments[1] === 'object') {
+      sinceSeq = arguments[1] && arguments[1].sinceSeq;
+      cb = arguments[2];
     }
-    return done(mock.state(id), cb);
+    if (roomId && typeof roomId === 'object') {
+      id = roomId.roomId;
+      if (roomId.sinceSeq != null) sinceSeq = roomId.sinceSeq;
+    }
+    if (usingHttp()) {
+      var q = '/room/state?roomId=' + encodeURIComponent(id);
+      if (sinceSeq != null && sinceSeq !== '') q += '&sinceSeq=' + encodeURIComponent(sinceSeq);
+      return httpCall('GET', q, null, cb);
+    }
+    return done(mock.state(id, { sinceSeq: sinceSeq }), cb);
   }
 
   function resetMemory() {
