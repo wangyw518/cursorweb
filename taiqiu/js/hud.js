@@ -23,10 +23,10 @@
     return {
       title: { x: pad, y: top + 16 },
       target: { x: pad, y: top + 36 },
-      best: { x: viewport.width - pad, y: top + 16 },
+      best: { x: viewport.width - pad, y: top + 50 },
       mode: {
         x: viewport.width - pad - 78,
-        y: top + 26,
+        y: top + 8,
         w: 78,
         h: 26,
         label: '2D / 3D'

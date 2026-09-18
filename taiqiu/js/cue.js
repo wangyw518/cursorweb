@@ -86,7 +86,7 @@
   function stickPose(cue, cueBall) {
     if (!cueBall) return null;
     var back = 36 + cue.power * 54;
-    var len = 168;
+    var len = 198;
     var tx = cueBall.x - cue.ax * (cueBall.r + 3 + cue.power * 10);
     var ty = cueBall.y - cue.ay * (cueBall.r + 3 + cue.power * 10);
     return {

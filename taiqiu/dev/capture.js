@@ -102,7 +102,14 @@ async function main() {
 
   var boot = await evalExpr('!!window.__taiqiu && !!window.__taiqiu.session');
   if (!boot) throw new Error('game did not boot');
+  await evalExpr('(function(){var g=window.__taiqiu; g.sessionMod.restart(g.session); g.session.best=0; g.session.skinProgress=0;})()');
+  await sleep(80);
   await shot('taiqiu_table_ready');
+
+  await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.mode; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
+  await sleep(60);
+  await shot('taiqiu_view_3d_table');
+  await evalExpr('window.__taiqiu.sessionMod.toggleView(window.__taiqiu.session)');
 
   var ball = await evalExpr('(function(){var b=window.__taiqiu.session.balls.filter(function(x){return x.id==="cue";})[0]; return {x:b.x,y:b.y};})()');
   await evalExpr(

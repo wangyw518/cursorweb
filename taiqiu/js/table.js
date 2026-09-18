@@ -91,10 +91,10 @@
     var t = (y - felt.y) / felt.h;
     if (t < 0) t = 0;
     if (t > 1) t = 1;
-    var scale = 0.74 + t * 0.26;
+    var scale = 0.58 + t * 0.42;
     return {
       x: felt.cx + (x - felt.cx) * scale,
-      y: felt.y + felt.h * 0.08 + t * felt.h * 0.9,
+      y: felt.y + felt.h * 0.04 + t * felt.h * 0.96,
       s: scale
     };
   }

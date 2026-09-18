@@ -131,6 +131,20 @@ check('firing from a pull-back starts the rolling phase', function () {
   assert.ok(cueBall.vy < 0);
 });
 
+check('a live shot reaches settle through physics', function () {
+  var s = fresh();
+  var cueBall = balls.cueBall(s.balls);
+  sessionMod.handlePointerDown(s, cueBall.x, cueBall.y + 12);
+  sessionMod.handlePointerMove(s, cueBall.x + 6, cueBall.y + 108);
+  sessionMod.handlePointerUp(s, cueBall.x + 6, cueBall.y + 108);
+  var i;
+  for (i = 0; i < 720; i++) sessionMod.update(s, config.fixedDt);
+  assert.strictEqual(s.phase, 'settle');
+  assert.ok(s.settle);
+  assert.ok(s.settle.points === 0 || s.settle.points > 0);
+  assert.strictEqual(s.settle.disclaimer, config.disclaimer);
+});
+
 check('tile pick under cue center uses geometric tiles', function () {
   var s = fresh();
   var tile = s.tiles[3];

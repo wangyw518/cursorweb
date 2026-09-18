@@ -18,7 +18,7 @@ AppID: `wxc8683bd9c1599d7d`
 
 Do **not** import the repository root. The playable project root is `taiqiu/`.
 
-`dev/`, `test/`, and `shots/` are pack-ignored browser smoke / node tests / screenshots. They are not part of the WeChat package.
+`dev/`, `test/`, and `shots/` are pack-ignored browser smoke / node tests / screenshots. They are not part of the WeChat package. Preview captures live in `shots/`.
 
 ## Loop
 
