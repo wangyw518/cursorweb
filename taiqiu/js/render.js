@@ -180,6 +180,37 @@
     if (session.landFlash.frames <= 0) session.landFlash = null;
   }
 
+  function findLandFlashTile(session) {
+    if (!session.landFlash || session.landFlash.frames <= 0) return null;
+    var i;
+    for (i = 0; i < session.tiles.length; i++) {
+      if (session.tiles[i].id === session.landFlash.tileId) return session.tiles[i];
+    }
+    return null;
+  }
+
+  function paintLandFlashDiamond(ctx, session, tile, sizeScale) {
+    var p = table.project(tile.x, tile.y, session.table, session.viewMode);
+    var s = tile.size * sizeScale * p.s;
+    drawDiamond(ctx, p.x, p.y, s);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 3.6;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    return p;
+  }
+
+  function drawLandFlash(ctx, session) {
+    var tile = findLandFlashTile(session);
+    if (!tile) return;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    paintLandFlashDiamond(ctx, session, tile, 0.62);
+    ctx.restore();
+  }
+
   function drawTiles(ctx, session) {
     var colors = session.config.colors;
     var i;
@@ -190,15 +221,11 @@
       var hex = zoneColor(t.kind, colors);
       var flashing = tileHasLandFlash(session, t);
       ctx.save();
-      drawDiamond(ctx, p.x, p.y, s);
       if (flashing) {
         ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
-        ctx.fill();
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 3.2;
-        ctx.stroke();
+        paintLandFlashDiamond(ctx, session, t, 0.5);
       } else {
+        drawDiamond(ctx, p.x, p.y, s);
         ctx.globalAlpha = 0.16;
         ctx.fillStyle = hex;
         ctx.fill();
@@ -390,6 +417,7 @@
     }
     drawCueStick(ctx, session);
     fx.draw(ctx, session.particles);
+    drawLandFlash(ctx, session);
     hud.drawChrome(ctx, session);
     hud.drawSplash(ctx, session);
     if (!(session.landFlash && session.landFlash.frames > 0)) {
@@ -402,6 +430,7 @@
     draw: draw,
     drawTiles: drawTiles,
     drawBall: drawBall,
+    drawLandFlash: drawLandFlash,
     tileHasLandFlash: tileHasLandFlash
   };
 });

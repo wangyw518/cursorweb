@@ -177,16 +177,24 @@ check('zone pick under cue center uses StarZone names', function () {
 function mockCtx() {
   var noop = function () {};
   var grad = { addColorStop: noop };
+  var log = { strokes: [], fills: [], lineWidths: [] };
   return new Proxy({
     createLinearGradient: function () { return grad; },
     createRadialGradient: function () { return grad; },
-    measureText: function () { return { width: 10 }; }
+    measureText: function () { return { width: 10 }; },
+    _log: log
   }, {
     get: function (target, key) {
       if (key in target) return target[key];
       return noop;
     },
-    set: function () { return true; }
+    set: function (target, key, value) {
+      if (key === 'strokeStyle') target._log.strokes.push(value);
+      if (key === 'fillStyle') target._log.fills.push(value);
+      if (key === 'lineWidth') target._log.lineWidths.push(value);
+      target[key] = value;
+      return true;
+    }
   });
 }
 
@@ -206,7 +214,13 @@ check('legal StarZone land flash is a 1-frame tile stroke, not particles only', 
   assert.strictEqual(s.landFlash.tileId, zone.id);
   assert.strictEqual(s.landFlash.frames, 1);
   assert.ok(s.particles.length > 0);
-  sessionMod.render(s, mockCtx());
+  var ctx = mockCtx();
+  sessionMod.render(s, ctx);
+  assert.ok(ctx._log.strokes.indexOf('#FFFFFF') !== -1);
+  assert.ok(ctx._log.fills.some(function (fill) {
+    return String(fill).indexOf('255, 255, 255') !== -1;
+  }));
+  assert.ok(ctx._log.lineWidths.some(function (w) { return w >= 3; }));
   assert.strictEqual(s.landFlash, null);
   sessionMod.render(s, mockCtx());
   assert.strictEqual(s.landFlash, null);
