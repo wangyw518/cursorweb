@@ -51,6 +51,7 @@
       balls: session.balls,
       walls: session.table.walls,
       pockets: session.table.pockets,
+      frozen: session.phase === fsm.PHASE.Aim,
       lockObjects: session.phase === fsm.PHASE.Shot && !session.shot.firstContactId
     };
   }
@@ -64,6 +65,33 @@
       h: v.height || 667,
       pad: 12
     };
+  }
+
+  function lockObjectBalls(session) {
+    session.aimLock = balls.snapshotObjectBalls(session.balls);
+    return session.aimLock;
+  }
+
+  function guardObjectBalls(session) {
+    if (session.phase !== fsm.PHASE.Aim) return session;
+    balls.haltBalls(session.balls);
+    if (session.aimLock) balls.restoreObjectBalls(session.balls, session.aimLock);
+    return session;
+  }
+
+  function incomingShotSeq(state) {
+    if (!state) return null;
+    if (state.shotSeq != null) return state.shotSeq;
+    if (state.seq != null) return state.seq;
+    return null;
+  }
+
+  function isAuthoritativeBalls(session, state, opts) {
+    opts = opts || {};
+    if (opts.forceBalls || opts.join) return true;
+    var incoming = incomingShotSeq(state);
+    var last = session.room && session.room.lastSeq != null ? session.room.lastSeq : -1;
+    return incoming != null && incoming > last;
   }
 
   function findCue(session) {
@@ -100,6 +128,7 @@
       worldOf(session),
       session.config
     );
+    guardObjectBalls(session);
     return session.preview;
   }
 
@@ -156,11 +185,18 @@
     };
   }
 
-  function applyRoomState(session, state) {
+  function applyRoomState(session, state, opts) {
     if (!state) return session;
+    opts = opts || {};
     var felt = session.table && session.table.felt;
     var snap = state.ballsSnapshot || state.balls;
-    if (snap) roomApi.applyBalls(session.balls, snap, felt);
+    var applyBallsNow = !!snap && (
+      session.phase !== fsm.PHASE.Aim || isAuthoritativeBalls(session, state, opts)
+    );
+    if (applyBallsNow) {
+      roomApi.applyBalls(session.balls, snap, felt);
+      lockObjectBalls(session);
+    }
     if (state.scores) session.scores = state.scores.slice();
     if (state.turnRole === 'guest') session.turn = 1;
     else if (state.turnRole === 'host') session.turn = 0;
@@ -183,10 +219,11 @@
     }
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
+    if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
     return session;
   }
 
-  function ingestState(session, res) {
+  function ingestState(session, res, opts) {
     var state = res && res.state ? res.state : res;
     if (!state || !state.roomId) return null;
     if (session.phase === fsm.PHASE.Shot ||
@@ -199,7 +236,7 @@
       }
       return state;
     }
-    applyRoomState(session, state);
+    applyRoomState(session, state, opts);
     return state;
   }
 
@@ -249,6 +286,8 @@
     session.winner = null;
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
+    balls.haltBalls(session.balls);
+    lockObjectBalls(session);
     return session;
   }
 
@@ -329,6 +368,7 @@
     }
     session.table = nextTable;
     session.tiles = tiles.create(session.table, session.config);
+    if (session.phase === fsm.PHASE.Aim) lockObjectBalls(session);
   }
 
   function canAim(session) {
@@ -351,6 +391,8 @@
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
     session.phase = fsm.PHASE.Aim;
+    balls.haltBalls(session.balls);
+    lockObjectBalls(session);
   }
 
   /**
@@ -548,13 +590,20 @@
       session.toast.life -= dt;
       if (session.toast.life <= 0) session.toast = null;
     }
-    if (session.room && session.phase === fsm.PHASE.Aim) {
-      session.syncAcc += dt;
-      var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
-      if (session.syncAcc > pollSec) {
-        session.syncAcc = 0;
-        pullRoom(session);
+    if (session.phase === fsm.PHASE.Aim) {
+      // P0-A: freeze the table while aiming / charging. Never step physics.
+      balls.haltBalls(session.balls);
+      guardObjectBalls(session);
+      if (session.room) {
+        session.syncAcc += dt;
+        var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
+        if (session.syncAcc > pollSec) {
+          session.syncAcc = 0;
+          pullRoom(session);
+          guardObjectBalls(session);
+        }
       }
+      return;
     }
     if (session.phase === fsm.PHASE.Shot) {
       var shotEv = physics.step(worldOf(session), dt, session.config);
@@ -657,7 +706,7 @@
         : 0
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
-    if (joined.state) applyRoomState(session, joined.state);
+    if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
   }
@@ -743,6 +792,7 @@
           table.contains(session.table.felt, x, y)) {
         cue.beginDrag(session.cue, x, y, cueBall, dragBounds(session));
         refreshPreview(session);
+        guardObjectBalls(session);
         return { kind: 'aim' };
       }
     }
@@ -753,6 +803,7 @@
     if (session.phase !== fsm.PHASE.Aim || !session.cue.dragging) return { kind: 'none' };
     cue.moveDrag(session.cue, x, y, findCue(session), dragBounds(session));
     refreshPreview(session);
+    guardObjectBalls(session);
     return { kind: 'aim' };
   }
 
@@ -763,6 +814,7 @@
     session.preview = { points: [], ghost: null, bounces: 0 };
     if (!shot.fired) return { kind: 'cancel' };
     if (!canAim(session)) return { kind: 'wait-turn' };
+    guardObjectBalls(session);
     session.lastShotInput = {
       aimAngle: shot.angle,
       power: shot.power,
@@ -791,6 +843,7 @@
       session.toast = { text: '弱AI无目标', life: 1.2 };
       return { kind: 'ai-skip' };
     }
+    guardObjectBalls(session);
     session.lastShotInput = {
       aimAngle: Math.atan2(plan.vy, plan.vx),
       power: plan.power,
@@ -908,6 +961,9 @@
     pullRoom: pullRoom,
     pushRoom: pushRoom,
     canAim: canAim,
+    ingestState: ingestState,
+    applyRoomState: applyRoomState,
+    lockObjectBalls: lockObjectBalls,
     toggleAim3d: toggleAim3d,
     fireAi: fireAi,
     resolvePocket: resolvePocket,

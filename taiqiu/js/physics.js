@@ -248,6 +248,9 @@
   }
 
   function step(world, dt, config) {
+    if (world && world.frozen) {
+      return { cushions: 0, pockets: [], contacts: [], substeps: 0, frozen: true };
+    }
     var balls = world.balls || [];
     var speed = 0;
     var i;
@@ -297,10 +300,14 @@
 
   function preview(origin, dirX, dirY, world, config) {
     var n = norm(dirX, dirY);
-    var points = [{ x: origin.x, y: origin.y }];
+    // Read-only copies — never write origin or object-ball positions.
+    var ox = origin.x;
+    var oy = origin.y;
+    var oid = origin.id || 'cue';
+    var points = [{ x: ox, y: oy }];
     if (n.len < 1e-6) return { points: points, ghost: null, bounces: 0 };
-    var px = origin.x;
-    var py = origin.y;
+    var px = ox;
+    var py = oy;
     var vx = n.x;
     var vy = n.y;
     var remaining = config.previewLength == null ? 280 : config.previewLength;
@@ -325,13 +332,13 @@
       }
       for (j = 0; j < balls.length; j++) {
         var b = balls[j];
-        if (b.pocketed || b === origin || b.id === (origin.id || 'cue')) continue;
+        if (b.pocketed || b === origin || b.id === oid) continue;
         var tB = raycastCircle(px, py, vx, vy, b.x, b.y, b.r + ballR);
         if (tB != null && tB <= remaining && (!best || tB < best.t)) {
           var hx = px + vx * tB - b.x;
           var hy = py + vy * tB - b.y;
           var bn = norm(hx, hy);
-          best = { t: tB, nx: bn.x, ny: bn.y, kind: 'ball', ball: b };
+          best = { t: tB, nx: bn.x, ny: bn.y, kind: 'ball', targetId: b.id };
         }
       }
       if (!best) {
@@ -342,7 +349,7 @@
       var hitY = py + vy * best.t;
       points.push({ x: hitX, y: hitY });
       if (best.kind === 'ball' && !ghost) {
-        ghost = { x: hitX, y: hitY, target: best.ball };
+        ghost = { x: hitX, y: hitY, targetId: best.targetId };
         break;
       }
       remaining -= best.t;

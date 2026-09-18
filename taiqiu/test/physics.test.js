@@ -228,6 +228,24 @@ check('aim preview returns a dashed polyline and optional ghost', function () {
   assert.ok(prev.points.length >= 2);
 });
 
+check('preview and frozen step never write object-ball positions', function () {
+  var t = board();
+  var list = balls.create(t, config);
+  var before = balls.hashObjectBalls(list);
+  var cueBall = balls.cueBall(list);
+  physics.preview(cueBall, 0, -1, {
+    balls: list, walls: t.walls, pockets: t.pockets
+  }, config);
+  assert.strictEqual(balls.hashObjectBalls(list), before);
+  list[1].vx = 40;
+  list[2].vy = -30;
+  physics.step({
+    balls: list, walls: t.walls, pockets: t.pockets, frozen: true
+  }, config.fixedDt, config);
+  assert.strictEqual(balls.hashObjectBalls(list), before);
+  assert.strictEqual(list[1].x, balls.create(t, config)[1].x);
+});
+
 if (failures) {
   console.error(failures + ' failed');
   process.exit(1);

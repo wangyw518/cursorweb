@@ -68,6 +68,131 @@ check('near-rail pull maps on-screen drag length to full power', function () {
   assert.ok(far.power >= 0.99);
 });
 
+function hashObjectBalls(list) {
+  return balls.hashObjectBalls(list);
+}
+
+function placeCueOnRail(session, side) {
+  var cueBall = balls.cueBall(session.balls);
+  var f = session.table.felt;
+  var r = cueBall.r + 1.6;
+  if (side === 'top') {
+    cueBall.x = f.cx;
+    cueBall.y = f.y + r;
+  } else if (side === 'bot') {
+    cueBall.x = f.cx;
+    cueBall.y = f.y + f.h - r;
+  } else if (side === 'left') {
+    cueBall.x = f.x + r;
+    cueBall.y = f.cy - f.h * 0.2;
+  } else {
+    cueBall.x = f.x + f.w - r;
+    cueBall.y = f.cy - f.h * 0.2;
+  }
+  cueBall.vx = 0;
+  cueBall.vy = 0;
+  return cueBall;
+}
+
+check('Aim/pull for 60 frames leaves object-ball x/y hash unchanged', function () {
+  var s = fresh();
+  var cueBall = balls.cueBall(s.balls);
+  var i;
+  for (i = 0; i < s.balls.length; i++) {
+    if (s.balls[i].id === 'cue') continue;
+    s.balls[i].vx = 80 + i * 3;
+    s.balls[i].vy = -40 - i;
+  }
+  cueBall.vx = 50;
+  cueBall.vy = -20;
+  var hash0 = hashObjectBalls(s.balls);
+  sessionMod.handlePointerDown(s, cueBall.x, cueBall.y + 6);
+  for (i = 0; i < 60; i++) {
+    sessionMod.handlePointerMove(s, cueBall.x + Math.sin(i / 4) * 18, cueBall.y + 28 + (i % 12));
+    sessionMod.update(s, config.fixedDt);
+  }
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.cue.dragging, true);
+  assert.strictEqual(hashObjectBalls(s.balls), hash0);
+  for (i = 0; i < s.balls.length; i++) {
+    if (s.balls[i].id === 'cue') continue;
+    assert.strictEqual(s.balls[i].vx, 0);
+    assert.strictEqual(s.balls[i].vy, 0);
+  }
+});
+
+check('2P Aim poll does not overwrite object balls unless shotSeq advanced', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  var one = balls.findByN(host.balls, 1);
+  var oneX = one.x;
+  var hash0 = hashObjectBalls(host.balls);
+  var fake = [];
+  var i;
+  for (i = 0; i < host.balls.length; i++) {
+    var b = host.balls[i];
+    fake.push({
+      id: b.id,
+      n: b.n,
+      x: b.x + (b.id === 'cue' ? 0 : 40),
+      y: b.y + (b.id === 'cue' ? 0 : 25),
+      pocketed: false
+    });
+  }
+  host.room.lastSeq = 3;
+  sessionMod.ingestState(host, {
+    state: {
+      roomId: host.room.roomId,
+      shotSeq: 3,
+      phase: 'Aim',
+      turn: 0,
+      ballsSnapshot: fake
+    }
+  });
+  assert.strictEqual(hashObjectBalls(host.balls), hash0);
+  sessionMod.ingestState(host, {
+    state: {
+      roomId: host.room.roomId,
+      shotSeq: 4,
+      phase: 'Aim',
+      turn: 1,
+      ballsSnapshot: fake
+    }
+  });
+  assert.ok(Math.abs(balls.findByN(host.balls, 1).x - (oneX + 40)) < 0.01);
+  assert.strictEqual(host.turn, 1);
+});
+
+check('cue at mid of each rail can reach power === 1 on-screen', function () {
+  var s = fresh();
+  var vp = viewport();
+  var sides = ['top', 'bot', 'left', 'right'];
+  var i;
+  for (i = 0; i < sides.length; i++) {
+    var side = sides[i];
+    var cueBall = placeCueOnRail(s, side);
+    var edgeX = cueBall.x;
+    var edgeY = cueBall.y;
+    if (side === 'top') edgeY = 8;
+    if (side === 'bot') edgeY = vp.height - 8;
+    if (side === 'left') edgeX = 8;
+    if (side === 'right') edgeX = vp.width - 8;
+    var stick = cue.create(config);
+    cue.beginDrag(stick, cueBall.x, cueBall.y, cueBall, vp);
+    cue.moveDrag(stick, edgeX, edgeY, cueBall, vp);
+    assert.ok(stick.power === 1, side + ' rail power ' + stick.power + ' !== 1');
+    sessionMod.handlePointerDown(s, cueBall.x, cueBall.y);
+    sessionMod.handlePointerMove(s, edgeX, edgeY);
+    assert.ok(s.cue.power === 1, side + ' session power ' + s.cue.power + ' !== 1');
+    var dx = cueBall.x - edgeX;
+    var dy = cueBall.y - edgeY;
+    assert.ok(Math.abs(Math.atan2(dy, dx) - s.cue.angle) < 1e-6, side + ' aim angle');
+    cue.cancelDrag(s.cue);
+  }
+});
+
 check('session starts in Aim with 9-ball order and top view', function () {
   var s = fresh();
   assert.strictEqual(s.phase, fsm.PHASE.Aim);

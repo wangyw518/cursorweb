@@ -121,6 +121,69 @@
     return null;
   }
 
+  function hashObjectBalls(list) {
+    var parts = [];
+    var i;
+    if (!list) return '';
+    for (i = 0; i < list.length; i++) {
+      var b = list[i];
+      if (!b || b.id === 'cue') continue;
+      parts.push(
+        String(b.id) + ':' +
+        Number(b.x).toFixed(4) + ',' +
+        Number(b.y).toFixed(4) + ',' +
+        (b.pocketed ? 1 : 0)
+      );
+    }
+    return parts.join('|');
+  }
+
+  function snapshotObjectBalls(list) {
+    var out = [];
+    var i;
+    if (!list) return out;
+    for (i = 0; i < list.length; i++) {
+      var b = list[i];
+      if (!b || b.id === 'cue') continue;
+      out.push({
+        id: b.id,
+        x: b.x,
+        y: b.y,
+        pocketed: !!b.pocketed
+      });
+    }
+    return out;
+  }
+
+  function restoreObjectBalls(list, snap) {
+    if (!list || !snap || !snap.length) return list;
+    var map = {};
+    var i;
+    for (i = 0; i < snap.length; i++) map[snap[i].id] = snap[i];
+    for (i = 0; i < list.length; i++) {
+      var b = list[i];
+      if (!b || b.id === 'cue') continue;
+      var s = map[b.id];
+      if (!s) continue;
+      b.x = s.x;
+      b.y = s.y;
+      b.pocketed = !!s.pocketed;
+      b.vx = 0;
+      b.vy = 0;
+    }
+    return list;
+  }
+
+  function haltBalls(list) {
+    var i;
+    if (!list) return list;
+    for (i = 0; i < list.length; i++) {
+      list[i].vx = 0;
+      list[i].vy = 0;
+    }
+    return list;
+  }
+
   function unstick(ball, list) {
     var guard = 0;
     while (guard < 12) {
@@ -187,6 +250,10 @@
     remainingCount: remainingCount,
     findByN: findByN,
     findById: findById,
+    hashObjectBalls: hashObjectBalls,
+    snapshotObjectBalls: snapshotObjectBalls,
+    restoreObjectBalls: restoreObjectBalls,
+    haltBalls: haltBalls,
     unstick: unstick,
     respotCue: respotCue,
     spotNine: spotNine
