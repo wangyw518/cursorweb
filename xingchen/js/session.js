@@ -266,7 +266,7 @@
     } else if (cellLabel) {
       var skillPrefix = award.skill ? (skills.label(award.skill) + ' · ') : '';
       session.toast = {
-        text: skillPrefix + '落点格  ' + cellLabel + '  +' + award.score,
+        text: skillPrefix + '落在哪一格  ' + cellLabel + '  +' + award.score,
         ttl: 0.95,
         hex: hex
       };
@@ -275,7 +275,7 @@
     } else if (!award.miss && award.score > 0) {
       session.toast = { text: '拾取  +' + award.score, ttl: 0.85, hex: hex };
     } else {
-      session.toast = { text: '落点格  空', ttl: 0.75, hex: session.config.colors.hudDim };
+      session.toast = { text: '落在哪一格  空', ttl: 0.75, hex: session.config.colors.hudDim };
     }
   }
 

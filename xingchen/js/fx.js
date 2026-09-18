@@ -116,11 +116,11 @@
       var flashing = flashCell && (flashCell === cell || flashCell.i === cell.i);
       ctx.strokeStyle = flashing ? '#FFFFFF' : (colors.grid || '#1E3A5F');
       ctx.globalAlpha = flashing ? 1 : 0.35;
-      ctx.lineWidth = flashing ? 2.2 : 1;
+      ctx.lineWidth = flashing ? 3.2 : 1;
       ctx.strokeRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
       if (flashing) {
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.fillRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillRect(cell.x + 2, cell.y + 2, cell.w - 4, cell.h - 4);
       }
       if (cell.kind === 'empty' || cell.collected) continue;
       var hex = cellHex(cell.kind, colors);

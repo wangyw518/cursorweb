@@ -139,6 +139,7 @@ check('stopped on a relic cell awards grid points and writes local best', functi
   assert.strictEqual(session.settle.isNew, true);
   assert.strictEqual(session.settle.won, true);
   assert.strictEqual(session.settle.cellName, '古星遗物');
+  assert.ok(hud.settleCopy(session.settle).cell.indexOf('落在哪一格') !== -1);
   assert.ok(hud.settleCopy(session.settle).cell.indexOf('古星遗物') !== -1);
   assert.ok(storage.load().best >= 60);
 });

@@ -178,13 +178,13 @@
   }
 
   function landedCellLine(settle) {
-    if (!settle || settle.oob || settle.lastOob) return '落点格  界外';
-    if (settle.cellName) return '落点格  ' + settle.cellName;
-    return '落点格  空';
+    if (!settle || settle.oob || settle.lastOob) return '落在哪一格  界外';
+    if (settle.cellName) return '落在哪一格  ' + settle.cellName;
+    return '落在哪一格  空';
   }
 
   function settleCopy(settle) {
-    if (!settle) return { title: '本局分数', line: '', cell: '落点格  空' };
+    if (!settle) return { title: '本局分数', line: '', cell: '落在哪一格  空' };
     if (settle.needStamina) {
       return { title: '星尘不足', line: '分享或补给后继续', cell: '' };
     }
