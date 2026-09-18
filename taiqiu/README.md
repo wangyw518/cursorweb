@@ -28,10 +28,10 @@ State machine: **Aim → Shot → ResolvePocket → WaitCueStop → StarZone**
 2. **Shot** — fire the cue ball; custom 2D circles / cushions / friction / pockets.
 3. **ResolvePocket** — simplified 9-ball order (lowest numbered object ball first). Scratch, whiff, or wrong first contact is a **foul**.
 4. **WaitCueStop** — only after a valid pocket; cue keeps rolling.
-5. **StarZone** — when the cue ball stops, read the abstract zone under its center. Multipliers: 新星 1 / 流星 1.5 / 彗星 2 / 恒星 3.
-6. **Foul skips StarZone** — no full star multiplier; that shot is **0 星币**.
+5. **StarZone** — when the cue ball stops, read the abstract zone under its center. 落点加成 as 星币 counts: 新星 8 / 流星 16 / 彗星 24 / 恒星 36, plus 得分加成 24.
+6. **Foul skips StarZone** — no 落点加成; that shot is **0 星币**.
 
-Settle UI: 本杆星币, 距最佳 / 新纪录, 再来一杆, plus `虚拟道具，仅限游戏内使用，不可兑换现金`. Best 星币 is stored locally.
+Settle / splash copy is 得分加成 / 落点加成 only — never 倍率开奖 / 中奖 / 翻倍到账 / 押中. Share stub is 分享成绩 (score / rank / 星币). Disclaimer: `虚拟道具，仅限游戏内使用，不可兑换现金`.
 
 ## Table art (compliance)
 
@@ -68,6 +68,7 @@ taiqiu/
     render.js
     fx.js
     storage.js
+    share.js
   dev/preview.html
   test/
   README.md

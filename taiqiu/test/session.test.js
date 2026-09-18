@@ -35,7 +35,7 @@ function viewport() {
 
 function fresh() {
   storage.resetMemory();
-  return sessionMod.create(viewport(), config);
+  return sessionMod.create(viewport(), config, { skipSplash: true });
 }
 
 check('drag aim sets opposite fire direction and clamped power', function () {
@@ -70,7 +70,7 @@ check('aim3d stub does not leave top viewMode', function () {
   assert.strictEqual(s.viewMode, 'top');
 });
 
-check('legal pocket applies StarZone 星币 and stores best', function () {
+check('legal pocket applies 落点加成 星币 and stores best', function () {
   var s = fresh();
   var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
   var settle = sessionMod.debugForceStop(s, {
@@ -82,8 +82,9 @@ check('legal pocket applies StarZone 星币 and stores best', function () {
   assert.strictEqual(s.phase, fsm.PHASE.Settle);
   assert.ok(settle.legal);
   assert.strictEqual(settle.starApplied, true);
-  assert.strictEqual(settle.starMultiplier, 3);
-  assert.strictEqual(settle.coins, config.baseXingbi * 3);
+  assert.strictEqual(settle.pocketBonus, config.pocketBonus);
+  assert.strictEqual(settle.landingBonus, 36);
+  assert.strictEqual(settle.coins, config.pocketBonus + 36);
   assert.strictEqual(s.best, settle.coins);
   assert.strictEqual(storage.load().best, settle.coins);
 });
@@ -144,6 +145,26 @@ check('firing enters Shot then can reach Settle through the GDD machine', functi
   assert.strictEqual(s.phase, fsm.PHASE.Settle);
   assert.ok(s.settle);
   assert.strictEqual(s.settle.disclaimer, config.disclaimer);
+});
+
+check('splash shows disclaimer then start enters Aim', function () {
+  storage.resetMemory();
+  var s = sessionMod.create(viewport(), config);
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  sessionMod.handlePointerDown(s, 180, 320);
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+});
+
+check('share stub is score-only and has no cash copy', function () {
+  var s = fresh();
+  sessionMod.debugForceStop(s, { pocketTarget: true, firstContact: true });
+  var btn = s.ui.share;
+  var res = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
+  assert.strictEqual(res.kind, 'share');
+  assert.ok(res.payload.text.indexOf('星币') !== -1);
+  ['赚钱', '红包', '提现', '到账'].forEach(function (word) {
+    assert.strictEqual(res.payload.text.indexOf(word), -1);
+  });
 });
 
 check('zone pick under cue center uses StarZone names', function () {

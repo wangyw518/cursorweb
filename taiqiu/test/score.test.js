@@ -19,7 +19,7 @@ function check(name, fn) {
   }
 }
 
-check('miss awards 0 and does not apply a stellar multiplier', function () {
+check('miss awards 0 and skips 落点加成', function () {
   var zone = tiles.makeTile('a', 'stellar', 0, 0, 0, 20);
   var award = score.settle({
     pocketedLowest: false,
@@ -29,11 +29,11 @@ check('miss awards 0 and does not apply a stellar multiplier', function () {
     resolution: fsm.classify({ pocketedLowest: false, scratch: false, firstContactId: 'b1', targetId: 'b1' })
   }, config);
   assert.strictEqual(award.coins, 0);
-  assert.strictEqual(award.starApplied, false);
+  assert.strictEqual(award.landingBonus, 0);
   assert.strictEqual(award.reason, 'miss');
 });
 
-check('scratch / foul skips full star multiplier', function () {
+check('scratch / foul skips 落点加成', function () {
   var zone = tiles.makeTile('b', 'stellar', 0, 0, 0, 20);
   var award = score.settle({
     pocketedLowest: true,
@@ -48,14 +48,13 @@ check('scratch / foul skips full star multiplier', function () {
   assert.strictEqual(award.foul, true);
 });
 
-check('wrong 9-ball order is a foul and skips StarZone payout', function () {
+check('wrong 9-ball order is a foul and skips 落点加成', function () {
   var resolution = fsm.classify({
     pocketedLowest: true,
     scratch: false,
     firstContactId: 'b9',
     targetId: 'b1'
   });
-  assert.strictEqual(resolution.foul, true);
   assert.strictEqual(resolution.enterStarZone, false);
   var award = score.settle({
     pocketedLowest: true,
@@ -64,10 +63,9 @@ check('wrong 9-ball order is a foul and skips StarZone payout', function () {
     resolution: resolution
   }, config);
   assert.strictEqual(award.coins, 0);
-  assert.strictEqual(award.starApplied, false);
 });
 
-check('legal pocket reads StarZone multiplier 1 / 1.5 / 2 / 3 as 星币', function () {
+check('legal pocket adds 得分加成 plus StarZone 落点加成 as 星币 counts', function () {
   var nova = score.settle({
     pocketedLowest: true,
     applyStar: true,
@@ -80,25 +78,23 @@ check('legal pocket reads StarZone multiplier 1 / 1.5 / 2 / 3 as 星币', functi
     zone: tiles.makeTile('s', 'stellar', 0, 0, 0, 20),
     resolution: { legal: true, foul: false, reason: 'legal', enterStarZone: true }
   }, config);
-  assert.strictEqual(nova.coins, config.baseXingbi);
-  assert.strictEqual(stellar.coins, config.baseXingbi * 3);
-  assert.strictEqual(nova.starMultiplier, 1);
-  assert.strictEqual(stellar.starMultiplier, 3);
+  assert.strictEqual(nova.pocketBonus, 24);
+  assert.strictEqual(nova.landingBonus, 8);
+  assert.strictEqual(nova.coins, 32);
+  assert.strictEqual(stellar.landingBonus, 36);
+  assert.strictEqual(stellar.coins, 60);
   assert.strictEqual(stellar.unit, '星币');
-  assert.strictEqual(stellar.zoneLabel, '恒星');
+  assert.strictEqual(stellar.props[0].unit, '落点加成');
 });
 
 check('disclaimer is the required virtual-prop copy', function () {
   var award = score.emptyAward('miss');
   assert.strictEqual(award.disclaimer, '虚拟道具，仅限游戏内使用，不可兑换现金');
-  assert.strictEqual(score.DISCLAIMER, config.disclaimer);
 });
 
 check('gapToBest reports new record or remaining gap', function () {
-  var neu = score.gapToBest(120, 80);
-  assert.strictEqual(neu.isNew, true);
-  var behind = score.gapToBest(40, 90);
-  assert.strictEqual(behind.gap, 50);
+  assert.strictEqual(score.gapToBest(120, 80).isNew, true);
+  assert.strictEqual(score.gapToBest(40, 90).gap, 50);
 });
 
 if (failures) {

@@ -11,6 +11,7 @@
     typeof require === 'function' ? require('./hud') : root.TaiqiuHud,
     typeof require === 'function' ? require('./fx') : root.TaiqiuFx,
     typeof require === 'function' ? require('./storage') : root.TaiqiuStorage,
+    typeof require === 'function' ? require('./share') : root.TaiqiuShare,
     typeof require === 'function' ? require('./render') : root.TaiqiuRender
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -27,6 +28,7 @@
   hud,
   fx,
   storage,
+  share,
   render
 ) {
   'use strict';
@@ -77,7 +79,7 @@
     session.balls = balls.create(session.table, session.config);
     session.cue = cue.create(session.config);
     session.stop = stopDetect.create();
-    session.phase = fsm.PHASE.Aim;
+    session.phase = session.skipSplash ? fsm.PHASE.Aim : fsm.PHASE.Aim;
     session.award = null;
     session.settle = null;
     session.settleIn = 0;
@@ -97,7 +99,8 @@
     if (session.target) session.shot.targetId = session.target.id;
   }
 
-  function create(viewport, config) {
+  function create(viewport, config, opts) {
+    opts = opts || {};
     var saved = storage.load();
     var session = {
       viewport: viewport,
@@ -106,6 +109,7 @@
       viewMode: 'top',
       aim3d: false,
       toast: null,
+      lastShare: null,
       phase: fsm.PHASE.Aim,
       best: saved.best || 0,
       skinProgress: saved.skinProgress || 0,
@@ -119,6 +123,7 @@
       shot: { cushions: 0, pocketed: [], firstContactId: null, targetId: null, scratch: false, pocketedLowest: false }
     };
     resetRound(session);
+    if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
     session.update = function (dt) { update(session, dt); };
     session.render = function (ctx) { render.draw(session, ctx); };
     session.handlePointerDown = function (x, y) { return handlePointerDown(session, x, y); };
@@ -205,7 +210,8 @@
       legal: award.legal,
       foul: award.foul,
       starApplied: award.starApplied,
-      starMultiplier: award.starMultiplier,
+      pocketBonus: award.pocketBonus,
+      landingBonus: award.landingBonus,
       zoneLabel: award.zoneLabel,
       quality: award.quality,
       props: award.props,
@@ -224,7 +230,7 @@
       burstX,
       burstY,
       award.legal ? session.config.colors.scorePop : '#94A3B8',
-      award.legal ? 22 : 10
+      8
     );
     return session.settle;
   }
@@ -293,6 +299,10 @@
   function handlePointerDown(session, x, y) {
     var hit = hud.hitTest(session.ui, x, y, session.phase);
     session.pressed = hit;
+    if (session.phase === fsm.PHASE.Splash) {
+      session.phase = fsm.PHASE.Aim;
+      return { kind: 'start' };
+    }
     if (hit === 'aim3d') {
       toggleAim3d(session);
       return { kind: 'aim3d', aim3d: session.aim3d, viewMode: session.viewMode };
@@ -301,6 +311,11 @@
       if (hit === 'replay') {
         restart(session);
         return { kind: 'replay' };
+      }
+      if (hit === 'share') {
+        session.lastShare = share.share(session.settle, session.best);
+        session.toast = { text: '已生成成绩分享', life: 1.4 };
+        return { kind: 'share', payload: session.lastShare };
       }
       return { kind: 'blocked' };
     }

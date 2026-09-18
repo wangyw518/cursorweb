@@ -367,6 +367,7 @@
     drawCueStick(ctx, session);
     fx.draw(ctx, session.particles);
     hud.drawChrome(ctx, session);
+    hud.drawSplash(ctx, session);
     hud.drawSettle(ctx, session);
   }
 

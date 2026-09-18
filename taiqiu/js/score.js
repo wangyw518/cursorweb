@@ -1,6 +1,6 @@
 /**
- * Virtual 星币 only. Star multiplier 1/1.5/2/3 applies after a valid pocket.
- * Foul skips the full star multiplier (never reads StarZone as a payout).
+ * Virtual 星币 only. Legal pocket: 得分加成 + optional 落点加成 (StarZone).
+ * Foul skips 落点加成. No lottery / cash wording.
  */
 (function (root, factory) {
   var api = factory();
@@ -21,19 +21,30 @@
       legal: false,
       foul: reason !== 'miss',
       starApplied: false,
-      starMultiplier: 1,
+      pocketBonus: 0,
+      landingBonus: 0,
       zone: null,
       zoneLabel: '',
       quality: {
         pocket: 0,
         cushions: 0,
-        firstContact: false,
-        multiplier: 1
+        firstContact: false
       },
       props: [],
       skinProgress: 0,
       disclaimer: DISCLAIMER
     };
+  }
+
+  function zoneBonus(zone, config) {
+    if (!zone) return 0;
+    if (zone.bonusXingbi != null) return zone.bonusXingbi;
+    var list = (config && config.starZones) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === zone.kind) return list[i].bonusXingbi || 0;
+    }
+    return 0;
   }
 
   function settle(input, config) {
@@ -46,7 +57,7 @@
     var reason = (resolution && resolution.reason) ||
       (scratch ? 'scratch' : (pocketedLowest ? 'legal' : 'miss'));
     var zone = input.zone || null;
-    var applyStar = !!(input.applyStar && legal && !foul);
+    var applyLanding = !!(input.applyStar && legal && !foul);
 
     if (!legal || foul || !pocketedLowest) {
       var denied = emptyAward(reason);
@@ -56,10 +67,18 @@
       return denied;
     }
 
-    var base = cfg.baseXingbi == null ? 40 : cfg.baseXingbi;
-    var starMul = 1;
-    if (applyStar && zone && zone.multiplier) starMul = zone.multiplier;
-    var coins = Math.round(base * starMul);
+    var pocketBonus = cfg.pocketBonus == null ? 24 : cfg.pocketBonus;
+    var landingBonus = applyLanding ? zoneBonus(zone, cfg) : 0;
+    var coins = pocketBonus + landingBonus;
+    var props = [];
+    if (applyLanding && zone) {
+      props.push({
+        id: zone.kind,
+        name: zone.label || zone.name,
+        amount: landingBonus,
+        unit: '落点加成'
+      });
+    }
 
     return {
       coins: coins,
@@ -68,19 +87,17 @@
       reason: 'legal',
       legal: true,
       foul: false,
-      starApplied: applyStar,
-      starMultiplier: starMul,
+      starApplied: applyLanding,
+      pocketBonus: pocketBonus,
+      landingBonus: landingBonus,
       zone: zone,
       zoneLabel: zone ? (zone.label || zone.name || '') : '',
       quality: {
-        pocket: base,
+        pocket: pocketBonus,
         cushions: input.cushions || 0,
-        firstContact: !!input.firstContactIsTarget,
-        multiplier: starMul
+        firstContact: !!input.firstContactIsTarget
       },
-      props: zone
-        ? [{ id: zone.kind, name: zone.label || zone.name, amount: starMul, unit: '星域倍率' }]
-        : [],
+      props: props,
       skinProgress: 0,
       disclaimer: DISCLAIMER
     };
@@ -97,6 +114,7 @@
     DISCLAIMER: DISCLAIMER,
     UNIT: UNIT,
     emptyAward: emptyAward,
+    zoneBonus: zoneBonus,
     settle: settle,
     gapToBest: gapToBest
   };

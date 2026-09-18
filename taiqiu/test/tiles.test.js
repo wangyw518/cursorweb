@@ -44,7 +44,7 @@ check('StarZones never carry banknote-like fields or denominations', function ()
   tiles.FORBIDDEN_FIELDS.forEach(function (key) {
     assert.strictEqual(Object.prototype.hasOwnProperty.call(t, key), false);
   });
-  assert.strictEqual(t.multiplier, 3);
+  assert.strictEqual(t.bonusXingbi, 36);
 });
 
 check('pickAt returns the abstract zone under the cue-ball center', function () {
@@ -56,13 +56,16 @@ check('pickAt returns the abstract zone under the cue-ball center', function () 
   assert.strictEqual(tiles.pickAt(list, -100, -100), null);
 });
 
-check('config star multipliers are 1 / 1.5 / 2 / 3', function () {
+check('config 落点加成 is 星币 counts, not a 1/5/10/50 money ladder', function () {
   var byId = {};
-  config.starZones.forEach(function (z) { byId[z.id] = z.multiplier; });
-  assert.strictEqual(byId.nova, 1);
-  assert.strictEqual(byId.meteor, 1.5);
-  assert.strictEqual(byId.comet, 2);
-  assert.strictEqual(byId.stellar, 3);
+  config.starZones.forEach(function (z) { byId[z.id] = z.bonusXingbi; });
+  assert.strictEqual(byId.nova, 8);
+  assert.strictEqual(byId.meteor, 16);
+  assert.strictEqual(byId.comet, 24);
+  assert.strictEqual(byId.stellar, 36);
+  [1, 5, 10, 50, 100].forEach(function (n) {
+    assert.ok(config.starZones.every(function (z) { return z.bonusXingbi !== n; }));
+  });
 });
 
 if (failures) {

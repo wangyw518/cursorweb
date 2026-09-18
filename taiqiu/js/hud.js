@@ -34,11 +34,14 @@
       hint: { x: cx, y: playBottom + 14 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 14 },
       power: { x: pad + 24, y: playBottom + 22, w: viewport.width - pad * 2 - 48, h: 6 },
-      settleCard: { x: cx - 132, y: cy - 118, w: 264, h: 236 },
-      settleScore: { x: cx, y: cy - 78 },
-      settleGap: { x: cx, y: cy - 18 },
-      settleProp: { x: cx, y: cy + 10 },
-      replay: { x: cx - 72, y: cy + 42, w: 144, h: 40, label: '再来一杆' },
+      settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
+      settleScore: { x: cx, y: cy - 86 },
+      settleGap: { x: cx, y: cy - 28 },
+      settleProp: { x: cx, y: cy - 4 },
+      replay: { x: cx - 72, y: cy + 38, w: 144, h: 38, label: '再来一杆' },
+      share: { x: cx - 72, y: cy + 84, w: 144, h: 34, label: '分享成绩' },
+      splashCard: { x: cx - 132, y: cy - 118, w: 264, h: 220 },
+      start: { x: cx - 72, y: cy + 36, w: 144, h: 40, label: '开始练习' },
       playRect: {
         x: 10,
         y: playTop,
@@ -49,9 +52,11 @@
   }
 
   function hitTest(ui, x, y, phase) {
+    if (phase === 'Splash') return 'start';
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
+      if (inRect(ui.share, x, y)) return 'share';
       if (inRect(ui.settleCard, x, y)) return 'settle-block';
     }
     return null;
@@ -191,16 +196,63 @@
     ctx.font = '11px ' + FONT;
     ctx.fillStyle = colors.hudDim;
     var propLine = s.starApplied
-      ? ('星域 ' + (s.zoneLabel || '新星') + ' ×' + s.starMultiplier)
-      : '犯规跳过星域倍率';
+      ? ('得分加成 ' + (s.pocketBonus || 0) + ' · 落点加成 ' + (s.zoneLabel || '新星') + ' +' + (s.landingBonus || 0))
+      : '未获得落点加成';
     ctx.fillText(propLine, ui.settleProp.x, ui.settleProp.y);
 
     ctx.font = '10px ' + FONT;
     ctx.fillStyle = colors.disclaimer;
-    ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 18);
+    ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 16);
 
     drawButton(ctx, ui.replay, colors, session.pressed === 'replay');
+    drawButton(ctx, ui.share, colors, session.pressed === 'share');
     ctx.restore();
+  }
+
+  function drawSplash(ctx, session) {
+    if (session.phase !== 'Splash') return;
+    var ui = session.ui;
+    var colors = session.config.colors;
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 9, 6, 0.62)';
+    ctx.fillRect(0, 0, session.viewport.width, session.viewport.height);
+    roundRect(ctx, ui.splashCard.x, ui.splashCard.y, ui.splashCard.w, ui.splashCard.h, 16);
+    ctx.fillStyle = '#24180F';
+    ctx.fill();
+    ctx.strokeStyle = colors.buttonBorder;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = colors.hud;
+    ctx.font = 'bold 22px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.fillText(session.config.title || '星券台球', ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 48);
+    ctx.font = '13px ' + FONT;
+    ctx.fillStyle = colors.hudDim;
+    ctx.fillText('俯视九球练习 · 落点加成', ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 78);
+    ctx.font = '10px ' + FONT;
+    ctx.fillStyle = colors.disclaimer;
+    wrapText(ctx, session.config.disclaimer, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 108, 220);
+    drawButton(ctx, ui.start, colors, session.pressed === 'start');
+    ctx.restore();
+  }
+
+  function wrapText(ctx, text, x, y, maxW) {
+    var chars = String(text || '').split('');
+    var line = '';
+    var yy = y;
+    var i;
+    ctx.textAlign = 'center';
+    for (i = 0; i < chars.length; i++) {
+      var next = line + chars[i];
+      if (ctx.measureText(next).width > maxW && line) {
+        ctx.fillText(line, x, yy);
+        line = chars[i];
+        yy += 16;
+      } else {
+        line = next;
+      }
+    }
+    if (line) ctx.fillText(line, x, yy);
   }
 
   return {
@@ -211,6 +263,7 @@
     roundRect: roundRect,
     drawButton: drawButton,
     drawChrome: drawChrome,
-    drawSettle: drawSettle
+    drawSettle: drawSettle,
+    drawSplash: drawSplash
   };
 });

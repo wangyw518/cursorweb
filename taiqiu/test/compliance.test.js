@@ -21,7 +21,10 @@ function check(name, fn) {
 
 var ROOT = path.join(__dirname, '..');
 var DISCLAIMER = '虚拟道具，仅限游戏内使用，不可兑换现金';
-var FORBIDDEN = ['提现', '红包', '赔率', '面额', '钞票', '¥', '￥', '赌博'];
+var FORBIDDEN = [
+  '提现', '红包', '赔率', '面额', '钞票', '¥', '￥', '赌博',
+  '开奖', '中奖', '翻倍', '押中', '赚钱', '到账', '倍率'
+];
 
 function runtimeFiles() {
   var list = [
@@ -68,6 +71,16 @@ check('StarZone vocabulary is 新星 / 流星 / 彗星 / 恒星 and virtual 星�
   assert.ok(fsmSrc.indexOf('StarZone') !== -1);
   assert.ok(config.currency === '星币');
   assert.ok(config.viewMode === 'top');
+  assert.ok(scoreSrc.indexOf('得分加成') !== -1 || fs.readFileSync(path.join(ROOT, 'js/hud.js'), 'utf8').indexOf('得分加成') !== -1);
+  assert.ok(fs.readFileSync(path.join(ROOT, 'js/hud.js'), 'utf8').indexOf('落点加成') !== -1);
+});
+
+check('share stub mentions only score / rank / in-game 星币', function () {
+  var src = fs.readFileSync(path.join(ROOT, 'js/share.js'), 'utf8');
+  assert.ok(src.indexOf('星币') !== -1);
+  ['赚钱', '红包', '提现', '到账'].forEach(function (word) {
+    assert.strictEqual(src.indexOf(word), -1);
+  });
 });
 
 check('project is a WeChat game with the assigned AppID', function () {

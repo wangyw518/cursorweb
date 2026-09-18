@@ -10,10 +10,10 @@
   'use strict';
 
   var KINDS = {
-    nova: { id: 'nova', name: '新星', label: '新星', multiplier: 1, pattern: 'spark' },
-    meteor: { id: 'meteor', name: '流星', label: '流星', multiplier: 1.5, pattern: 'streak' },
-    comet: { id: 'comet', name: '彗星', label: '彗星', multiplier: 2, pattern: 'arc' },
-    stellar: { id: 'stellar', name: '恒星', label: '恒星', multiplier: 3, pattern: 'burst' }
+    nova: { id: 'nova', name: '新星', label: '新星', bonusXingbi: 8, pattern: 'spark' },
+    meteor: { id: 'meteor', name: '流星', label: '流星', bonusXingbi: 16, pattern: 'streak' },
+    comet: { id: 'comet', name: '彗星', label: '彗星', bonusXingbi: 24, pattern: 'arc' },
+    stellar: { id: 'stellar', name: '恒星', label: '恒星', bonusXingbi: 36, pattern: 'burst' }
   };
 
   var ORDER = ['nova', 'meteor', 'comet', 'stellar'];
@@ -34,7 +34,7 @@
       name: meta.name,
       label: meta.label,
       pattern: meta.pattern,
-      multiplier: meta.multiplier,
+      bonusXingbi: meta.bonusXingbi,
       x: cx,
       y: cy,
       size: size
@@ -45,7 +45,7 @@
     var felt = table.felt;
     var size = Math.min(felt.w, felt.h) * 0.16;
     var catalog = (config && config.starZones) || ORDER.map(function (id) {
-      return { id: id, multiplier: KINDS[id].multiplier };
+      return { id: id, bonusXingbi: KINDS[id].bonusXingbi };
     });
     var byId = {};
     catalog.forEach(function (z) { byId[z.id] = z; });
@@ -76,8 +76,8 @@
         felt.y + felt.h * p.v,
         size
       );
-      if (byId[tile.kind] && byId[tile.kind].multiplier != null) {
-        tile.multiplier = byId[tile.kind].multiplier;
+      if (byId[tile.kind] && byId[tile.kind].bonusXingbi != null) {
+        tile.bonusXingbi = byId[tile.kind].bonusXingbi;
       }
       tiles.push(tile);
     }

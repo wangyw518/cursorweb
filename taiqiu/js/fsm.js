@@ -1,7 +1,7 @@
 /**
  * Frozen GDD state machine:
  * Aim → Shot → ResolvePocket → WaitCueStop → StarZone
- * Foul skips StarZone (no full star multiplier).
+ * Foul skips StarZone (no 落点加成).
  */
 (function (root, factory) {
   var api = factory();
@@ -11,6 +11,7 @@
   'use strict';
 
   var PHASE = {
+    Splash: 'Splash',
     Aim: 'Aim',
     Shot: 'Shot',
     ResolvePocket: 'ResolvePocket',

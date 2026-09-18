@@ -102,7 +102,8 @@ async function main() {
 
   var boot = await evalExpr('!!window.__taiqiu && !!window.__taiqiu.session');
   if (!boot) throw new Error('game did not boot');
-  await evalExpr('(function(){var g=window.__taiqiu; g.sessionMod.restart(g.session); g.session.best=0; g.session.skinProgress=0;})()');
+  await shot('taiqiu_splash_disclaimer');
+  await evalExpr('(function(){var g=window.__taiqiu; g.sessionMod.handlePointerDown(g.session, 180, 360); g.session.best=0; g.session.skinProgress=0;})()');
   await sleep(80);
   await shot('taiqiu_table_ready');
 

@@ -18,14 +18,14 @@
   "railThickness": 20,
   "grabSlopPx": 40,
   "settleDelayMs": 240,
-  "baseXingbi": 40,
+  "pocketBonus": 24,
   "currency": "星币",
   "viewMode": "top",
   "starZones": [
-    { "id": "nova", "name": "新星", "multiplier": 1 },
-    { "id": "meteor", "name": "流星", "multiplier": 1.5 },
-    { "id": "comet", "name": "彗星", "multiplier": 2 },
-    { "id": "stellar", "name": "恒星", "multiplier": 3 }
+    { "id": "nova", "name": "新星", "bonusXingbi": 8 },
+    { "id": "meteor", "name": "流星", "bonusXingbi": 16 },
+    { "id": "comet", "name": "彗星", "bonusXingbi": 24 },
+    { "id": "stellar", "name": "恒星", "bonusXingbi": 36 }
   ],
   "disclaimer": "虚拟道具，仅限游戏内使用，不可兑换现金",
   "storageKey": "taiqiu.best",
