@@ -1,7 +1,7 @@
 {
   "name": "taiqiuRoom",
   "version": "1.0.0",
-  "description": "星券台球 2P room API: create / join / shot / state",
+  "description": "星券台球 2P room API: create / join / aim / shot / state",
   "main": "index.js",
   "dependencies": {
     "wx-server-sdk": "~2.6.3"

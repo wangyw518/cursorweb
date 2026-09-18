@@ -100,12 +100,15 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 
 | action | HTTP | body | response |
 | --- | --- | --- | --- |
-| create | `POST /room/create` | optional `{ balls, scores, targetN }` | `{ roomId, role: "host", state }` |
-| join | `POST /room/join` | `{ roomId }` | `{ role: "guest", state }` |
-| shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
-| state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole`, `shotSeq`, `matchOver`, `winner`) |
+| create | `POST /room/create` | optional `{ balls, scores, targetN, nick, openId, shotClockSec }` | `{ roomId, role: "host", deadlineAt, state }` |
+| join | `POST /room/join` | `{ roomId, nick?, openId? }` | `{ role: "guest", deadlineAt, state }` |
+| aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine?, openId? }` | `{ state }` with dirty `aim` only (never writes `balls[]`) |
+| shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ deadlineAt, state }` |
+| state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole` / `turnOpenId`, `shotSeq`, `deadlineAt`, `aim`, `nicknames`, `stars`, `foulCode`, `foulHint`, `winnerOpenId`, `matchOver`, `winner`) |
 
-`events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots return `{ ok: false, reason: "not-your-turn" }`.
+`events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots / non-consecutive `shotSeq` return `{ ok: false, reason: "not-your-turn"|"stale-seq", state }`.
+
+P0 extras (same store for HTTP and `cloudfunctions/taiqiuRoom`): default `shotClockSec=20`; create / join / shot / timeout handover issue `deadlineAt = now + shotClockSec`. If the clock expires before `shot`, the server sets `foulCode=shotClock`, switches turn, increments `shotSeq`, does **not** rack, and issues a new deadline. Aim is accepted only for the current `turnOpenId` while `phase` is Aim/Pull; it writes `aim: { angle, power, aimLine, updatedAt }` and must not touch object-ball coordinates. Timeout is settled on `state` poll (client is not the clock authority).
 
 `state.turn` is `0` (host) / `1` (guest). `state.turnRole` is `"host"` / `"guest"`.
 

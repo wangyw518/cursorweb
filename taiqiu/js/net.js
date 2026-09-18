@@ -23,6 +23,10 @@
     return roomApi.join(roomId, cb);
   }
 
+  function aim(roomId, payload, cb) {
+    return roomApi.aim(roomId, payload, cb);
+  }
+
   function shot(roomId, payload, cb) {
     return roomApi.shot(roomId, payload, cb);
   }
@@ -77,6 +81,7 @@
     initCloud: initCloud,
     createRoom: createRoom,
     joinRoom: joinRoom,
+    aim: aim,
     shot: shot,
     state: state,
     pushState: pushState,

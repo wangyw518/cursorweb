@@ -273,6 +273,111 @@ function httpJson(port, method, path, body, cb) {
   req.end();
 }
 
+function runP0Http(started, cb) {
+  var clock = { t: 100000 };
+  var store = storeMod.createStore({ now: function () { return clock.t; } });
+  var extra = roomServer.listen({ port: 0, host: '127.0.0.1', store: store }, function (addr) {
+    var port = addr.port;
+    var opening = [
+      { id: 'cue', n: 0, nx: 0.5, ny: 0.78, pocketed: false },
+      { id: 'b1', n: 1, nx: 0.5, ny: 0.32, pocketed: false }
+    ];
+    httpJson(port, 'POST', '/room/create', {
+      openId: 'host-1',
+      nick: '房主',
+      balls: opening
+    }, function (err, created) {
+      if (err) {
+        extra.server.close();
+        return cb(err);
+      }
+      httpJson(port, 'POST', '/room/join', {
+        roomId: created.roomId,
+        openId: 'guest-1',
+        nick: '客座'
+      }, function (err2, joined) {
+        if (err2) {
+          extra.server.close();
+          return cb(err2);
+        }
+        httpJson(port, 'POST', '/room/aim', {
+          roomId: created.roomId,
+          openId: 'host-1',
+          shotSeq: 1,
+          angle: 0.8,
+          power: 0.45,
+          aimLine: [{ x: 0.5, y: 0.7 }],
+          balls: [{ id: 'b1', n: 1, nx: 0.01, ny: 0.01, pocketed: true }]
+        }, function (err3, aim1) {
+          if (err3) {
+            extra.server.close();
+            return cb(err3);
+          }
+          httpJson(port, 'POST', '/room/aim', {
+            roomId: created.roomId,
+            openId: 'host-1',
+            shotSeq: 1,
+            angle: 1.1,
+            power: 0.7
+          }, function (err4, aim2) {
+            if (err4) {
+              extra.server.close();
+              return cb(err4);
+            }
+            httpJson(port, 'GET', '/room/state?roomId=' + created.roomId, null, function (err5, mid) {
+              if (err5) {
+                extra.server.close();
+                return cb(err5);
+              }
+              httpJson(port, 'POST', '/room/aim', {
+                roomId: created.roomId,
+                openId: 'guest-1',
+                shotSeq: 1,
+                angle: 9,
+                power: 1
+              }, function (err6, rejected) {
+                if (err6) {
+                  extra.server.close();
+                  return cb(err6);
+                }
+                clock.t = 105000;
+                httpJson(port, 'POST', '/room/shot', {
+                  roomId: created.roomId,
+                  openId: 'host-1',
+                  shotSeq: 1,
+                  reason: 'miss',
+                  events: [{ type: 'miss' }],
+                  ballsSnapshot: opening
+                }, function (err7, shotRes) {
+                  if (err7) {
+                    extra.server.close();
+                    return cb(err7);
+                  }
+                  clock.t = 105000 + 21 * 1000;
+                  httpJson(port, 'GET', '/room/state?roomId=' + created.roomId, null, function (err8, timed) {
+                    extra.server.close();
+                    if (err8) return cb(err8);
+                    cb(null, {
+                      created: created,
+                      joined: joined,
+                      aim1: aim1,
+                      aim2: aim2,
+                      mid: mid,
+                      rejected: rejected,
+                      shot: shotRes,
+                      timed: timed
+                    });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+}
+
 function runHttp(cb) {
   var started = roomServer.listen({ port: 0, host: '127.0.0.1' }, function (addr) {
     var port = addr.port;
@@ -317,17 +422,24 @@ function runHttp(cb) {
                     return cb(err7);
                   }
                   httpJson(port, 'GET', '/room/state?roomId=' + created2.roomId, null, function (err8, state2) {
-                    started.server.close();
-                    if (err8) return cb(err8);
-                    cb(null, {
-                      created: created,
-                      joined: joined,
-                      shot: shot,
-                      state: state,
-                      created2: created2,
-                      joined2: joined2,
-                      shot2: shot2,
-                      state2: state2
+                    if (err8) {
+                      started.server.close();
+                      return cb(err8);
+                    }
+                    runP0Http(started, function (err9, p0) {
+                      started.server.close();
+                      if (err9) return cb(err9);
+                      cb(null, {
+                        created: created,
+                        joined: joined,
+                        shot: shot,
+                        state: state,
+                        created2: created2,
+                        joined2: joined2,
+                        shot2: shot2,
+                        state2: state2,
+                        p0: p0
+                      });
                     });
                   });
                 });
@@ -357,6 +469,27 @@ runHttp(function (err, result) {
     assert.strictEqual(result.shot2.state.ballsSnapshot[0].nx, 0.22);
     assert.strictEqual(result.state2.state.turn, 1);
     console.log('ok  HTTP POST /room/create|/join|/shot and GET /room/state');
+    var p0 = result.p0;
+    assert.ok(p0.created.deadlineAt);
+    assert.strictEqual(p0.created.state.nicknames.host, '房主');
+    assert.strictEqual(p0.joined.state.nicknames.guest, '客座');
+    assert.strictEqual(p0.joined.state.turnOpenId, 'host-1');
+    assert.strictEqual(p0.aim1.ok, true);
+    assert.strictEqual(p0.aim1.state.aim.angle, 0.8);
+    assert.strictEqual(p0.aim1.state.balls[1].nx, 0.5);
+    assert.strictEqual(p0.aim1.state.balls[1].pocketed, false);
+    assert.strictEqual(p0.aim2.state.aim.angle, 1.1);
+    assert.strictEqual(p0.mid.state.aim.power, 0.7);
+    assert.strictEqual(p0.mid.aim.angle, 1.1);
+    assert.strictEqual(p0.rejected.ok, false);
+    assert.strictEqual(p0.rejected.reason, 'not-your-turn');
+    assert.strictEqual(p0.rejected.state.aim.angle, 1.1);
+    assert.ok(p0.shot.deadlineAt > p0.created.deadlineAt);
+    assert.strictEqual(p0.shot.state.turnOpenId, 'guest-1');
+    assert.strictEqual(p0.timed.state.foulCode, 'shotClock');
+    assert.strictEqual(p0.timed.state.turnOpenId, 'host-1');
+    assert.strictEqual(p0.timed.state.balls[1].nx, 0.5);
+    console.log('ok  HTTP P0 aim / deadlineAt / shot-clock handover');
   } catch (fail) {
     failures += 1;
     console.error('FAIL  HTTP room poll');

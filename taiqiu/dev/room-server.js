@@ -4,12 +4,14 @@
  * Draft endpoints:
  *   POST /room/create
  *   POST /room/join
+ *   POST /room/aim
  *   POST /room/shot
  *   GET  /room/state?roomId=
  *
  * Legacy aliases (same store):
  *   POST /api/rooms
  *   POST /api/rooms/:id/join
+ *   POST /api/rooms/:id/aim
  *   POST /api/rooms/:id/shot
  *   GET  /api/rooms/:id
  *
@@ -78,6 +80,12 @@ function createHandler(store) {
         send(res, 200, decorateJoin(store.dispatch('join', body)));
       });
     }
+    if (req.method === 'POST' && url === '/room/aim') {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        send(res, 200, store.dispatch('aim', body));
+      });
+    }
     if (req.method === 'POST' && url === '/room/shot') {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
@@ -101,6 +109,14 @@ function createHandler(store) {
         body = body || {};
         body.roomId = join[1];
         send(res, 200, decorateJoin(store.dispatch('join', body)));
+      });
+    }
+    var aim = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/aim$/);
+    if (req.method === 'POST' && aim) {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        body.roomId = aim[1];
+        send(res, 200, store.dispatch('aim', body));
       });
     }
     var shot = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/shot$/);
@@ -166,6 +182,7 @@ if (require.main === module) {
     console.log('[taiqiu] room API http://' + shown + ':' + addr.port);
     console.log('  POST /room/create');
     console.log('  POST /room/join');
+    console.log('  POST /room/aim');
     console.log('  POST /room/shot');
     console.log('  GET  /room/state?roomId=');
   });

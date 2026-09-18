@@ -7,7 +7,8 @@
  *
  * Draft endpoints (same names for mock and real):
  *   POST /room/create → { roomId, role: 'host', state }
- *   POST /room/join   { roomId } → { role: 'guest', state }
+ *   POST /room/join   { roomId, nick?, openId? } → { role: 'guest', state }
+ *   POST /room/aim    { roomId, shotSeq, angle, power, aimLine? }
  *   POST /room/shot   { roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }
  *   GET  /room/state?roomId= → full authoritative snapshot
  *
@@ -153,6 +154,11 @@
     if (next.shotSeq == null) next.shotSeq = next.seq || 0;
     if (!next.ballsSnapshot && next.balls) next.ballsSnapshot = clone(next.balls);
     if (!next.balls && next.ballsSnapshot) next.balls = clone(next.ballsSnapshot);
+    if (!next.nicknames) next.nicknames = { host: '', guest: '' };
+    if (!next.stars) next.stars = { host: 0, guest: 0 };
+    if (next.turnOpenId == null) {
+      next.turnOpenId = next.turn === 1 ? next.guestOpenId : next.hostOpenId;
+    }
     return next;
   }
 
@@ -165,6 +171,7 @@
       role: 'host',
       seat: 0,
       token: res.token,
+      deadlineAt: res.deadlineAt,
       state: decorateState(res.state)
     };
   }
@@ -178,6 +185,7 @@
       role: 'guest',
       seat: 1,
       token: res.token,
+      deadlineAt: res.deadlineAt,
       state: decorateState(res.state)
     };
   }
@@ -192,6 +200,23 @@
       ok: true,
       action: 'shot',
       roomId: res.roomId,
+      deadlineAt: res.deadlineAt,
+      state: decorateState(res.state)
+    };
+  }
+
+  function decorateAim(res) {
+    if (!res) return res;
+    if (!res.ok) {
+      if (res.state) res.state = decorateState(res.state);
+      return res;
+    }
+    return {
+      ok: true,
+      action: 'aim',
+      roomId: res.roomId,
+      deadlineAt: res.deadlineAt,
+      aim: res.aim || (res.state && res.state.aim),
       state: decorateState(res.state)
     };
   }
@@ -206,11 +231,21 @@
       state: state,
       turn: state.turn,
       turnRole: state.turnRole,
+      turnOpenId: state.turnOpenId,
       shotSeq: state.shotSeq,
       ballsSnapshot: state.ballsSnapshot,
       matchOver: state.matchOver,
       winner: state.winner,
-      guestJoined: state.guestJoined
+      winnerOpenId: state.winnerOpenId,
+      guestJoined: state.guestJoined,
+      deadlineAt: state.deadlineAt,
+      nicknames: state.nicknames,
+      stars: state.stars,
+      aim: state.aim,
+      foulCode: state.foulCode,
+      foulHint: state.foulHint,
+      pocketScore: state.pocketScore,
+      zoneBonus: state.zoneBonus
     };
   }
 
@@ -237,7 +272,33 @@
       targetN: payload.targetN,
       matchOver: payload.matchOver,
       winner: payload.winner,
-      guestJoined: payload.guestJoined
+      winnerOpenId: payload.winnerOpenId,
+      guestJoined: payload.guestJoined,
+      openId: payload.openId,
+      nick: payload.nick,
+      stars: payload.stars,
+      foulCode: payload.foulCode,
+      foulHint: payload.foulHint,
+      pocketScore: payload.pocketScore,
+      zoneBonus: payload.zoneBonus,
+      deadlineAt: payload.deadlineAt
+    };
+  }
+
+  function normalizeAimPayload(roomId, payload) {
+    payload = payload || {};
+    var fromSeat = payload.fromSeat;
+    if (fromSeat !== 0 && fromSeat !== 1) fromSeat = seatOfRole(payload.role, null);
+    return {
+      roomId: roomId || payload.roomId,
+      fromSeat: fromSeat,
+      role: payload.role || (fromSeat === 1 ? 'guest' : 'host'),
+      token: payload.token,
+      openId: payload.openId,
+      shotSeq: payload.shotSeq,
+      angle: payload.angle != null ? payload.angle : payload.aimAngle,
+      power: payload.power,
+      aimLine: payload.aimLine
     };
   }
 
@@ -273,10 +334,22 @@
 
   LocalMockRoom.prototype.join = function (roomIdOrPayload) {
     this._hydrate();
-    var roomId = typeof roomIdOrPayload === 'string'
-      ? roomIdOrPayload
-      : (roomIdOrPayload && roomIdOrPayload.roomId);
-    var res = decorateJoin(this.store.join(roomId));
+    var payload = typeof roomIdOrPayload === 'string'
+      ? { roomId: roomIdOrPayload }
+      : (roomIdOrPayload || {});
+    var res = decorateJoin(this.store.join(payload));
+    this._flush();
+    return res;
+  };
+
+  LocalMockRoom.prototype.aim = function (roomId, payload) {
+    if (roomId && typeof roomId === 'object' && !payload) {
+      payload = roomId;
+      roomId = payload.roomId;
+    }
+    this._hydrate();
+    var body = normalizeAimPayload(roomId, payload);
+    var res = decorateAim(this.store.aim(body.roomId, body));
     this._flush();
     return res;
   };
@@ -403,10 +476,21 @@
   }
 
   function join(roomId, cb) {
-    var id = roomId;
-    if (roomId && typeof roomId === 'object') id = roomId.roomId;
-    if (usingHttp()) return httpCall('POST', '/room/join', { roomId: id }, cb);
-    return done(mock.join(id), cb);
+    var payload = roomId && typeof roomId === 'object' ? roomId : { roomId: roomId };
+    if (usingHttp()) return httpCall('POST', '/room/join', payload, cb);
+    return done(mock.join(payload), cb);
+  }
+
+  function aim(roomId, payload, cb) {
+    if (typeof payload === 'function') { cb = payload; payload = {}; }
+    if (roomId && typeof roomId === 'object' && !payload) {
+      payload = roomId;
+      roomId = payload.roomId;
+      cb = arguments[1];
+    }
+    var body = normalizeAimPayload(roomId, payload);
+    if (usingHttp()) return httpCall('POST', '/room/aim', body, cb);
+    return done(mock.aim(body.roomId, body), cb);
   }
 
   function shot(roomId, payload, cb) {
@@ -444,6 +528,7 @@
     configure: configure,
     create: create,
     join: join,
+    aim: aim,
     shot: shot,
     state: state,
     createRoom: create,
