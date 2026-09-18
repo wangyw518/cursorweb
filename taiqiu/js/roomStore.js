@@ -63,10 +63,24 @@
       lastRole: null,
       lastShot: null,
       names: ['房主', '好友'],
+      nicknames: { host: '房主', guest: '好友' },
+      openIds: ['', ''],
       aimSeq: 0,
       aim: null,
-      aimDeadlineAt: 0
+      aimDeadlineAt: 0,
+      deadlineAt: 0,
+      shotClockSec: 20,
+      winnerOpenId: null,
+      stars: null,
+      foulCode: null,
+      foulHint: ''
     };
+  }
+
+  function clipNick(raw) {
+    var s = String(raw || '').replace(/^\s+|\s+$/g, '');
+    if (s.length > 32) s = s.slice(0, 32);
+    return s;
   }
 
   function nextTurn(fromSeat, reason) {
@@ -116,9 +130,14 @@
       if (payload.scores) state.scores = payload.scores.slice();
       if (payload.targetN != null) state.targetN = payload.targetN;
       if (payload.names) state.names = payload.names.slice();
-      if (payload.hostName || payload.name) {
-        state.names[0] = String(payload.hostName || payload.name);
+      if (payload.hostName || payload.name || payload.nick || payload.displayName) {
+        state.names[0] = clipNick(payload.hostName || payload.name || payload.nick || payload.displayName);
       }
+      if (payload.shotClockSec > 0) state.shotClockSec = payload.shotClockSec;
+      if (payload.openId) state.openIds[0] = String(payload.openId);
+      state.nicknames = { host: state.names[0], guest: state.names[1] };
+      state.deadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+      state.aimDeadlineAt = state.deadlineAt;
       write(roomId, state);
       return {
         ok: true,
@@ -141,7 +160,11 @@
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'join', reason: 'missing', roomId: roomId };
       state.guestJoined = true;
-      if (guestName) state.names[1] = String(guestName);
+      if (guestName) state.names[1] = clipNick(guestName);
+      var joinNick = clipNick(roomIdOrPayload && (roomIdOrPayload.nick || roomIdOrPayload.displayName));
+      if (joinNick) state.names[1] = joinNick;
+      if (roomIdOrPayload && roomIdOrPayload.openId) state.openIds[1] = String(roomIdOrPayload.openId);
+      state.nicknames = { host: state.names[0], guest: state.names[1] };
       state.seq += 1;
       write(roomId, state);
       return {
@@ -207,11 +230,25 @@
         state.turn = 0;
         state.turnRole = 'host';
       }
-      if (reason === 'nine') state.phase = payload.phase || 'Settle';
+      if (reason === 'nine') {
+        state.phase = payload.phase || 'Settle';
+        state.winnerOpenId = (state.openIds && state.openIds[fromSeat]) || payload.winnerOpenId || null;
+        state.stars = {
+          host: state.scores[0] || 0,
+          guest: state.scores[1] || 0,
+          0: state.scores[0] || 0,
+          1: state.scores[1] || 0
+        };
+      }
       state.aim = null;
-      state.aimDeadlineAt = reason === 'timeout'
-        ? (payload.nextDeadlineAt || (Date.now() + 25000))
-        : 0;
+      state.foulCode = reason === 'timeout' ? 'shotClock' : (reason === 'scratch' || reason === 'whiff' || reason === 'order' || reason === 'foul' ? reason : null);
+      state.foulHint = reason === 'timeout' ? '犯规 · 超时' : '';
+      state.aimDeadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+      state.deadlineAt = state.aimDeadlineAt;
+      if (reason === 'nine') {
+        state.aimDeadlineAt = 0;
+        state.deadlineAt = 0;
+      }
       if (payload.names) state.names = payload.names.slice();
       state.lastReason = reason;
       state.lastSeat = fromSeat;
@@ -252,30 +289,74 @@
         return { ok: false, action: 'aim', reason: 'stale-aim', roomId: roomId, state: clone(state) };
       }
       state.aimSeq = incoming;
+      var ang = payload.aimAngle != null ? payload.aimAngle : payload.angle;
       state.aim = {
         aimSeq: incoming,
+        shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq,
         fromSeat: fromSeat,
         kind: payload.kind || 'aim',
-        aimAngle: payload.aimAngle,
+        aimAngle: ang,
+        angle: ang,
         power: payload.power || 0,
         ax: payload.ax,
         ay: payload.ay,
         preview: payload.preview || null,
-        deadlineAt: payload.deadlineAt || state.aimDeadlineAt || 0
+        aimLine: payload.aimLine || [],
+        aiming: payload.aiming !== false,
+        updatedAt: Date.now(),
+        deadlineAt: payload.deadlineAt || state.aimDeadlineAt || state.deadlineAt || 0
       };
-      if (payload.deadlineAt) state.aimDeadlineAt = payload.deadlineAt;
+      if (payload.deadlineAt) {
+        state.aimDeadlineAt = payload.deadlineAt;
+        state.deadlineAt = payload.deadlineAt;
+      }
       if (payload.kind === 'firing') state.phase = 'Shot';
       else if (state.phase !== 'Settle') state.phase = 'Aim';
       if (payload.names) state.names = payload.names.slice();
       state.seq += 1;
       write(roomId, state);
-      return { ok: true, action: 'aim', roomId: roomId, state: clone(state) };
+      var out = clone(state);
+      if (out.ballsSnapshot) {
+        out.ballsSnapshot = out.ballsSnapshot.filter(function (b) {
+          return b && (b.id === 'cue' || b.n === 0);
+        });
+      }
+      if (out.balls) {
+        out.balls = out.balls.filter(function (b) {
+          return b && (b.id === 'cue' || b.n === 0);
+        });
+      }
+      return { ok: true, action: 'aim', roomId: roomId, state: out };
+    }
+
+    function applyDueTimeout(state) {
+      if (!state || state.matchOver || state.phase === 'Settle') return state;
+      var due = state.deadlineAt || state.aimDeadlineAt;
+      if (!due || Date.now() < due) return state;
+      if (state.phase !== 'Aim') return state;
+      var from = state.turn;
+      state.turn = from === 0 ? 1 : 0;
+      state.turnRole = roleOfSeat(state.turn);
+      state.lastReason = 'timeout';
+      state.foulCode = 'shotClock';
+      state.foulHint = '犯规 · 超时';
+      state.aim = null;
+      state.shotSeq = (state.shotSeq || 0) + 1;
+      state.seq += 1;
+      state.deadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
+      state.aimDeadlineAt = state.deadlineAt;
+      return state;
     }
 
     function stateOf(roomId) {
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'state', reason: 'missing', roomId: roomId };
-      return { ok: true, action: 'state', roomId: roomId, state: clone(state) };
+      applyDueTimeout(state);
+      write(roomId, state);
+      var snap = clone(state);
+      snap.deadlineAt = snap.deadlineAt || snap.aimDeadlineAt;
+      snap.nicknames = snap.nicknames || { host: (snap.names && snap.names[0]) || '房主', guest: (snap.names && snap.names[1]) || '好友' };
+      return { ok: true, action: 'state', roomId: roomId, state: snap };
     }
 
     function dispatch(action, payload) {

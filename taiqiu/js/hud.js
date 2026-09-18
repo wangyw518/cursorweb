@@ -16,7 +16,7 @@
     var top = (viewport.safeTop || 20) + 6;
     var bottomSafe = viewport.safeBottom || 0;
     var footerH = 72;
-    var playTop = top + 58;
+    var playTop = top + 86;
     var playBottom = viewport.height - bottomSafe - footerH - 10;
     var cx = viewport.width * 0.5;
     var cy = viewport.height * 0.46;
@@ -64,12 +64,14 @@
       clock: { x: viewport.width - pad, y: top + 36 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 36, w: Math.max(80, viewport.width - pad * 2), h: 6 },
-      settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
-      settleScore: { x: cx, y: cy - 86 },
-      settleGap: { x: cx, y: cy - 28 },
-      settleProp: { x: cx, y: cy - 4 },
-      replay: { x: cx - 72, y: cy + 38, w: 144, h: 38, label: '再来一局' },
-      share: { x: cx - 72, y: cy + 84, w: 144, h: 34, label: '分享成绩' },
+      settleCard: { x: cx - 132, y: cy - 140, w: 264, h: 292 },
+      settleScore: { x: cx, y: cy - 98 },
+      settleGap: { x: cx, y: cy - 18 },
+      settleProp: { x: cx, y: cy + 6 },
+      replay: { x: cx - 72, y: cy + 32, w: 144, h: 38, label: '再来一局' },
+      back: { x: cx - 72, y: cy + 76, w: 144, h: 34, label: '返回' },
+      share: { x: cx - 72, y: cy + 116, w: 144, h: 32, label: '分享成绩' },
+      count: { x: cx, y: top + 78 },
       splashCard: { x: cx - 132, y: cy - 132, w: 264, h: 268 },
       start: { x: cx - 72, y: cy + 20, w: 144, h: 40, label: '开始练习' },
       roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '好友对局' },
@@ -86,6 +88,12 @@
   }
 
   function hitTest(ui, x, y, phase, session) {
+    if (phase === 'Settle') {
+      if (inRect(ui.replay, x, y)) return 'replay';
+      if (ui.back && inRect(ui.back, x, y)) return 'back';
+      if ((!session || !session.versus) && inRect(ui.share, x, y)) return 'share';
+      if (inRect(ui.settleCard, x, y)) return 'settle-block';
+    }
     if (session && session.roomPanel) {
       if (ui.roomClose && inRect(ui.roomClose, x, y)) return 'room-close';
       if (ui.roomInvite && inRect(ui.roomInvite, x, y)) return 'room';
@@ -100,11 +108,6 @@
     if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && inRect(ui.room, x, y)) return 'room';
     if (ui.rerack && inRect(ui.rerack, x, y)) return 'rerack';
-    if (phase === 'Settle') {
-      if (inRect(ui.replay, x, y)) return 'replay';
-      if (inRect(ui.share, x, y)) return 'share';
-      if (inRect(ui.settleCard, x, y)) return 'settle-block';
-    }
     return null;
   }
 
@@ -124,19 +127,35 @@
     return code > 127 ? 2 : 1;
   }
 
-  function truncateName(raw, maxUnits) {
+  function truncateName(raw, maxChars) {
     var s = String(raw || '').trim();
-    var cap = maxUnits == null ? 12 : maxUnits;
-    var units = 0;
-    var out = '';
-    var i;
-    for (i = 0; i < s.length; i++) {
-      var u = charUnits(s.charAt(i));
-      if (units + u > cap) return out + '…';
-      out += s.charAt(i);
-      units += u;
+    var cap = maxChars == null ? 6 : maxChars;
+    if (!s) return '';
+    if (s.length <= cap) return s;
+    return s.slice(0, cap) + '…';
+  }
+
+  function turnLabel(session) {
+    if (!session.versus) return '';
+    var mine = ownTurn(session);
+    var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
+    if (rem) return '对方瞄准中';
+    if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
+    return mine ? '轮到你出杆' : '对方出杆';
+  }
+
+  function settleOutcome(session, s) {
+    s = s || session.settle || {};
+    if (!session.versus && !s.versus) {
+      return (s.win || s.reason === 'nine') ? '你赢了' : '本杆星币';
     }
-    return out || '';
+    if (s.outcome === 'win') return '你赢了';
+    if (s.outcome === 'lose') return '你输了';
+    if (s.winnerOpenId && session.myOpenId) {
+      return s.winnerOpenId === session.myOpenId ? '你赢了' : '你输了';
+    }
+    var winner = s.winner != null ? s.winner : session.winner;
+    return winner === (session.mySeat || 0) ? '你赢了' : '你输了';
   }
 
   function seatFallback(seat) {
@@ -191,6 +210,7 @@
     ctx.font = '12px ' + FONT;
     var mine = ownTurn(session);
     var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
+    if (session.versus) targetText = turnLabel(session) + ' · ' + targetText;
     ctx.fillText(targetText, ui.target.x, ui.target.y);
 
     ctx.textAlign = 'left';
@@ -204,15 +224,12 @@
 
     if (session.versus && session.phase !== 'Splash' && session.phase !== 'Settle') {
       var clock = remainSec(session);
-      var busy = session.remoteBusy === 'firing' || session.phase === 'Shot';
-      var turnText;
-      if (busy && !mine) turnText = '对方击球中…';
-      else if (mine) turnText = clock ? ('轮到你 · ' + clock + 's') : '轮到你';
-      else turnText = clock ? ('对方思考中 · ' + clock + 's') : '对方思考中';
-      ctx.fillStyle = mine ? '#F5D76E' : colors.hudDim;
-      ctx.font = 'bold 13px ' + FONT;
-      ctx.textAlign = 'right';
-      ctx.fillText(turnText, ui.clock.x, ui.clock.y);
+      if (clock > 0 && session.phase === 'Aim') {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = clock <= 5 ? '#F87171' : '#F5D76E';
+        ctx.font = (clock <= 5 ? 'bold 34px ' : 'bold 26px ') + FONT;
+        ctx.fillText(String(clock), ui.count ? ui.count.x : session.viewport.width * 0.5, ui.count ? ui.count.y : ui.title.y + 62);
+      }
     }
 
     drawButton(ctx, {
@@ -266,7 +283,7 @@
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'right';
       ctx.fillText(session.versus && !mine
-        ? (session.remoteBusy === 'firing' ? '对方击球中…' : '对方思考中')
+        ? turnLabel(session)
         : '拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
     } else if (session.phase === 'Shot') {
       ctx.fillStyle = colors.hudDim;
@@ -322,10 +339,7 @@
     ctx.textAlign = 'center';
     var title = '本杆星币';
     if (s.win || s.reason === 'nine') {
-      var winnerName = s.names && s.names[s.winner != null ? s.winner : 0]
-        ? truncateName(s.names[s.winner != null ? s.winner : 0])
-        : (s.versus ? seatFallback(s.winner || 0) : '');
-      title = s.versus ? (winnerName + ' 胜 · 打进9号') : '打进9号 · 胜';
+      title = settleOutcome(session, s);
     } else if (!s.legal) {
       if (s.reason === 'scratch') title = '犯规 · 白球入袋';
       else if (s.reason === 'order') title = '犯规 · 打错目标球';
@@ -369,7 +383,10 @@
     ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 16);
 
     drawButton(ctx, ui.replay, colors, session.pressed === 'replay');
-    drawButton(ctx, ui.share, colors, session.pressed === 'share');
+    if (ui.back) drawButton(ctx, ui.back, colors, session.pressed === 'back');
+    if (!session.versus && ui.share) {
+      drawButton(ctx, ui.share, colors, session.pressed === 'share');
+    }
     ctx.restore();
   }
 
@@ -464,6 +481,8 @@
     drawSplash: drawSplash,
     drawRoomPanel: drawRoomPanel,
     truncateName: truncateName,
+    turnLabel: turnLabel,
+    settleOutcome: settleOutcome,
     nameOf: nameOf,
     seatFallback: seatFallback,
     ownTurn: ownTurn,

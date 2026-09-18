@@ -68,14 +68,27 @@
       (session.mySeat === 1 ? (room.guestDisplayName || room.displayName) : room.displayName) ||
       '';
     if (hint) applyLocalName(session, hint);
+    function fromInfo(info) {
+      var nick = info && (info.nickName || (info.userInfo && info.userInfo.nickName));
+      if (nick) applyLocalName(session, nick);
+      var openId = info && (info.openId || info.openid);
+      if (openId) session.myOpenId = openId;
+    }
     try {
       if (typeof wx === 'undefined') return session;
+      if (wx.getUserProfile) {
+        wx.getUserProfile({
+          desc: '用于对局显示昵称',
+          success: function (res) { fromInfo(res.userInfo || res); },
+          fail: function () {
+            if (wx.getUserInfo) wx.getUserInfo({ success: function (res) { fromInfo(res.userInfo || res); } });
+          }
+        });
+        return session;
+      }
       if (wx.getUserInfo) {
         wx.getUserInfo({
-          success: function (res) {
-            var nick = res && res.userInfo && res.userInfo.nickName;
-            if (nick) applyLocalName(session, nick);
-          }
+          success: function (res) { fromInfo(res.userInfo || res); }
         });
       }
     } catch (err) {}
@@ -104,8 +117,9 @@
   }
 
   function aimTimeoutMs(session) {
-    var sec = session.config && session.config.aimTimeoutSec;
-    if (!(sec > 0)) sec = 25;
+    var cfg = session.config || {};
+    var sec = cfg.shotClockSec || cfg.aimTimeoutSec;
+    if (!(sec > 0)) sec = 20;
     return Math.round(sec * 1000);
   }
 
@@ -280,6 +294,16 @@
       win: true,
       versus: true,
       winner: winner,
+      winnerOpenId: (state && state.winnerOpenId) || session.winnerOpenId || null,
+      stars: (state && state.stars) || session.roomStars || {
+        host: scores[0] || 0,
+        guest: scores[1] || 0,
+        me: scores[session.mySeat || 0] || 0,
+        opp: scores[session.mySeat === 1 ? 0 : 1] || 0
+      },
+      outcome: ((state && state.winnerOpenId && session.myOpenId)
+        ? (state.winnerOpenId === session.myOpenId ? 'win' : 'lose')
+        : (winner === (session.mySeat || 0) ? 'win' : 'lose')),
       scores: scores,
       names: names,
       starApplied: false,
@@ -314,8 +338,23 @@
     else if (state.turn != null) session.turn = state.turn;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
-    if (state.names) session.names = state.names.slice();
-    if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
+    if (state.nicknames) {
+      session.names = [
+        state.nicknames.host || state.nicknames[0] || (session.names && session.names[0]) || '房主',
+        state.nicknames.guest || state.nicknames[1] || (session.names && session.names[1]) || '好友'
+      ];
+    } else if (state.names) session.names = state.names.slice();
+    if (state.deadlineAt != null) session.aimDeadlineAt = state.deadlineAt;
+    else if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
+    if (state.winnerOpenId) session.winnerOpenId = state.winnerOpenId;
+    if (state.stars) session.roomStars = state.stars;
+    if (state.foulCode || state.foulHint) {
+      session.banner = {
+        text: state.foulHint || (state.foulCode === 'shotClock' ? '犯规 · 超时' : '犯规'),
+        kind: 'foul',
+        life: 2.0
+      };
+    }
     if (session.aimDeadlineAt && session.aimDeadlineAt > Date.now()) session._timeoutPosted = false;
     if (session.room) {
       if (state.shotSeq != null) session.room.lastSeq = state.shotSeq;
@@ -576,8 +615,11 @@
       token: session.room.token,
       aimSeq: session.aimSeq,
       kind: extra.kind || (session.cue && session.cue.dragging ? 'charging' : 'aim'),
-      aimAngle: extra.aimAngle != null ? extra.aimAngle : (session.cue ? session.cue.angle : 0),
+      shotSeq: session.room.lastSeq || 0,
+      aimAngle: extra.aimAngle != null ? extra.aimAngle : (extra.angle != null ? extra.angle : (session.cue ? session.cue.angle : 0)),
+      angle: extra.angle != null ? extra.angle : (extra.aimAngle != null ? extra.aimAngle : (session.cue ? session.cue.angle : 0)),
       power: extra.power != null ? extra.power : (session.cue ? session.cue.power : 0),
+      aimLine: extra.aimLine || (session.preview && session.preview.points) || [],
       ax: extra.ax != null ? extra.ax : (session.cue ? session.cue.ax : 0),
       ay: extra.ay != null ? extra.ay : (session.cue ? session.cue.ay : -1),
       preview: extra.preview !== undefined ? extra.preview : compactPreview(session.preview),
@@ -711,6 +753,7 @@
   }
 
   function bannerFor(session, award) {
+    if (award && award.foul && sfx && sfx.foul) sfx.foul();
     if (!award) return null;
     if (award.reason === 'scratch') {
       return { text: session.versus ? '犯规 · 白球入袋（刮库）· 换人' : '犯规 · 白球入袋（刮库）', kind: 'foul', life: 2.4 };
@@ -725,6 +768,7 @@
       return { text: '超时未击球 · 换人', kind: 'foul', life: 2.2 };
     }
     if (award.foul) {
+      if (sfx && sfx.foul) sfx.foul();
       return { text: session.versus ? '犯规 · 换人' : '犯规', kind: 'foul', life: 2.0 };
     }
     return null;
@@ -733,14 +777,14 @@
   function spawnScorePops(session, award, x, y) {
     if (!award || !fx.spawnPop) return;
     if (award.legal && award.pocketBonus) {
-      fx.spawnPop(session.particles, x, y - 12, '+' + award.pocketBonus + ' 星币', session.config.colors.scorePop);
+      fx.spawnPop(session.particles, x, y - 12, '目标球 +' + award.pocketBonus, session.config.colors.scorePop);
     }
     if (award.starApplied && award.landingBonus) {
       fx.spawnPop(
         session.particles,
         x,
         y + 10,
-        (award.zoneLabel || '新星') + ' +' + award.landingBonus,
+        '落点·' + (award.zoneLabel || '新星') + ' +' + award.landingBonus,
         session.config.colors.scorePop
       );
     }
@@ -869,7 +913,7 @@
           session.particles,
           pocketed.x,
           pocketed.y,
-          pocketed.id === 'cue' ? '刮库' : ('进袋 +' + ((session.config && session.config.pocketBonus) || 24)),
+          pocketed.id === 'cue' ? '刮库' : ('目标球 +' + ((session.config && session.config.pocketBonus) || 24)),
           session.config.colors.scorePop
         );
       }
@@ -1135,6 +1179,12 @@
         newGame(session);
         return { kind: 'replay' };
       }
+      if (hit === 'back') {
+        session.settle = null;
+        session.roomPanel = null;
+        session.phase = fsm.PHASE.Splash;
+        return { kind: 'back' };
+      }
       if (hit === 'share') {
         session.lastShare = share.share(session.settle, session.best);
         session.toast = { text: '已生成成绩分享', life: 1.4 };
@@ -1145,7 +1195,7 @@
     if (session.phase === fsm.PHASE.Aim) {
       if (!canAim(session)) {
         session.toast = {
-          text: session.remoteBusy === 'firing' ? '对方击球中…' : '对方思考中',
+          text: hud.turnLabel ? hud.turnLabel(session) : '对方出杆',
           life: 1.1
         };
         return { kind: 'wait-turn' };

@@ -157,6 +157,9 @@
     if (!next.ballsSnapshot && next.balls) next.ballsSnapshot = clone(next.balls);
     if (!next.balls && next.ballsSnapshot) next.balls = clone(next.ballsSnapshot);
     if (!next.names) next.names = ['房主', '好友'];
+    if (!next.nicknames) next.nicknames = { host: next.names[0], guest: next.names[1] };
+    if (next.deadlineAt == null) next.deadlineAt = next.aimDeadlineAt || 0;
+    if (next.aim && next.aim.angle == null && next.aim.aimAngle != null) next.aim.angle = next.aim.aimAngle;
     return next;
   }
 
@@ -216,9 +219,15 @@
       winner: state.winner,
       guestJoined: state.guestJoined,
       names: state.names,
+      nicknames: state.nicknames,
       aim: state.aim,
       aimSeq: state.aimSeq,
-      aimDeadlineAt: state.aimDeadlineAt
+      aimDeadlineAt: state.aimDeadlineAt,
+      deadlineAt: state.deadlineAt,
+      winnerOpenId: state.winnerOpenId,
+      stars: state.stars,
+      foulCode: state.foulCode,
+      foulHint: state.foulHint
     };
   }
 

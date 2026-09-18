@@ -10,7 +10,7 @@
   'use strict';
 
   var ctx = null;
-  var last = { ball: 0, cushion: 0, pocket: 0, cue: 0 };
+  var last = { ball: 0, cushion: 0, pocket: 0, cue: 0, foul: 0 };
   var bgmOn = true;
   var bgmNodes = [];
   var bgmTimer = null;
@@ -89,6 +89,12 @@
     });
   }
 
+  function foul() {
+    return gated('foul', 180, function () {
+      return tone(196, 0.10, 'square', 0.07) && tone(131, 0.16, 'triangle', 0.055, 0.05);
+    });
+  }
+
   function stopBgmVoices() {
     var i;
     for (i = 0; i < bgmNodes.length; i++) {
@@ -149,7 +155,7 @@
   }
 
   function reset() {
-    last = { ball: 0, cushion: 0, pocket: 0, cue: 0 };
+    last = { ball: 0, cushion: 0, pocket: 0, cue: 0, foul: 0 };
   }
 
   return {
@@ -157,6 +163,7 @@
     ball: ball,
     cushion: cushion,
     pocket: pocket,
+    foul: foul,
     reset: reset,
     audio: audio,
     startBgm: startBgm,

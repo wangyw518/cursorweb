@@ -618,11 +618,11 @@ check('legal StarZone land flash is a 1-frame tile stroke, not particles only', 
   assert.strictEqual(s.landFlash, null);
 });
 
-check('truncateName keeps 6 CJK / 12 half-width and ellipsizes', function () {
+check('truncateName keeps 6 chars and ellipsizes', function () {
   assert.strictEqual(hud.truncateName('星券台球玩家'), '星券台球玩家');
   assert.strictEqual(hud.truncateName('星券台球玩家甲'), '星券台球玩家…');
-  assert.strictEqual(hud.truncateName('HelloWorld12'), 'HelloWorld12');
-  assert.strictEqual(hud.truncateName('HelloWorld123'), 'HelloWorld12…');
+  assert.strictEqual(hud.truncateName('HelloW'), 'HelloW');
+  assert.strictEqual(hud.truncateName('HelloWorld'), 'HelloW…');
   assert.strictEqual(hud.seatFallback(0), '房主');
   assert.strictEqual(hud.seatFallback(1), '好友');
 });

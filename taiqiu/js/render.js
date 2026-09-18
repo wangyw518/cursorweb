@@ -295,7 +295,7 @@
     var rem = session.remoteAim;
     if (!rem || session.phase !== 'Aim') return null;
     if (hud.ownTurn && hud.ownTurn(session)) return null;
-    var ang = rem.aimAngle != null ? rem.aimAngle : Math.atan2(rem.ay || -1, rem.ax || 0);
+    var ang = rem.aimAngle != null ? rem.aimAngle : (rem.angle != null ? rem.angle : Math.atan2(rem.ay || -1, rem.ax || 0));
     return {
       ax: rem.ax != null ? rem.ax : Math.cos(ang),
       ay: rem.ay != null ? rem.ay : Math.sin(ang),
@@ -311,7 +311,8 @@
     var rem = remoteStick(session);
     if (rem) {
       stick = rem;
-      preview = (session.remoteAim && session.remoteAim.preview) || preview;
+      preview = (session.remoteAim && (session.remoteAim.preview || session.remoteAim.aimLine)) || preview;
+      if (preview && preview.length && !preview.points) preview = { points: preview };
     }
     if (session.phase !== 'Aim' || !stick || stick.power < 0.04) return;
     if (!rem && !session.cue.dragging) return;
@@ -373,6 +374,7 @@
     var b = table.project(pose.tailX, pose.tailY, session.table, session.viewMode);
     var colors = session.config.colors;
     ctx.save();
+    if (rem) ctx.globalAlpha = 0.48;
     ctx.lineCap = 'round';
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth = 8;
