@@ -1,5 +1,7 @@
 /**
  * Cue aim: drag pull-back, dashed aim, power, fire.
+ * Power is logical drag length / on-screen available radius — never gated
+ * on whether the drawn stick tail leaves the screen.
  */
 (function (root, factory) {
   var api = factory();
@@ -8,6 +10,11 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  var DEFAULT_DRAG_MAX = 148;
+  var EDGE_DEAD_PX = 40;
+  var MIN_SPAN = 10;
+  var FULL_RIM_PX = 24;
+
   function create(config) {
     return {
       dragging: false,
@@ -15,7 +22,11 @@
       ay: -1,
       power: 0,
       angle: -Math.PI / 2,
-      dragMaxPx: (config && config.dragMaxPx) || 128
+      dragMaxPx: (config && config.dragMaxPx) || DEFAULT_DRAG_MAX,
+      edgeDeadPx: (config && config.dragEdgeDeadPx) != null ? config.dragEdgeDeadPx : EDGE_DEAD_PX,
+      fullRimPx: (config && config.dragFullRimPx) != null ? config.dragFullRimPx : FULL_RIM_PX,
+      rawDist: 0,
+      full: false
     };
   }
 
@@ -48,6 +59,19 @@
     return null;
   }
 
+  function touchBounds(space) {
+    var bounds = asBounds(space);
+    if (!bounds) return null;
+    var pad = bounds.pad;
+    if (space) {
+      if (space.safePad != null) pad = Math.max(pad, space.safePad);
+      if (space.safeTop != null) pad = Math.max(pad, Math.min(48, space.safeTop * 0.5 + 16));
+      if (space.safeBottom != null) pad = Math.max(pad, Math.min(48, space.safeBottom + 12));
+    }
+    bounds.pad = pad;
+    return bounds;
+  }
+
   function clampToViewport(x, y, space, pad) {
     var bounds = asBounds(space);
     if (!bounds) return { x: x, y: y };
@@ -60,8 +84,6 @@
 
   /**
    * On-screen distance from (ox,oy) along (dx,dy) to the padded viewport edge.
-   * Max power is this span (capped by dragMaxPx), so the finger never has to
-   * leave the screen when the cue sits on a rail.
    */
   function pullSpan(ox, oy, dx, dy, space) {
     var bounds = asBounds(space);
@@ -77,7 +99,7 @@
     if (vy > 1e-8) t = Math.min(t, (bounds.y + bounds.h - pad - oy) / vy);
     if (vy < -1e-8) t = Math.min(t, (bounds.y + pad - oy) / vy);
     if (!(t > 0) || t === Infinity) return Math.min(bounds.w, bounds.h);
-    return Math.max(8, t);
+    return Math.max(MIN_SPAN, t);
   }
 
   function rayToViewport(ox, oy, dx, dy, space, pad) {
@@ -85,12 +107,35 @@
     return pullSpan(ox, oy, dx, dy, extra || space);
   }
 
+  function nearRim(x, y, bounds, slop) {
+    if (!bounds) return false;
+    var s = slop == null ? FULL_RIM_PX : slop;
+    return x <= bounds.x + bounds.pad + s ||
+      y <= bounds.y + bounds.pad + s ||
+      x >= bounds.x + bounds.w - bounds.pad - s ||
+      y >= bounds.y + bounds.h - bounds.pad - s;
+  }
+
+  /**
+   * Radius that maps drag length → [0,1]. Uses the usable on-screen span in
+   * the current pull direction, shrunken by a bezel dead-zone so a finger
+   * that cannot reach the theoretical rim still fills the bar. A long pull
+   * into the table always reaches 1 at dragMaxPx.
+   */
+  function availableDragRadius(cue, cueBall, space, pullDx, pullDy) {
+    var maxPx = (cue && cue.dragMaxPx) || DEFAULT_DRAG_MAX;
+    var dead = (cue && cue.edgeDeadPx != null) ? cue.edgeDeadPx : EDGE_DEAD_PX;
+    var bounds = touchBounds(space);
+    if (!cueBall || !bounds) return maxPx;
+    var span = pullSpan(cueBall.x, cueBall.y, pullDx, pullDy, bounds);
+    var usable = Math.max(MIN_SPAN, span - dead);
+    return Math.min(maxPx, usable);
+  }
+
   function effectiveMaxDrag(cue, cueBall, space) {
-    var base = (cue && cue.dragMaxPx) || 148;
-    if (!space || !cueBall) return base;
-    var span = pullSpan(cueBall.x, cueBall.y, -(cue.ax || 0), -(cue.ay || 0), space);
-    if (!(span > 1)) return base;
-    return Math.min(base, span);
+    var backX = -((cue && cue.ax) || 0);
+    var backY = -((cue && cue.ay) || 0);
+    return availableDragRadius(cue, cueBall, space, backX, backY);
   }
 
   function applyDrag(cue, x, y, cueBall, space) {
@@ -102,13 +147,19 @@
       cue.ax = Math.cos(cue.angle);
       cue.ay = Math.sin(cue.angle);
     }
-    var pt = clampToViewport(x, y, space);
-    var pullX = pt.x - cueBall.x;
-    var pullY = pt.y - cueBall.y;
-    var dist = Math.hypot(pullX, pullY);
-    var denom = effectiveMaxDrag(cue, cueBall, space);
-    if (!(denom > 1e-6)) denom = 1;
-    cue.power = Math.max(0, Math.min(1, dist / denom));
+    cue.rawDist = rawDist;
+    var maxPx = cue.dragMaxPx || DEFAULT_DRAG_MAX;
+    var denom = availableDragRadius(cue, cueBall, space, x - cueBall.x, y - cueBall.y);
+    if (!(denom > 1e-6)) denom = MIN_SPAN;
+    var power = rawDist / denom;
+    if (rawDist >= maxPx) power = 1;
+    var bounds = touchBounds(space);
+    var rim = (cue.fullRimPx != null) ? cue.fullRimPx : FULL_RIM_PX;
+    if (bounds && nearRim(x, y, bounds, rim) && rawDist >= Math.min(denom, 16)) {
+      power = 1;
+    }
+    cue.power = Math.max(0, Math.min(1, power));
+    cue.full = cue.power >= 0.995;
     return cue;
   }
 
@@ -127,6 +178,8 @@
   function cancelDrag(cue) {
     cue.dragging = false;
     cue.power = 0;
+    cue.rawDist = 0;
+    cue.full = false;
     cue.angle = -Math.PI / 2;
     cue.ax = 0;
     cue.ay = -1;
@@ -139,6 +192,7 @@
     var ay = cue.ay;
     var angle = cue.angle;
     cue.dragging = false;
+    cue.full = false;
     var min = (config && config.minPower) != null ? config.minPower : 0.12;
     if (power < min) {
       cancelDrag(cue);
@@ -146,6 +200,7 @@
     }
     var spd = ((config && config.powerSpeed) || 1280) * power;
     cue.power = 0;
+    cue.rawDist = 0;
     return {
       fired: true,
       power: power,
@@ -157,17 +212,26 @@
     };
   }
 
-  function stickPose(cue, cueBall) {
+  function stickPose(cue, cueBall, space) {
     if (!cueBall) return null;
     var back = 36 + cue.power * 54;
     var len = 198;
     var tx = cueBall.x - cue.ax * (cueBall.r + 3 + cue.power * 10);
     var ty = cueBall.y - cue.ay * (cueBall.r + 3 + cue.power * 10);
+    var tailX = tx - cue.ax * len;
+    var tailY = ty - cue.ay * len;
+    if (space) {
+      var hit = pullSpan(tx, ty, -cue.ax, -cue.ay, space);
+      if (hit < len) {
+        tailX = tx - cue.ax * Math.max(24, hit);
+        tailY = ty - cue.ay * Math.max(24, hit);
+      }
+    }
     return {
       tipX: tx,
       tipY: ty,
-      tailX: tx - cue.ax * len,
-      tailY: ty - cue.ay * len,
+      tailX: tailX,
+      tailY: tailY,
       pull: back
     };
   }
@@ -178,12 +242,14 @@
     pullSpan: pullSpan,
     clampToViewport: clampToViewport,
     rayToViewport: rayToViewport,
+    availableDragRadius: availableDragRadius,
     effectiveMaxDrag: effectiveMaxDrag,
     applyDrag: applyDrag,
     beginDrag: beginDrag,
     moveDrag: moveDrag,
     cancelDrag: cancelDrag,
     endDrag: endDrag,
-    stickPose: stickPose
+    stickPose: stickPose,
+    nearRim: nearRim
   };
 });

@@ -173,24 +173,36 @@ check('cue at mid of each rail can reach power === 1 on-screen', function () {
   for (i = 0; i < sides.length; i++) {
     var side = sides[i];
     var cueBall = placeCueOnRail(s, side);
+    // Practical max drag: 36px inside the viewport (WeChat bezel / home bar).
     var edgeX = cueBall.x;
     var edgeY = cueBall.y;
-    if (side === 'top') edgeY = 8;
-    if (side === 'bot') edgeY = vp.height - 8;
-    if (side === 'left') edgeX = 8;
-    if (side === 'right') edgeX = vp.width - 8;
+    if (side === 'top') edgeY = 36;
+    if (side === 'bot') edgeY = vp.height - 36;
+    if (side === 'left') edgeX = 36;
+    if (side === 'right') edgeX = vp.width - 36;
     var stick = cue.create(config);
     cue.beginDrag(stick, cueBall.x, cueBall.y, cueBall, vp);
     cue.moveDrag(stick, edgeX, edgeY, cueBall, vp);
     assert.ok(stick.power === 1, side + ' rail power ' + stick.power + ' !== 1');
+    assert.ok(stick.full, side + ' full flag');
     sessionMod.handlePointerDown(s, cueBall.x, cueBall.y);
     sessionMod.handlePointerMove(s, edgeX, edgeY);
     assert.ok(s.cue.power === 1, side + ' session power ' + s.cue.power + ' !== 1');
+    assert.ok(s.cue.full, side + ' session full');
     var dx = cueBall.x - edgeX;
     var dy = cueBall.y - edgeY;
     assert.ok(Math.abs(Math.atan2(dy, dx) - s.cue.angle) < 1e-6, side + ' aim angle');
     cue.cancelDrag(s.cue);
   }
+});
+
+check('full charge flashes HUD 满 without needing the stick off-screen', function () {
+  var s = fresh();
+  var cueBall = placeCueOnRail(s, 'top');
+  sessionMod.handlePointerDown(s, cueBall.x, cueBall.y);
+  sessionMod.handlePointerMove(s, cueBall.x, 36);
+  assert.strictEqual(s.cue.power, 1);
+  assert.ok(s.powerFlash > 0);
 });
 
 check('session starts in Aim with 9-ball order and top view', function () {

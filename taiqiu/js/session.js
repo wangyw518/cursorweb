@@ -157,7 +157,25 @@
       y: 0,
       w: v.width || 375,
       h: v.height || 667,
-      pad: 12
+      pad: 12,
+      safeTop: v.safeTop || 0,
+      safeBottom: v.safeBottom || 0,
+      safePad: Math.max(28, v.safeTop || 0, v.safeBottom || 0)
+    };
+  }
+
+  function previewConfigOf(session) {
+    var cfg = session.config || {};
+    var felt = session.table && session.table.felt;
+    var length = cfg.previewLength == null ? 720 : cfg.previewLength;
+    var span = cfg.previewTableSpan == null ? 1.25 : cfg.previewTableSpan;
+    if (felt && felt.w && felt.h) {
+      length = Math.max(length, Math.hypot(felt.w, felt.h) * span);
+    }
+    return {
+      previewLength: length,
+      previewBounces: cfg.previewBounces == null ? 3 : cfg.previewBounces,
+      ballRadius: cfg.ballRadius
     };
   }
 
@@ -209,6 +227,13 @@
     };
   }
 
+  function noteFullPower(session) {
+    var full = !!(session.cue && (session.cue.full || session.cue.power >= 0.98));
+    if (full && !session.powerWasFull) session.powerFlash = 0.35;
+    session.powerWasFull = full;
+    return session;
+  }
+
   function refreshPreview(session) {
     var cueBall = findCue(session);
     if (!session.cue.dragging || session.cue.power < 0.04 || !cueBall) {
@@ -220,7 +245,7 @@
       session.cue.ax,
       session.cue.ay,
       worldOf(session),
-      session.config
+      previewConfigOf(session)
     );
     guardObjectBalls(session);
     return session.preview;
@@ -525,7 +550,9 @@
       remoteAim: null,
       remoteBusy: null,
       banner: null,
-      lastAimPush: 0
+      lastAimPush: 0,
+      powerFlash: 0,
+      powerWasFull: false
     };
     resetRound(session);
     fetchNick(session);
@@ -958,6 +985,10 @@
       session.banner.life -= dt;
       if (session.banner.life <= 0) session.banner = null;
     }
+    if (session.powerFlash) {
+      session.powerFlash -= dt;
+      if (session.powerFlash <= 0) session.powerFlash = 0;
+    }
     if (session.phase === fsm.PHASE.Aim) {
       // P0-A: freeze the table while aiming / charging. Never step physics.
       balls.haltBalls(session.balls);
@@ -1205,6 +1236,7 @@
           table.contains(session.table.felt, x, y)) {
         cue.beginDrag(session.cue, x, y, cueBall, dragBounds(session));
         refreshPreview(session);
+        noteFullPower(session);
         guardObjectBalls(session);
         pushAim(session, { kind: 'charging' });
         return { kind: 'aim' };
@@ -1217,6 +1249,7 @@
     if (session.phase !== fsm.PHASE.Aim || !session.cue.dragging) return { kind: 'none' };
     cue.moveDrag(session.cue, x, y, findCue(session), dragBounds(session));
     refreshPreview(session);
+    noteFullPower(session);
     guardObjectBalls(session);
     var gap = aimPollSec(session) * 1000;
     if (Date.now() - (session.lastAimPush || 0) >= gap) {
@@ -1402,6 +1435,7 @@
     timeoutAim: timeoutAim,
     armAimClock: armAimClock,
     canAim: canAim,
+    previewConfigOf: previewConfigOf,
     ingestState: ingestState,
     applyRoomState: applyRoomState,
     lockObjectBalls: lockObjectBalls,

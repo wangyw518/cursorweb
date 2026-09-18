@@ -43,7 +43,7 @@ Rewards are virtual **星币** only.
 
 ## Controls
 
-- Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull.
+- Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull. The dashed preview is long enough to reach a far object ball (`previewLength` 720 / 3 bounces, or 1.25× table diagonal). Power uses on-screen drag length (bezel dead-zone), so a cue on any rail can still hit **满** / 100% without pulling the stick off-screen.
 - Release to shoot. A short pull cancels.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
 - Tap **弱AI试杆** for an optional noisy practice shot at the object ball.

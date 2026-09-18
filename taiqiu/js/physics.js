@@ -310,8 +310,8 @@
     var py = oy;
     var vx = n.x;
     var vy = n.y;
-    var remaining = config.previewLength == null ? 280 : config.previewLength;
-    var maxBounces = config.previewBounces == null ? 2 : config.previewBounces;
+    var remaining = config.previewLength == null ? 720 : config.previewLength;
+    var maxBounces = config.previewBounces == null ? 3 : config.previewBounces;
     var ballR = origin.r || config.ballRadius || 8.2;
     var ghost = null;
     var bounces = 0;

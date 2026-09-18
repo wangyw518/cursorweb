@@ -218,6 +218,44 @@ check('object balls move after the cue makes contact', function () {
   assert.ok(one.x > 130.5 || one.vx > 1, 'object ball should move after contact');
 });
 
+check('aim preview from kitchen reaches the 1-ball and a far diagonal target', function () {
+  var t = board();
+  var list = balls.create(t, config);
+  var cueBall = balls.cueBall(list);
+  var one = list.filter(function (b) { return b.n === 1; })[0];
+  var prev = physics.preview(cueBall, 0, -1, {
+    balls: list, walls: t.walls, pockets: t.pockets
+  }, config);
+  assert.ok(prev.points.length >= 2);
+  assert.ok(prev.ghost, 'ghost should sit on the first object ball');
+  assert.ok(
+    Math.hypot(prev.ghost.x - one.x, prev.ghost.y - one.y) <= cueBall.r + one.r + 2,
+    'preview must reach the 1-ball, not stop short'
+  );
+
+  var r = config.ballRadius;
+  cueBall.x = t.felt.x + r * 2.2;
+  cueBall.y = t.felt.y + t.felt.h - r * 2.2;
+  one.x = t.felt.x + t.felt.w - r * 2.2;
+  one.y = t.felt.y + r * 2.2;
+  var i;
+  for (i = 0; i < list.length; i++) {
+    if (list[i].id !== 'cue' && list[i].n !== 1) list[i].pocketed = true;
+  }
+  var dx = one.x - cueBall.x;
+  var dy = one.y - cueBall.y;
+  var far = physics.preview(cueBall, dx, dy, {
+    balls: list, walls: t.walls, pockets: t.pockets
+  }, config);
+  assert.ok(far.ghost, 'diagonal preview must reach the far target');
+  assert.ok(Math.hypot(far.ghost.x - one.x, far.ghost.y - one.y) <= cueBall.r + one.r + 3);
+  var span = 0;
+  for (i = 1; i < far.points.length; i++) {
+    span += Math.hypot(far.points[i].x - far.points[i - 1].x, far.points[i].y - far.points[i - 1].y);
+  }
+  assert.ok(span > Math.hypot(t.felt.w, t.felt.h) * 0.55, 'preview span ' + span);
+});
+
 check('aim preview returns a dashed polyline and optional ghost', function () {
   var t = board();
   var list = balls.create(t, config);

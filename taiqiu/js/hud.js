@@ -63,7 +63,8 @@
       turn: { x: cx, y: top + 68 },
       clock: { x: viewport.width - pad, y: top + 36 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
-      power: { x: pad, y: playBottom + 36, w: Math.max(80, viewport.width - pad * 2), h: 6 },
+      power: { x: pad, y: playBottom + 34, w: Math.max(80, viewport.width - pad * 2 - 52), h: 10 },
+      powerLabel: { x: viewport.width - pad, y: playBottom + 43 },
       settleCard: { x: cx - 132, y: cy - 140, w: 264, h: 292 },
       settleScore: { x: cx, y: cy - 98 },
       settleGap: { x: cx, y: cy - 18 },
@@ -272,12 +273,27 @@
 
     if (session.phase === 'Aim' && session.cue.dragging) {
       var p = session.cue.power;
+      var full = p >= 0.98 || session.cue.full;
       ctx.fillStyle = '#2A1C12';
-      roundRect(ctx, ui.power.x, ui.power.y, ui.power.w, ui.power.h, 3);
+      roundRect(ctx, ui.power.x, ui.power.y, ui.power.w, ui.power.h, 4);
       ctx.fill();
-      ctx.fillStyle = '#F5D76E';
-      roundRect(ctx, ui.power.x, ui.power.y, ui.power.w * p, ui.power.h, 3);
+      ctx.fillStyle = full ? '#FFF3B0' : '#F5D76E';
+      if (session.powerFlash && session.powerFlash > 0) {
+        ctx.fillStyle = '#FFFFFF';
+      }
+      roundRect(ctx, ui.power.x, ui.power.y, ui.power.w * p, ui.power.h, 4);
       ctx.fill();
+      if (full) {
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+      ctx.fillStyle = full ? '#F5D76E' : colors.hud;
+      ctx.font = 'bold 12px ' + FONT;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(full ? '满' : (Math.round(p * 100) + '%'), ui.powerLabel.x, ui.powerLabel.y);
+      ctx.textBaseline = 'alphabetic';
     } else if (session.phase === 'Aim') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;

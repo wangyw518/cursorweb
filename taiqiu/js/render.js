@@ -368,7 +368,7 @@
       if (session.balls[i].id === 'cue') cueBall = session.balls[i];
     }
     if (!cueBall || cueBall.pocketed) return;
-    var pose = cue.stickPose(stick, cueBall);
+    var pose = cue.stickPose(stick, cueBall, session.viewport);
     if (!pose) return;
     var a = table.project(pose.tipX, pose.tipY, session.table, session.viewMode);
     var b = table.project(pose.tailX, pose.tailY, session.table, session.viewMode);
