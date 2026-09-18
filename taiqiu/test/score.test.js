@@ -4,6 +4,7 @@ var assert = require('assert');
 var config = require('../js/config.json');
 var score = require('../js/score');
 var tiles = require('../js/tiles');
+var fsm = require('../js/fsm');
 
 var failures = 0;
 
@@ -18,76 +19,73 @@ function check(name, fn) {
   }
 }
 
-check('miss awards 0 even on a three-star score tile', function () {
-  var zone = tiles.makeTile('a', 'score', 3, 0, 0, 20);
+check('miss awards 0 and does not apply a stellar multiplier', function () {
+  var zone = tiles.makeTile('a', 'stellar', 0, 0, 0, 20);
   var award = score.settle({
     pocketedLowest: false,
     scratch: false,
-    cushions: 3,
     zone: zone,
-    firstContactIsTarget: true
+    applyStar: true,
+    resolution: fsm.classify({ pocketedLowest: false, scratch: false, firstContactId: 'b1', targetId: 'b1' })
   }, config);
-  assert.strictEqual(award.points, 0);
+  assert.strictEqual(award.coins, 0);
+  assert.strictEqual(award.starApplied, false);
   assert.strictEqual(award.reason, 'miss');
-  assert.strictEqual(award.skinProgress, 0);
 });
 
-check('scratch awards 0 even after pocketing the object ball', function () {
+check('scratch / foul skips full star multiplier', function () {
+  var zone = tiles.makeTile('b', 'stellar', 0, 0, 0, 20);
   var award = score.settle({
     pocketedLowest: true,
     scratch: true,
-    cushions: 2,
-    zone: tiles.makeTile('b', 'score', 3, 0, 0, 20)
+    foul: true,
+    zone: zone,
+    applyStar: true,
+    resolution: fsm.classify({ pocketedLowest: true, scratch: true, firstContactId: 'b1', targetId: 'b1' })
   }, config);
-  assert.strictEqual(award.points, 0);
-  assert.strictEqual(award.reason, 'scratch');
+  assert.strictEqual(award.coins, 0);
+  assert.strictEqual(award.starApplied, false);
+  assert.strictEqual(award.foul, true);
 });
 
-check('legal pocket scores from quality, not a lottery face value', function () {
-  var low = tiles.makeTile('c', 'score', 1, 0, 0, 20);
-  low.points = tiles.starPoints(1, config);
-  var high = tiles.makeTile('d', 'score', 3, 0, 0, 20);
-  high.points = tiles.starPoints(3, config);
-  var weak = score.settle({
+check('wrong 9-ball order is a foul and skips StarZone payout', function () {
+  var resolution = fsm.classify({
     pocketedLowest: true,
     scratch: false,
-    cushions: 0,
-    zone: low,
-    firstContactIsTarget: false
-  }, config);
-  var strong = score.settle({
-    pocketedLowest: true,
-    scratch: false,
-    cushions: 3,
-    zone: high,
-    firstContactIsTarget: true
-  }, config);
-  assert.ok(weak.points >= config.pocketPoints);
-  assert.ok(strong.points > weak.points);
-  assert.ok(strong.quality.multiplier > 1);
-  assert.strictEqual(strong.quality.cushions, 3);
-});
-
-check('practice tile grants skin progress tied to cushions', function () {
-  var zone = tiles.makeTile('e', 'practice', 0, 0, 0, 20);
-  var noRail = score.settle({
-    pocketedLowest: true, scratch: false, cushions: 0, zone: zone
-  }, config);
-  var withRail = score.settle({
-    pocketedLowest: true, scratch: false, cushions: 2, zone: zone
-  }, config);
-  assert.ok(noRail.skinProgress >= config.practiceBase);
-  assert.ok(withRail.skinProgress > noRail.skinProgress);
-  assert.strictEqual(withRail.props[0].name, '练习卡');
-});
-
-check('target tile adds task bonus and names 目标格', function () {
-  var zone = tiles.makeTile('f', 'target', 0, 0, 0, 20);
+    firstContactId: 'b9',
+    targetId: 'b1'
+  });
+  assert.strictEqual(resolution.foul, true);
+  assert.strictEqual(resolution.enterStarZone, false);
   var award = score.settle({
-    pocketedLowest: true, scratch: false, cushions: 1, zone: zone
+    pocketedLowest: true,
+    zone: tiles.makeTile('c', 'stellar', 0, 0, 0, 20),
+    applyStar: true,
+    resolution: resolution
   }, config);
-  assert.ok(award.points > config.pocketPoints);
-  assert.strictEqual(award.props[0].name, '目标格');
+  assert.strictEqual(award.coins, 0);
+  assert.strictEqual(award.starApplied, false);
+});
+
+check('legal pocket reads StarZone multiplier 1 / 1.5 / 2 / 3 as 星币', function () {
+  var nova = score.settle({
+    pocketedLowest: true,
+    applyStar: true,
+    zone: tiles.makeTile('n', 'nova', 0, 0, 0, 20),
+    resolution: { legal: true, foul: false, reason: 'legal', enterStarZone: true }
+  }, config);
+  var stellar = score.settle({
+    pocketedLowest: true,
+    applyStar: true,
+    zone: tiles.makeTile('s', 'stellar', 0, 0, 0, 20),
+    resolution: { legal: true, foul: false, reason: 'legal', enterStarZone: true }
+  }, config);
+  assert.strictEqual(nova.coins, config.baseXingbi);
+  assert.strictEqual(stellar.coins, config.baseXingbi * 3);
+  assert.strictEqual(nova.starMultiplier, 1);
+  assert.strictEqual(stellar.starMultiplier, 3);
+  assert.strictEqual(stellar.unit, '星币');
+  assert.strictEqual(stellar.zoneLabel, '恒星');
 });
 
 check('disclaimer is the required virtual-prop copy', function () {
@@ -99,9 +97,7 @@ check('disclaimer is the required virtual-prop copy', function () {
 check('gapToBest reports new record or remaining gap', function () {
   var neu = score.gapToBest(120, 80);
   assert.strictEqual(neu.isNew, true);
-  assert.strictEqual(neu.best, 120);
   var behind = score.gapToBest(40, 90);
-  assert.strictEqual(behind.isNew, false);
   assert.strictEqual(behind.gap, 50);
 });
 

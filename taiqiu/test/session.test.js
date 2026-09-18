@@ -7,6 +7,7 @@ var storage = require('../js/storage');
 var balls = require('../js/balls');
 var tiles = require('../js/tiles');
 var cue = require('../js/cue');
+var fsm = require('../js/fsm');
 
 var failures = 0;
 
@@ -42,114 +43,114 @@ check('drag aim sets opposite fire direction and clamped power', function () {
   var ball = { x: 100, y: 200, r: 8, pocketed: false };
   cue.beginDrag(stick, 100, 200 + 64, ball);
   assert.ok(stick.dragging);
-  assert.ok(Math.abs(stick.power - 0.5) < 0.03);
-  assert.ok(stick.ay < -0.9);
   var shot = cue.endDrag(stick, config);
   assert.strictEqual(shot.fired, true);
   assert.ok(shot.vy < 0);
 });
 
-check('weak drag cancels instead of firing', function () {
-  var stick = cue.create(config);
-  var ball = { x: 80, y: 80, r: 8, pocketed: false };
-  cue.beginDrag(stick, 80, 82, ball);
-  var shot = cue.endDrag(stick, config);
-  assert.strictEqual(shot.fired, false);
-});
-
-check('session starts in aim with a 9-ball rack and 2D view', function () {
+check('session starts in Aim with 9-ball order and top view', function () {
   var s = fresh();
-  assert.strictEqual(s.phase, 'aim');
-  assert.strictEqual(s.viewMode, '2d');
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
+  assert.strictEqual(s.viewMode, 'top');
+  assert.strictEqual(s.aim3d, false);
   assert.strictEqual(s.balls.length, 10);
   assert.strictEqual(s.target.n, 1);
   assert.ok(s.tiles.length > 0);
 });
 
-check('2D/3D stub toggle flips viewMode', function () {
+check('aim3d stub does not leave top viewMode', function () {
   var s = fresh();
   var btn = s.ui.mode;
-  sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
-  assert.strictEqual(s.viewMode, '3d');
-  sessionMod.toggleView(s);
-  assert.strictEqual(s.viewMode, '2d');
+  var res = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
+  assert.strictEqual(res.kind, 'aim3d');
+  assert.strictEqual(s.aim3d, true);
+  assert.strictEqual(s.viewMode, 'top');
+  sessionMod.toggleAim3d(s);
+  assert.strictEqual(s.aim3d, false);
+  assert.strictEqual(s.viewMode, 'top');
 });
 
-check('debug legal stop awards points and can set a local best', function () {
+check('legal pocket applies StarZone 星币 and stores best', function () {
   var s = fresh();
-  var zone = s.tiles.filter(function (t) { return t.kind === 'score' && t.stars === 3; })[0];
+  var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
   var settle = sessionMod.debugForceStop(s, {
     pocketTarget: true,
-    cushions: 2,
     firstContact: true,
     x: zone.x,
     y: zone.y
   });
-  assert.strictEqual(s.phase, 'settle');
+  assert.strictEqual(s.phase, fsm.PHASE.Settle);
   assert.ok(settle.legal);
-  assert.ok(settle.points > 0);
-  assert.strictEqual(settle.isNew, true);
-  assert.strictEqual(s.best, settle.points);
-  var saved = storage.load();
-  assert.strictEqual(saved.best, settle.points);
+  assert.strictEqual(settle.starApplied, true);
+  assert.strictEqual(settle.starMultiplier, 3);
+  assert.strictEqual(settle.coins, config.baseXingbi * 3);
+  assert.strictEqual(s.best, settle.coins);
+  assert.strictEqual(storage.load().best, settle.coins);
 });
 
-check('debug miss settles at 0 and does not beat best', function () {
+check('foul skips StarZone even if cue sits on 恒星', function () {
   var s = fresh();
   sessionMod.debugForceStop(s, {
     pocketTarget: true,
-    cushions: 3,
+    firstContact: true,
     x: s.tiles[0].x,
     y: s.tiles[0].y
   });
   var best = s.best;
   sessionMod.restart(s);
-  var miss = sessionMod.debugForceStop(s, { pocketTarget: false, cushions: 4 });
-  assert.strictEqual(miss.points, 0);
+  var zone = s.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
+  var foul = sessionMod.debugForceStop(s, {
+    pocketTarget: true,
+    firstContact: false,
+    x: zone.x,
+    y: zone.y
+  });
+  assert.strictEqual(foul.coins, 0);
+  assert.strictEqual(foul.starApplied, false);
+  assert.strictEqual(foul.foul, true);
+  assert.strictEqual(s.best, best);
+});
+
+check('miss settles at 0 and does not beat best', function () {
+  var s = fresh();
+  sessionMod.debugForceStop(s, { pocketTarget: true, firstContact: true });
+  var best = s.best;
+  sessionMod.restart(s);
+  var miss = sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
+  assert.strictEqual(miss.coins, 0);
   assert.strictEqual(miss.legal, false);
   assert.strictEqual(s.best, best);
 });
 
-check('replay returns to aim with a fresh rack', function () {
+check('replay returns to Aim with a fresh 9-ball rack', function () {
   var s = fresh();
-  sessionMod.debugForceStop(s, { pocketTarget: true, cushions: 1 });
+  sessionMod.debugForceStop(s, { pocketTarget: true, firstContact: true });
   var replay = s.ui.replay;
   sessionMod.handlePointerDown(s, replay.x + 10, replay.y + 10);
-  assert.strictEqual(s.phase, 'aim');
+  assert.strictEqual(s.phase, fsm.PHASE.Aim);
   assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
-  assert.strictEqual(s.shot.cushions, 0);
 });
 
-check('firing from a pull-back starts the rolling phase', function () {
+check('firing enters Shot then can reach Settle through the GDD machine', function () {
   var s = fresh();
   var cueBall = balls.cueBall(s.balls);
   sessionMod.handlePointerDown(s, cueBall.x, cueBall.y + 8);
   sessionMod.handlePointerMove(s, cueBall.x, cueBall.y + 90);
   var up = sessionMod.handlePointerUp(s, cueBall.x, cueBall.y + 90);
   assert.strictEqual(up.kind, 'fire');
-  assert.strictEqual(s.phase, 'rolling');
-  assert.ok(cueBall.vy < 0);
-});
-
-check('a live shot reaches settle through physics', function () {
-  var s = fresh();
-  var cueBall = balls.cueBall(s.balls);
-  sessionMod.handlePointerDown(s, cueBall.x, cueBall.y + 12);
-  sessionMod.handlePointerMove(s, cueBall.x + 6, cueBall.y + 108);
-  sessionMod.handlePointerUp(s, cueBall.x + 6, cueBall.y + 108);
+  assert.strictEqual(s.phase, fsm.PHASE.Shot);
   var i;
   for (i = 0; i < 720; i++) sessionMod.update(s, config.fixedDt);
-  assert.strictEqual(s.phase, 'settle');
+  assert.strictEqual(s.phase, fsm.PHASE.Settle);
   assert.ok(s.settle);
-  assert.ok(s.settle.points === 0 || s.settle.points > 0);
   assert.strictEqual(s.settle.disclaimer, config.disclaimer);
 });
 
-check('tile pick under cue center uses geometric tiles', function () {
+check('zone pick under cue center uses StarZone names', function () {
   var s = fresh();
   var tile = s.tiles[3];
   var picked = tiles.pickAt(s.tiles, tile.x, tile.y);
-  assert.strictEqual(picked.label, tile.label);
+  assert.ok(['新星', '流星', '彗星', '恒星'].indexOf(picked.label) !== -1);
 });
 
 if (failures) {

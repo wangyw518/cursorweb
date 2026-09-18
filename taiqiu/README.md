@@ -18,37 +18,32 @@ AppID: `wxc8683bd9c1599d7d`
 
 Do **not** import the repository root. The playable project root is `taiqiu/`.
 
-`dev/`, `test/`, and `shots/` are pack-ignored browser smoke / node tests / screenshots. They are not part of the WeChat package. Preview captures live in `shots/`.
+`dev/`, `test/`, and `shots/` are pack-ignored browser smoke / node tests / screenshots. They are not part of the WeChat package.
 
-## Loop
+## Frozen GDD loop (M0–M1)
 
-Drag the cue (pull back to aim + power) → dashed aim line → fire the cue ball → custom 2D physics (circles, cushions, friction, six pockets).
+State machine: **Aim → Shot → ResolvePocket → WaitCueStop → StarZone**
 
-Simplified **9-ball**: pocket the lowest numbered object ball. After that ball is pocketed the cue ball keeps rolling. When everything stops:
+1. **Aim** — top-down only (`viewMode: top`). Drag cue, dashed aim, pull-back power. **瞄准3D** is a stub and does not change the camera.
+2. **Shot** — fire the cue ball; custom 2D circles / cushions / friction / pockets.
+3. **ResolvePocket** — simplified 9-ball order (lowest numbered object ball first). Scratch, whiff, or wrong first contact is a **foul**.
+4. **WaitCueStop** — only after a valid pocket; cue keeps rolling.
+5. **StarZone** — when the cue ball stops, read the abstract zone under its center. Multipliers: 新星 1 / 流星 1.5 / 彗星 2 / 恒星 3.
+6. **Foul skips StarZone** — no full star multiplier; that shot is **0 星币**.
 
-- Legal pocket → award **virtual points / 练习卡 skin progress / 目标格 task bonus**.
-- Award is **shot quality first** (pocket success, cushion count, first contact with the target) then the geometric tile under the cue-ball center.
-- Miss or scratch (cue pocketed) → **0** that shot. A high tile does not pay if the shot failed.
-
-Settle panel: 本杆得分, 距最佳 / 新纪录, 再来一杆. Best score is stored locally.
-
-Stub **2D / 3D** toggle: 3D is a placeholder camera angle (slight perspective), not a full 3D engine.
+Settle UI: 本杆星币, 距最佳 / 新纪录, 再来一杆, plus `虚拟道具，仅限游戏内使用，不可兑换现金`. Best 星币 is stored locally.
 
 ## Table art (compliance)
 
-The felt is covered with **geometric tiles** — diamonds, star marks, billiard sights — named:
+Realistic green felt is OK. StarZones are **abstract patterns** named 新星 / 流星 / 彗星 / 恒星 — not bills, not denominations, not ¥ / 钞 / 红包 / 现金 / 面额.
 
-- 得分区 (一星 / 二星 / 三星)
-- 练习卡
-- 目标格
-
-Not banknotes. No ¥, no Mao portrait, no China banknote patterns, no 钞 / 红包 / 现金 / 面额 / 提现 / 赌 / 赔率.
+Rewards are virtual **星币** only.
 
 ## Controls
 
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull.
 - Release to shoot. A short pull cancels.
-- Tap **视角 2D / 3D** to stub-switch camera.
+- Tap **瞄准3D** for the stub (俯视瞄准 stays on).
 - After settle, tap **再来一杆**.
 
 ## Layout
@@ -60,6 +55,7 @@ taiqiu/
   project.config.json
   js/
     config.json
+    fsm.js
     physics.js
     table.js
     tiles.js
@@ -80,11 +76,8 @@ taiqiu/
 ## Local logic check
 
 ```bash
-node taiqiu/test/physics.test.js
-node taiqiu/test/score.test.js
-node taiqiu/test/tiles.test.js
-node taiqiu/test/session.test.js
-node taiqiu/test/compliance.test.js
+node taiqiu/test/m0.test.js
+node taiqiu/test/m1.test.js
 ```
 
 ## Browser smoke

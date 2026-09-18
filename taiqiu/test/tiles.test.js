@@ -26,40 +26,43 @@ function board() {
   return table.layout({ width: 375, height: 667 }, config, ui.playRect);
 }
 
-check('tiles use only 得分区 / 练习卡 / 目标格 labels', function () {
+check('StarZones are 新星 / 流星 / 彗星 / 恒星 only', function () {
   var list = tiles.create(board(), config);
   assert.ok(list.length >= 8);
-  var seen = { score: 0, practice: 0, target: 0 };
+  var seen = {};
   list.forEach(function (t) {
     tiles.assertSafeTile(t);
-    seen[t.kind] += 1;
-    assert.ok(['得分区', '练习卡', '目标格'].indexOf(t.label) !== -1);
+    seen[t.label] = true;
+    assert.ok(['新星', '流星', '彗星', '恒星'].indexOf(t.label) !== -1);
   });
-  assert.ok(seen.score > 0 && seen.practice > 0 && seen.target > 0);
+  assert.ok(seen['新星'] && seen['流星'] && seen['彗星'] && seen['恒星']);
 });
 
-check('tiles never carry banknote-like fields', function () {
-  var t = tiles.makeTile('z', 'score', 2, 10, 10, 16);
+check('StarZones never carry banknote-like fields or denominations', function () {
+  var t = tiles.makeTile('z', 'stellar', 0, 10, 10, 16);
   tiles.assertSafeTile(t);
   tiles.FORBIDDEN_FIELDS.forEach(function (key) {
     assert.strictEqual(Object.prototype.hasOwnProperty.call(t, key), false);
   });
+  assert.strictEqual(t.multiplier, 3);
 });
 
-check('pickAt returns the diamond under the cue-ball center', function () {
+check('pickAt returns the abstract zone under the cue-ball center', function () {
   var list = tiles.create(board(), config);
   var sample = list[4];
   var hit = tiles.pickAt(list, sample.x, sample.y);
   assert.ok(hit);
   assert.strictEqual(hit.id, sample.id);
-  var miss = tiles.pickAt(list, -100, -100);
-  assert.strictEqual(miss, null);
+  assert.strictEqual(tiles.pickAt(list, -100, -100), null);
 });
 
-check('score stars map to geometric point weights, not cash face values', function () {
-  assert.deepStrictEqual(config.scoreStars, [28, 48, 72]);
-  assert.strictEqual(tiles.starPoints(1, config), 28);
-  assert.strictEqual(tiles.starPoints(3, config), 72);
+check('config star multipliers are 1 / 1.5 / 2 / 3', function () {
+  var byId = {};
+  config.starZones.forEach(function (z) { byId[z.id] = z.multiplier; });
+  assert.strictEqual(byId.nova, 1);
+  assert.strictEqual(byId.meteor, 1.5);
+  assert.strictEqual(byId.comet, 2);
+  assert.strictEqual(byId.stellar, 3);
 });
 
 if (failures) {

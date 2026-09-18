@@ -108,8 +108,8 @@ async function main() {
 
   await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.mode; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
   await sleep(60);
-  await shot('taiqiu_view_3d_table');
-  await evalExpr('window.__taiqiu.sessionMod.toggleView(window.__taiqiu.session)');
+  await shot('taiqiu_aim3d_stub');
+  await evalExpr('window.__taiqiu.sessionMod.toggleAim3d(window.__taiqiu.session)');
 
   var ball = await evalExpr('(function(){var b=window.__taiqiu.session.balls.filter(function(x){return x.id==="cue";})[0]; return {x:b.x,y:b.y};})()');
   await evalExpr(
@@ -130,13 +130,9 @@ async function main() {
   await sleep(180);
   await shot('taiqiu_ball_in_flight');
 
-  await evalExpr('(function(){var g=window.__taiqiu; var zone=g.session.tiles.filter(function(t){return t.kind==="score"&&t.stars===3;})[0]; g.sessionMod.debugForceStop(g.session,{pocketTarget:true,cushions:2,firstContact:true,x:zone.x,y:zone.y});})()');
+  await evalExpr('(function(){var g=window.__taiqiu; var zone=g.session.tiles.filter(function(t){return t.kind==="stellar";})[0]; g.sessionMod.debugForceStop(g.session,{pocketTarget:true,firstContact:true,x:zone.x,y:zone.y});})()');
   await sleep(80);
   await shot('taiqiu_settle_legal');
-
-  await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.mode; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
-  await sleep(60);
-  await shot('taiqiu_view_3d_stub');
 
   await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.replay; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+20,r.y+12);})()');
   await sleep(80);

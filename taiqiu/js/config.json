@@ -17,17 +17,16 @@
   "pocketRadius": 15.5,
   "railThickness": 20,
   "grabSlopPx": 40,
-  "settleDelayMs": 320,
-  "pocketPoints": 80,
-  "cushionPoints": 18,
-  "cushionCap": 4,
-  "cushionMul": 0.15,
-  "firstContactBonus": 16,
-  "practiceBase": 8,
-  "practicePerCushion": 4,
-  "targetBonus": 24,
-  "targetRailBonus": 12,
-  "scoreStars": [28, 48, 72],
+  "settleDelayMs": 240,
+  "baseXingbi": 40,
+  "currency": "星币",
+  "viewMode": "top",
+  "starZones": [
+    { "id": "nova", "name": "新星", "multiplier": 1 },
+    { "id": "meteor", "name": "流星", "multiplier": 1.5 },
+    { "id": "comet", "name": "彗星", "multiplier": 2 },
+    { "id": "stellar", "name": "恒星", "multiplier": 3 }
+  ],
   "disclaimer": "虚拟道具，仅限游戏内使用，不可兑换现金",
   "storageKey": "taiqiu.best",
   "colors": {
@@ -53,9 +52,10 @@
     "buttonBorder": "#D4B483",
     "buttonText": "#F4E8D4",
     "scorePop": "#FDE68A",
-    "tileScore": "#F5D76E",
-    "tilePractice": "#7DD3C7",
-    "tileTarget": "#C4B5FD",
+    "tileNova": "#FDE68A",
+    "tileMeteor": "#7DD3FC",
+    "tileComet": "#C4B5FD",
+    "tileStellar": "#F5D76E",
     "disclaimer": "#A89880"
   }
 }

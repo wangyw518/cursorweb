@@ -56,13 +56,18 @@ check('runtime sources do not use cash-gambling copy', function () {
   assert.deepStrictEqual(hits, []);
 });
 
-check('tile vocabulary stays on 得分区 / 练习卡 / 目标格', function () {
+check('StarZone vocabulary is 新星 / 流星 / 彗星 / 恒星 and virtual 星币', function () {
   var tilesSrc = fs.readFileSync(path.join(ROOT, 'js/tiles.js'), 'utf8');
-  assert.ok(tilesSrc.indexOf('得分区') !== -1);
-  assert.ok(tilesSrc.indexOf('练习卡') !== -1);
-  assert.ok(tilesSrc.indexOf('目标格') !== -1);
-  assert.ok(tilesSrc.indexOf('faceValue') !== -1);
-  assert.ok(tilesSrc.indexOf('FORBIDDEN_FIELDS') !== -1);
+  var scoreSrc = fs.readFileSync(path.join(ROOT, 'js/score.js'), 'utf8');
+  var fsmSrc = fs.readFileSync(path.join(ROOT, 'js/fsm.js'), 'utf8');
+  ['新星', '流星', '彗星', '恒星'].forEach(function (name) {
+    assert.ok(tilesSrc.indexOf(name) !== -1, name);
+  });
+  assert.ok(scoreSrc.indexOf('星币') !== -1);
+  assert.ok(fsmSrc.indexOf('WaitCueStop') !== -1);
+  assert.ok(fsmSrc.indexOf('StarZone') !== -1);
+  assert.ok(config.currency === '星币');
+  assert.ok(config.viewMode === 'top');
 });
 
 check('project is a WeChat game with the assigned AppID', function () {

@@ -120,43 +120,76 @@
     ctx.closePath();
   }
 
+  function zoneColor(kind, colors) {
+    if (kind === 'meteor') return colors.tileMeteor || '#7DD3FC';
+    if (kind === 'comet') return colors.tileComet || '#C4B5FD';
+    if (kind === 'stellar') return colors.tileStellar || '#F5D76E';
+    return colors.tileNova || '#FDE68A';
+  }
+
+  function drawZoneMark(ctx, t, p, s, hex) {
+    ctx.strokeStyle = hex;
+    ctx.fillStyle = hex;
+    ctx.lineWidth = 1.2;
+    if (t.pattern === 'streak') {
+      ctx.beginPath();
+      ctx.moveTo(p.x - s * 0.7, p.y + s * 0.35);
+      ctx.lineTo(p.x + s * 0.7, p.y - s * 0.35);
+      ctx.stroke();
+      return;
+    }
+    if (t.pattern === 'arc') {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, s * 0.42, 0.4, 2.6);
+      ctx.stroke();
+      return;
+    }
+    if (t.pattern === 'burst') {
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - s * 0.55);
+      ctx.lineTo(p.x + s * 0.18, p.y - s * 0.12);
+      ctx.lineTo(p.x + s * 0.55, p.y);
+      ctx.lineTo(p.x + s * 0.18, p.y + s * 0.12);
+      ctx.lineTo(p.x, p.y + s * 0.55);
+      ctx.lineTo(p.x - s * 0.18, p.y + s * 0.12);
+      ctx.lineTo(p.x - s * 0.55, p.y);
+      ctx.lineTo(p.x - s * 0.18, p.y - s * 0.12);
+      ctx.closePath();
+      ctx.stroke();
+      return;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, s * 0.28, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   function drawTiles(ctx, session) {
     var colors = session.config.colors;
     var i;
     for (i = 0; i < session.tiles.length; i++) {
       var t = session.tiles[i];
       var p = table.project(t.x, t.y, session.table, session.viewMode);
-      var s = t.size * 0.55 * p.s;
-      var hex = t.kind === 'practice'
-        ? colors.tilePractice
-        : (t.kind === 'target' ? colors.tileTarget : colors.tileScore);
+      var s = t.size * 0.5 * p.s;
+      var hex = zoneColor(t.kind, colors);
       ctx.save();
-      ctx.globalAlpha = 0.22;
+      ctx.globalAlpha = 0.16;
       drawDiamond(ctx, p.x, p.y, s);
       ctx.fillStyle = hex;
       ctx.fill();
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = 0.55;
       ctx.strokeStyle = hex;
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1;
       ctx.stroke();
-
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.9;
+      drawZoneMark(ctx, t, p, s, hex);
+      ctx.font = (8 * p.s) + 'px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = hex;
-      if (t.kind === 'score') {
-        var k;
-        var star = '★';
-        ctx.font = (9 * p.s) + 'px ' + FONT;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        var marks = '';
-        for (k = 0; k < t.stars; k++) marks += star;
-        ctx.fillText(marks, p.x, p.y - 1);
-      } else {
-        ctx.font = (8 * p.s) + 'px ' + FONT;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(t.kind === 'practice' ? '练' : '标', p.x, p.y);
-      }
+      ctx.fillText(t.label, p.x, p.y + s * 0.72);
       ctx.restore();
     }
   }
@@ -208,7 +241,7 @@
   }
 
   function drawAim(ctx, session) {
-    if (session.phase !== 'aim' || !session.cue.dragging || session.cue.power < 0.04) return;
+    if (session.phase !== 'Aim' || !session.cue.dragging || session.cue.power < 0.04) return;
     var colors = session.config.colors;
     var pts = session.preview && session.preview.points ? session.preview.points : [];
     ctx.save();
@@ -236,7 +269,7 @@
   }
 
   function drawCueStick(ctx, session) {
-    if (session.phase !== 'aim') return;
+    if (session.phase !== 'Aim') return;
     var cueBall = null;
     var i;
     for (i = 0; i < session.balls.length; i++) {

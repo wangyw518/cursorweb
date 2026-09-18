@@ -25,11 +25,11 @@
       target: { x: pad, y: top + 36 },
       best: { x: viewport.width - pad, y: top + 50 },
       mode: {
-        x: viewport.width - pad - 78,
+        x: viewport.width - pad - 84,
         y: top + 8,
-        w: 78,
+        w: 84,
         h: 26,
-        label: '2D / 3D'
+        label: '瞄准3D'
       },
       hint: { x: cx, y: playBottom + 14 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 14 },
@@ -49,8 +49,8 @@
   }
 
   function hitTest(ui, x, y, phase) {
-    if (inRect(ui.mode, x, y)) return 'mode';
-    if (phase === 'settle') {
+    if (inRect(ui.mode, x, y)) return 'aim3d';
+    if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
       if (inRect(ui.settleCard, x, y)) return 'settle-block';
     }
@@ -103,18 +103,17 @@
     ctx.textAlign = 'right';
     ctx.fillStyle = colors.hud;
     ctx.font = '12px ' + FONT;
-    ctx.fillText('最佳 ' + (session.best || 0) + ' 分', ui.best.x, ui.best.y);
+    ctx.fillText('最佳 ' + (session.best || 0) + ' 星币', ui.best.x, ui.best.y);
 
-    var modeLabel = session.viewMode === '3d' ? '视角 3D' : '视角 2D';
     drawButton(ctx, {
       x: ui.mode.x,
       y: ui.mode.y,
       w: ui.mode.w,
       h: ui.mode.h,
-      label: modeLabel
-    }, colors, session.pressed === 'mode');
+      label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
+    }, colors, session.pressed === 'aim3d' || session.aim3d);
 
-    if (session.phase === 'aim' && session.cue.dragging) {
+    if (session.phase === 'Aim' && session.cue.dragging) {
       var p = session.cue.power;
       ctx.fillStyle = '#2A1C12';
       roundRect(ctx, ui.power.x, ui.power.y, ui.power.w, ui.power.h, 3);
@@ -122,16 +121,28 @@
       ctx.fillStyle = '#F5D76E';
       roundRect(ctx, ui.power.x, ui.power.y, ui.power.w * p, ui.power.h, 3);
       ctx.fill();
-    } else if (session.phase === 'aim') {
+    } else if (session.phase === 'Aim') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'center';
-      ctx.fillText('拖动球杆瞄准 · 后拉蓄力', ui.hint.x, ui.hint.y);
-    } else if (session.phase === 'rolling') {
+      ctx.fillText('俯视瞄准 · 拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
+    } else if (session.phase === 'Shot') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'center';
-      ctx.fillText('球还在滚动…', ui.hint.x, ui.hint.y);
+      ctx.fillText('出杆中…', ui.hint.x, ui.hint.y);
+    } else if (session.phase === 'WaitCueStop') {
+      ctx.fillStyle = colors.hudDim;
+      ctx.font = '12px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText('等待母球停稳…', ui.hint.x, ui.hint.y);
+    }
+
+    if (session.toast && session.toast.text) {
+      ctx.fillStyle = colors.hud;
+      ctx.font = '12px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText(session.toast.text, ui.hint.x, ui.hint.y - 16);
     }
 
     ctx.fillStyle = colors.disclaimer || '#A89880';
@@ -142,7 +153,7 @@
   }
 
   function drawSettle(ctx, session) {
-    if (session.phase !== 'settle' || !session.settle) return;
+    if (session.phase !== 'Settle' || !session.settle) return;
     var ui = session.ui;
     var colors = session.config.colors;
     var s = session.settle;
@@ -159,23 +170,29 @@
     ctx.fillStyle = colors.hud;
     ctx.font = '13px ' + FONT;
     ctx.textAlign = 'center';
-    ctx.fillText(s.legal ? '本杆得分' : (s.reason === 'scratch' ? '白球入袋' : '未进目标球'), ui.settleScore.x, ui.settleScore.y - 22);
+    var title = '本杆星币';
+    if (!s.legal) {
+      if (s.reason === 'scratch') title = '犯规 · 白球入袋';
+      else if (s.reason === 'order') title = '犯规 · 未按9球顺序';
+      else if (s.reason === 'whiff') title = '犯规 · 未碰目标球';
+      else title = '未进目标球';
+    }
+    ctx.fillText(title, ui.settleScore.x, ui.settleScore.y - 22);
 
     ctx.font = 'bold 36px ' + FONT;
     ctx.fillStyle = '#F5D76E';
-    ctx.fillText(String(s.points) + ' 分', ui.settleScore.x, ui.settleScore.y + 16);
+    ctx.fillText(String(s.coins != null ? s.coins : s.points) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
 
     ctx.font = '13px ' + FONT;
     ctx.fillStyle = colors.hud;
-    var gapText = s.isNew ? '新纪录' : ('距最佳 还差 ' + s.gap + ' 分');
+    var gapText = s.isNew ? '新纪录' : ('距最佳 还差 ' + s.gap + ' 星币');
     ctx.fillText(gapText, ui.settleGap.x, ui.settleGap.y);
 
     ctx.font = '11px ' + FONT;
     ctx.fillStyle = colors.hudDim;
-    var propLine = '停球格 ' + (s.zoneLabel || '桌面') +
-      ' · 库边 ' + s.quality.cushions +
-      (s.quality.firstContact ? ' · 先碰目标' : '');
-    if (s.skinProgress) propLine += ' · 练习卡 +' + s.skinProgress;
+    var propLine = s.starApplied
+      ? ('星域 ' + (s.zoneLabel || '新星') + ' ×' + s.starMultiplier)
+      : '犯规跳过星域倍率';
     ctx.fillText(propLine, ui.settleProp.x, ui.settleProp.y);
 
     ctx.font = '10px ' + FONT;
