@@ -1,5 +1,7 @@
 /**
  * Portrait billiard table: felt, wood rails, chrome pockets, cushion segments.
+ * Pockets are oversized (pocketR ≥ 2× ballR) with a wide mouth; centers sit
+ * outside the cushion / felt line so a ball can fall cleanly.
  */
 (function (root, factory) {
   var api = factory();
@@ -9,8 +11,9 @@
   'use strict';
 
   function layout(viewport, config, playRect) {
-    var rail = config.railThickness == null ? 20 : config.railThickness;
-    var pocketR = config.pocketRadius == null ? 15.5 : config.pocketRadius;
+    var rail = config.railThickness == null ? 24 : config.railThickness;
+    var ballR = config.ballRadius == null ? 8.2 : config.ballRadius;
+    var pocketR = config.pocketRadius == null ? 18.5 : config.pocketRadius;
     var wr = config.wallRadius == null ? 3.2 : config.wallRadius;
 
     var maxW = playRect.w;
@@ -38,15 +41,17 @@
     var y1 = felt.y;
     var x2 = felt.x + felt.w;
     var y2 = felt.y + felt.h;
-    var cornerOut = pocketR * 0.55;
-    var sideOut = pocketR * 0.42;
-    var gap = pocketR * 1.08;
+    // Centers sit outside the cushion line so the hole is in the rail, not on cloth.
+    var cornerOut = pocketR * 0.65;
+    var sideOut = pocketR * 0.52;
+    // Wide mouth: jaws open more than a ball diameter so the ball can pass.
+    var gap = Math.max(pocketR * 1.2, ballR * 2.3);
 
     var pockets = [
       { id: 'tl', kind: 'corner', x: x1 - cornerOut, y: y1 - cornerOut, r: pocketR },
       { id: 'tr', kind: 'corner', x: x2 + cornerOut, y: y1 - cornerOut, r: pocketR },
-      { id: 'ml', kind: 'side', x: x1 - sideOut, y: felt.cy, r: pocketR * 0.95 },
-      { id: 'mr', kind: 'side', x: x2 + sideOut, y: felt.cy, r: pocketR * 0.95 },
+      { id: 'ml', kind: 'side', x: x1 - sideOut, y: felt.cy, r: pocketR },
+      { id: 'mr', kind: 'side', x: x2 + sideOut, y: felt.cy, r: pocketR },
       { id: 'bl', kind: 'corner', x: x1 - cornerOut, y: y2 + cornerOut, r: pocketR },
       { id: 'br', kind: 'corner', x: x2 + cornerOut, y: y2 + cornerOut, r: pocketR }
     ];
@@ -78,6 +83,10 @@
       pockets: pockets,
       sights: sights,
       rail: rail,
+      mouthGap: gap,
+      pocketRadius: pocketR,
+      cornerOut: cornerOut,
+      sideOut: sideOut,
       kitchenY: y2 - felt.h * 0.22,
       rackY: y1 + felt.h * 0.28
     };

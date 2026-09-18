@@ -38,17 +38,25 @@
         h: 26,
         label: '弱AI试杆'
       },
+      room: {
+        x: pad + 172,
+        y: playBottom + 6,
+        w: 78,
+        h: 26,
+        label: '开房间'
+      },
       hint: { x: viewport.width - pad, y: playBottom + 22 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
-      power: { x: pad + 174, y: playBottom + 14, w: Math.max(80, viewport.width - pad * 2 - 174), h: 6 },
+      power: { x: pad + 258, y: playBottom + 14, w: Math.max(64, viewport.width - pad * 2 - 258), h: 6 },
       settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
       settleScore: { x: cx, y: cy - 86 },
       settleGap: { x: cx, y: cy - 28 },
       settleProp: { x: cx, y: cy - 4 },
-      replay: { x: cx - 72, y: cy + 38, w: 144, h: 38, label: '再来一杆' },
+      replay: { x: cx - 72, y: cy + 38, w: 144, h: 38, label: '再来一局' },
       share: { x: cx - 72, y: cy + 84, w: 144, h: 34, label: '分享成绩' },
-      splashCard: { x: cx - 132, y: cy - 118, w: 264, h: 220 },
-      start: { x: cx - 72, y: cy + 36, w: 144, h: 40, label: '开始练习' },
+      splashCard: { x: cx - 132, y: cy - 132, w: 264, h: 268 },
+      start: { x: cx - 72, y: cy + 20, w: 144, h: 40, label: '开始练习' },
+      roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '开房间' },
       playRect: {
         x: 10,
         y: playTop,
@@ -59,9 +67,13 @@
   }
 
   function hitTest(ui, x, y, phase) {
-    if (phase === 'Splash') return 'start';
+    if (phase === 'Splash') {
+      if (ui.roomSplash && inRect(ui.roomSplash, x, y)) return 'room';
+      return 'start';
+    }
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
+    if (ui.room && inRect(ui.room, x, y)) return 'room';
     if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
       if (inRect(ui.share, x, y)) return 'share';
@@ -110,13 +122,17 @@
 
     ctx.fillStyle = colors.hudDim;
     ctx.font = '12px ' + FONT;
-    var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
+    var turnPrefix = session.versus ? ('P' + ((session.turn || 0) + 1) + ' · ') : '';
+    var targetText = lowest ? (turnPrefix + '目标 ' + lowest.n + ' 号球') : (turnPrefix + '目标已完成');
     ctx.fillText(targetText, ui.target.x, ui.target.y);
 
     ctx.textAlign = 'left';
     ctx.fillStyle = colors.hud;
     ctx.font = '12px ' + FONT;
-    ctx.fillText('最佳 ' + (session.best || 0) + ' 星币', ui.best.x, ui.best.y);
+    var bestText = session.versus
+      ? ('P1 ' + ((session.scores && session.scores[0]) || 0) + ' · P2 ' + ((session.scores && session.scores[1]) || 0))
+      : ('最佳 ' + (session.best || 0) + ' 星币');
+    ctx.fillText(bestText, ui.best.x, ui.best.y);
 
     drawButton(ctx, {
       x: ui.mode.x,
@@ -133,6 +149,15 @@
         h: ui.ai.h,
         label: ui.ai.label
       }, colors, session.pressed === 'ai');
+    }
+    if (ui.room) {
+      drawButton(ctx, {
+        x: ui.room.x,
+        y: ui.room.y,
+        w: ui.room.w,
+        h: ui.room.h,
+        label: session.room ? '邀请好友' : ui.room.label
+      }, colors, session.pressed === 'room');
     }
 
     if (session.phase === 'Aim' && session.cue.dragging) {
@@ -193,7 +218,9 @@
     ctx.font = '13px ' + FONT;
     ctx.textAlign = 'center';
     var title = '本杆星币';
-    if (!s.legal) {
+    if (s.win || s.reason === 'nine') {
+      title = s.versus ? ('P' + ((s.winner || 0) + 1) + ' 胜 · 打进9号') : '打进9号 · 胜';
+    } else if (!s.legal) {
       if (s.reason === 'scratch') title = '犯规 · 白球入袋';
       else if (s.reason === 'order') title = '犯规 · 未按9球顺序';
       else if (s.reason === 'whiff') title = '犯规 · 未碰目标球';
@@ -250,6 +277,9 @@
     ctx.fillStyle = colors.disclaimer;
     wrapText(ctx, session.config.disclaimer, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 108, 220);
     drawButton(ctx, ui.start, colors, session.pressed === 'start');
+    if (ui.roomSplash) {
+      drawButton(ctx, ui.roomSplash, colors, session.pressed === 'room');
+    }
     ctx.restore();
   }
 

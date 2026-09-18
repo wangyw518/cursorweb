@@ -59,7 +59,7 @@
     var zone = input.zone || null;
     var applyLanding = !!(input.applyStar && legal && !foul);
 
-    if (!legal || foul || !pocketedLowest) {
+    if (!legal || foul) {
       var denied = emptyAward(reason);
       denied.foul = foul;
       denied.legal = false;

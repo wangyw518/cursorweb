@@ -75,7 +75,17 @@
             safeArea: { top: 20, bottom: H, left: 0, right: W }
           };
         },
-        onWindowResize: function () {}
+        onWindowResize: function () {},
+        shareAppMessage: function () {},
+        getLaunchOptionsSync: function () { return { query: {} }; },
+        onShow: function () {},
+        setStorageSync: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+        getStorageSync: function (k) {
+          try {
+            var raw = localStorage.getItem(k);
+            return raw ? JSON.parse(raw) : '';
+          } catch (e) { return ''; }
+        }
       };
       bind('onTouchStart', 'pointerdown');
       window.addEventListener('pointermove', function (e) {
@@ -110,6 +120,7 @@
         '../js/share.js',
         '../js/sfx.js',
         '../js/ai.js',
+        '../js/net.js',
         '../js/hud.js',
         '../js/render.js',
         '../js/session.js',

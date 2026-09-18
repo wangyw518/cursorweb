@@ -105,6 +105,78 @@
     return n;
   }
 
+  function findByN(list, n) {
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].n === n) return list[i];
+    }
+    return null;
+  }
+
+  function findById(list, id) {
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return null;
+  }
+
+  function unstick(ball, list) {
+    var guard = 0;
+    while (guard < 12) {
+      var hit = false;
+      var i;
+      for (i = 0; i < list.length; i++) {
+        var other = list[i];
+        if (other === ball || other.pocketed) continue;
+        var dx = ball.x - other.x;
+        var dy = ball.y - other.y;
+        var d = Math.hypot(dx, dy);
+        var min = ball.r + other.r + 0.4;
+        if (d < min) {
+          if (d < 1e-6) {
+            ball.x += min;
+          } else {
+            ball.x += (dx / d) * (min - d);
+            ball.y += (dy / d) * (min - d);
+          }
+          hit = true;
+        }
+      }
+      if (!hit) break;
+      guard += 1;
+    }
+    return ball;
+  }
+
+  function respotCue(list, table) {
+    var cue = cueBall(list);
+    if (!cue) return null;
+    cue.pocketed = false;
+    cue.vx = 0;
+    cue.vy = 0;
+    cue.x = table.felt.cx;
+    cue.y = table.kitchenY;
+    return unstick(cue, list);
+  }
+
+  function spotNine(list, table) {
+    var nine = findByN(list, 9);
+    if (!nine) return null;
+    var home = null;
+    var spots = rackPositions(table, nine.r);
+    var i;
+    for (i = 0; i < spots.length; i++) {
+      if (spots[i].n === 9) home = spots[i];
+    }
+    nine.pocketed = false;
+    nine.vx = 0;
+    nine.vy = 0;
+    nine.x = home ? home.x : table.felt.cx;
+    nine.y = home ? home.y : table.rackY;
+    return unstick(nine, list);
+  }
+
   return {
     COLORS: COLORS,
     rackPositions: rackPositions,
@@ -112,6 +184,12 @@
     cueBall: cueBall,
     objectBalls: objectBalls,
     lowestNumbered: lowestNumbered,
-    remainingCount: remainingCount
+    remainingCount: remainingCount,
+    findByN: findByN,
+    findById: findById,
+    unstick: unstick,
+    respotCue: respotCue,
+    spotNine: spotNine
   };
 });
+

@@ -14,7 +14,8 @@
     typeof require === 'function' ? require('./share') : root.TaiqiuShare,
     typeof require === 'function' ? require('./sfx') : root.TaiqiuSfx,
     typeof require === 'function' ? require('./ai') : root.TaiqiuAi,
-    typeof require === 'function' ? require('./render') : root.TaiqiuRender
+    typeof require === 'function' ? require('./render') : root.TaiqiuRender,
+    typeof require === 'function' ? require('./net') : root.TaiqiuNet
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TaiqiuSession = api;
@@ -33,7 +34,8 @@
   share,
   sfx,
   ai,
-  render
+  render,
+  net
 ) {
   'use strict';
 
@@ -61,6 +63,18 @@
     return session.target;
   }
 
+  function emptyShot() {
+    return {
+      cushions: 0,
+      pocketed: [],
+      firstContactId: null,
+      targetId: null,
+      scratch: false,
+      pocketedLowest: false,
+      pocketedNine: false
+    };
+  }
+
   function refreshPreview(session) {
     var cueBall = findCue(session);
     if (!session.cue.dragging || session.cue.power < 0.04 || !cueBall) {
@@ -77,31 +91,94 @@
     return session.preview;
   }
 
+  function roomPatch(session) {
+    return {
+      balls: net.snapshotBalls(session.balls),
+      turn: session.turn,
+      scores: session.scores.slice(),
+      phase: session.phase,
+      targetN: session.target ? session.target.n : 0,
+      winner: session.winner,
+      matchOver: !!session.matchOver,
+      guestJoined: !!(session.room && session.room.guestJoined)
+    };
+  }
+
+  function pushRoom(session) {
+    if (!session.room || !session.room.roomId) return null;
+    return net.pushState(session.room.roomId, roomPatch(session));
+  }
+
+  function applyRoomState(session, state) {
+    if (!state) return session;
+    if (state.balls) net.applyBalls(session.balls, state.balls);
+    if (state.scores) session.scores = state.scores.slice();
+    if (state.turn != null) session.turn = state.turn;
+    session.winner = state.winner;
+    session.matchOver = !!state.matchOver;
+    if (state.guestJoined && session.room) {
+      session.room.guestJoined = true;
+      session.hotseat = false;
+    }
+    if (state.phase === fsm.PHASE.Aim || state.phase === fsm.PHASE.Settle) {
+      session.phase = state.phase;
+    }
+    if (state.matchOver && state.phase === fsm.PHASE.Settle) {
+      session.phase = fsm.PHASE.Settle;
+    }
+    refreshTarget(session);
+    if (session.target) session.shot.targetId = session.target.id;
+    return session;
+  }
+
+  function pullRoom(session) {
+    if (!session.room || !session.room.roomId) return null;
+    var state = net.pullState(session.room.roomId);
+    if (!state) return null;
+    if (session.phase === fsm.PHASE.Shot ||
+        session.phase === fsm.PHASE.ResolvePocket ||
+        session.phase === fsm.PHASE.WaitCueStop ||
+        session.phase === fsm.PHASE.StarZone) {
+      if (state.guestJoined && session.room) {
+        session.room.guestJoined = true;
+        session.hotseat = false;
+      }
+      return state;
+    }
+    applyRoomState(session, state);
+    return state;
+  }
+
   function resetRound(session) {
     session.table = table.layout(session.viewport, session.config, session.ui.playRect);
     session.tiles = tiles.create(session.table, session.config);
     session.balls = balls.create(session.table, session.config);
     session.cue = cue.create(session.config);
     session.stop = stopDetect.create();
-    session.phase = session.skipSplash ? fsm.PHASE.Aim : fsm.PHASE.Aim;
+    session.phase = fsm.PHASE.Aim;
     session.award = null;
     session.settle = null;
     session.settleIn = 0;
     session.resolution = null;
-    session.shot = {
-      cushions: 0,
-      pocketed: [],
-      firstContactId: null,
-      targetId: null,
-      scratch: false,
-      pocketedLowest: false
-    };
+    session.shot = emptyShot();
     session.particles = [];
     session.landFlash = null;
     session.pressed = null;
     session.preview = { points: [], ghost: null, bounces: 0 };
+    session.matchOver = false;
+    session.winner = null;
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
+  }
+
+  function newGame(session) {
+    session.scores = [0, 0];
+    session.turn = 0;
+    session.matchOver = false;
+    session.winner = null;
+    resetRound(session);
+    pushRoom(session);
+    return { kind: 'new-game' };
   }
 
   function create(viewport, config, opts) {
@@ -126,7 +203,16 @@
       landFlash: null,
       pressed: null,
       preview: { points: [], ghost: null, bounces: 0 },
-      shot: { cushions: 0, pocketed: [], firstContactId: null, targetId: null, scratch: false, pocketedLowest: false }
+      shot: emptyShot(),
+      turn: 0,
+      versus: false,
+      hotseat: true,
+      mySeat: 0,
+      room: null,
+      scores: [0, 0],
+      matchOver: false,
+      winner: null,
+      syncAcc: 0
     };
     resetRound(session);
     if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
@@ -136,30 +222,172 @@
     session.handlePointerMove = function (x, y) { return handlePointerMove(session, x, y); };
     session.handlePointerUp = function (x, y) { return handlePointerUp(session, x, y); };
     session.resize = function (next) { resize(session, next); };
-    session.restart = function () { return restart(session); };
+    session.restart = function () { return newGame(session); };
     return session;
   }
 
   function resize(session, viewport) {
+    var old = session.table && session.table.felt;
     session.viewport = viewport;
     session.ui = hud.layout(viewport);
-    if (session.phase === fsm.PHASE.Settle) return;
-    resetRound(session);
+    var nextTable = table.layout(session.viewport, session.config, session.ui.playRect);
+    if (old && session.balls) {
+      var sx = nextTable.felt.w / old.w;
+      var sy = nextTable.felt.h / old.h;
+      var i;
+      for (i = 0; i < session.balls.length; i++) {
+        session.balls[i].x = nextTable.felt.x + (session.balls[i].x - old.x) * sx;
+        session.balls[i].y = nextTable.felt.y + (session.balls[i].y - old.y) * sy;
+      }
+    }
+    session.table = nextTable;
+    session.tiles = tiles.create(session.table, session.config);
   }
 
-  function restart(session) {
-    resetRound(session);
-    return { kind: 'restart' };
+  function canAim(session) {
+    if (session.phase !== fsm.PHASE.Aim) return false;
+    if (session.matchOver) return false;
+    if (!session.versus) return true;
+    if (session.hotseat && !(session.room && session.room.guestJoined)) return true;
+    return session.turn === session.mySeat;
   }
 
-  function toggleAim3d(session) {
-    session.aim3d = !session.aim3d;
-    session.viewMode = 'top';
-    session.toast = {
-      text: session.aim3d ? '瞄准3D 占位' : '俯视瞄准',
-      life: 1.2
-    };
-    return session.aim3d;
+  function beginNextAim(session) {
+    session.cue = cue.create(session.config);
+    session.stop = stopDetect.create();
+    session.settleIn = 0;
+    session.shot = emptyShot();
+    session.pressed = null;
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    session.settle = null;
+    session.matchOver = false;
+    refreshTarget(session);
+    if (session.target) session.shot.targetId = session.target.id;
+    session.phase = fsm.PHASE.Aim;
+  }
+
+  function applySpotRules(session) {
+    var resolution = session.resolution || {};
+    var nine = balls.findByN(session.balls, 9);
+    var cueBall = findCue(session);
+    if (nine && nine.pocketed && !resolution.win) {
+      balls.spotNine(session.balls, session.table);
+    }
+    if (cueBall && cueBall.pocketed) {
+      balls.respotCue(session.balls, session.table);
+    }
+  }
+
+  function shouldSwitchTurn(session) {
+    if (!session.versus) return false;
+    if (session.resolution && session.resolution.legal && !session.resolution.win) return false;
+    return true;
+  }
+
+  function switchTurn(session) {
+    session.turn = session.turn === 0 ? 1 : 0;
+    return session.turn;
+  }
+
+  function toastFor(session, award) {
+    if (award && award.legal && award.reason === 'nine') {
+      return { text: '打进9号 · 胜', life: 1.6 };
+    }
+    if (award && award.legal) {
+      return { text: '+' + award.coins + ' 星币', life: 1.2 };
+    }
+    if (award && award.foul) {
+      return { text: session.versus ? '犯规 · 换人' : '犯规', life: 1.4 };
+    }
+    return { text: session.versus ? '未进 · 换人' : '未进', life: 1.2 };
+  }
+
+  function concludeShot(session, applyStar) {
+    var cueBall = findCue(session);
+    var landed = null;
+    if (applyStar && cueBall && !cueBall.pocketed) {
+      landed = tiles.pickAt(session.tiles, cueBall.x, cueBall.y);
+    }
+    var zone = applyStar && cueBall && !cueBall.pocketed
+      ? (landed || tiles.defaultZone())
+      : null;
+    var award = score.settle({
+      pocketedLowest: session.shot.pocketedLowest,
+      scratch: session.shot.scratch,
+      foul: session.resolution ? session.resolution.foul : session.shot.scratch,
+      resolution: session.resolution,
+      cushions: session.shot.cushions,
+      zone: zone,
+      applyStar: !!applyStar,
+      firstContactIsTarget: session.shot.firstContactId === session.shot.targetId
+    }, session.config);
+
+    session.award = award;
+    var gap = score.gapToBest(award.coins, session.best);
+    if (gap.isNew) session.best = award.coins;
+    persist(session);
+    session.scores[session.turn] = (session.scores[session.turn] || 0) + award.coins;
+
+    var burstX = cueBall ? cueBall.x : session.table.felt.cx;
+    var burstY = cueBall ? cueBall.y : session.table.felt.cy;
+    if (award.legal) {
+      fx.spawnBurst(
+        session.particles,
+        burstX,
+        burstY,
+        session.config.colors.scorePop,
+        8
+      );
+    }
+
+    session.landFlash = null;
+    if (applyStar && award.legal && !award.foul && landed) {
+      session.landFlash = { tileId: landed.id, frames: 1 };
+    }
+
+    applySpotRules(session);
+
+    var win = !!(session.resolution && session.resolution.win);
+    if (win) {
+      session.matchOver = true;
+      session.winner = session.turn;
+      session.settle = {
+        coins: award.coins,
+        points: award.coins,
+        unit: award.unit,
+        reason: award.reason,
+        legal: award.legal,
+        foul: award.foul,
+        win: true,
+        versus: !!session.versus,
+        winner: session.winner,
+        starApplied: award.starApplied,
+        pocketBonus: award.pocketBonus,
+        landingBonus: award.landingBonus,
+        zoneLabel: award.zoneLabel,
+        quality: award.quality,
+        props: award.props,
+        skinProgress: 0,
+        disclaimer: award.disclaimer,
+        gap: gap.gap,
+        isNew: gap.isNew,
+        best: session.best
+      };
+      session.phase = fsm.PHASE.Settle;
+      session.toast = toastFor(session, award);
+      pushRoom(session);
+      return session.settle;
+    }
+
+    session.toast = toastFor(session, award);
+    if (shouldSwitchTurn(session)) switchTurn(session);
+    beginNextAim(session);
+    pushRoom(session);
+    return award;
+  }
+
+  function finishSettle(session, applyStar) {
+    return concludeShot(session, applyStar);
   }
 
   function noteContacts(session, events) {
@@ -189,75 +417,14 @@
     session.shot.pocketedLowest = session.shot.targetId
       ? session.shot.pocketed.indexOf(session.shot.targetId) !== -1
       : false;
-  }
-
-  function finishSettle(session, applyStar) {
-    var cueBall = findCue(session);
-    var landed = null;
-    if (applyStar && cueBall && !cueBall.pocketed) {
-      landed = tiles.pickAt(session.tiles, cueBall.x, cueBall.y);
-    }
-    var zone = applyStar && cueBall && !cueBall.pocketed
-      ? (landed || tiles.defaultZone())
-      : null;
-    var award = score.settle({
-      pocketedLowest: session.shot.pocketedLowest,
-      scratch: session.shot.scratch,
-      foul: session.resolution ? session.resolution.foul : session.shot.scratch,
-      resolution: session.resolution,
-      cushions: session.shot.cushions,
-      zone: zone,
-      applyStar: !!applyStar,
-      firstContactIsTarget: session.shot.firstContactId === session.shot.targetId
-    }, session.config);
-
-    session.award = award;
-    var gap = score.gapToBest(award.coins, session.best);
-    if (gap.isNew) session.best = award.coins;
-    persist(session);
-
-    session.settle = {
-      coins: award.coins,
-      points: award.coins,
-      unit: award.unit,
-      reason: award.reason,
-      legal: award.legal,
-      foul: award.foul,
-      starApplied: award.starApplied,
-      pocketBonus: award.pocketBonus,
-      landingBonus: award.landingBonus,
-      zoneLabel: award.zoneLabel,
-      quality: award.quality,
-      props: award.props,
-      skinProgress: 0,
-      disclaimer: award.disclaimer,
-      gap: gap.gap,
-      isNew: gap.isNew,
-      best: session.best
-    };
-    session.phase = fsm.PHASE.Settle;
-    session.landFlash = null;
-    if (applyStar && award.legal && !award.foul && landed) {
-      session.landFlash = { tileId: landed.id, frames: 1 };
-    }
-
-    var burstX = cueBall ? cueBall.x : session.table.felt.cx;
-    var burstY = cueBall ? cueBall.y : session.table.felt.cy;
-    fx.spawnBurst(
-      session.particles,
-      burstX,
-      burstY,
-      award.legal ? session.config.colors.scorePop : '#94A3B8',
-      8
-    );
-    return session.settle;
+    session.shot.pocketedNine = session.shot.pocketed.indexOf('b9') !== -1;
   }
 
   function resolvePocket(session) {
     session.phase = fsm.PHASE.ResolvePocket;
     session.resolution = fsm.classify(session.shot);
     if (fsm.skipsStarMultiplier(session.resolution)) {
-      return finishSettle(session, false);
+      return concludeShot(session, false);
     }
     session.phase = fsm.PHASE.WaitCueStop;
     stopDetect.reset(session.stop);
@@ -266,12 +433,13 @@
 
   function enterStarZone(session) {
     session.phase = fsm.PHASE.StarZone;
-    return finishSettle(session, true);
+    return concludeShot(session, true);
   }
 
   function shotReadyToResolve(session) {
     if (session.shot.scratch) return true;
     if (session.shot.pocketedLowest) return true;
+    if (session.shot.pocketedNine) return true;
     return !!session.stop.stopped;
   }
 
@@ -280,6 +448,13 @@
     if (session.toast) {
       session.toast.life -= dt;
       if (session.toast.life <= 0) session.toast = null;
+    }
+    if (session.room && session.phase === fsm.PHASE.Aim) {
+      session.syncAcc += dt;
+      if (session.syncAcc > 0.45) {
+        session.syncAcc = 0;
+        pullRoom(session);
+      }
     }
     if (session.phase === fsm.PHASE.Shot) {
       var shotEv = physics.step(worldOf(session), dt, session.config);
@@ -298,7 +473,7 @@
       noteContacts(session, waitEv);
       if (session.shot.scratch) {
         session.resolution = fsm.classify(session.shot);
-        finishSettle(session, false);
+        concludeShot(session, false);
         return;
       }
       var cueBall = findCue(session);
@@ -314,9 +489,57 @@
     }
   }
 
+  function createRoom(session) {
+    if (session.room && session.room.roomId) {
+      session.toast = { text: '房间 ' + session.room.roomId, life: 1.4 };
+      return { kind: 'room', roomId: session.room.roomId, existing: true };
+    }
+    var made = net.createRoom();
+    session.versus = true;
+    session.hotseat = true;
+    session.mySeat = 0;
+    session.turn = 0;
+    session.scores = [0, 0];
+    session.room = { roomId: made.roomId, guestJoined: false };
+    if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
+    session.toast = { text: '房间 ' + made.roomId, life: 1.6 };
+    pushRoom(session);
+    return { kind: 'room', roomId: made.roomId, seat: 0 };
+  }
+
+  function joinRoom(session, roomId) {
+    var joined = net.joinRoom(roomId);
+    if (!joined.ok) {
+      session.toast = { text: '房间无效', life: 1.4 };
+      return { kind: 'join-fail', roomId: roomId };
+    }
+    session.versus = true;
+    session.hotseat = false;
+    session.mySeat = joined.seat;
+    session.room = { roomId: joined.roomId, guestJoined: true };
+    if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
+    applyRoomState(session, joined.state);
+    session.toast = { text: '已加入 ' + roomId, life: 1.4 };
+    pushRoom(session);
+    return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
+  }
+
+  function inviteRoom(session) {
+    if (!session.room || !session.room.roomId) return createRoom(session);
+    session.lastShare = share.shareRoom(session.room.roomId);
+    session.toast = { text: '邀请房间 ' + session.room.roomId, life: 1.4 };
+    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId };
+  }
+
+  function handleRoomTap(session) {
+    if (session.room && session.room.roomId) return inviteRoom(session);
+    return createRoom(session);
+  }
+
   function handlePointerDown(session, x, y) {
     var hit = hud.hitTest(session.ui, x, y, session.phase);
     session.pressed = hit;
+    if (hit === 'room') return handleRoomTap(session);
     if (session.phase === fsm.PHASE.Splash) {
       session.phase = fsm.PHASE.Aim;
       return { kind: 'start' };
@@ -330,7 +553,7 @@
     }
     if (session.phase === fsm.PHASE.Settle) {
       if (hit === 'replay') {
-        restart(session);
+        newGame(session);
         return { kind: 'replay' };
       }
       if (hit === 'share') {
@@ -341,6 +564,10 @@
       return { kind: 'blocked' };
     }
     if (session.phase === fsm.PHASE.Aim) {
+      if (!canAim(session)) {
+        session.toast = { text: '对方击球', life: 1.1 };
+        return { kind: 'wait-turn' };
+      }
       var cueBall = findCue(session);
       if (cue.inGrab(cueBall, x, y, session.config.grabSlopPx) ||
           table.contains(session.table.felt, x, y)) {
@@ -365,6 +592,7 @@
     var shot = cue.endDrag(session.cue, session.config);
     session.preview = { points: [], ghost: null, bounces: 0 };
     if (!shot.fired) return { kind: 'cancel' };
+    if (!canAim(session)) return { kind: 'wait-turn' };
     var cueBall = findCue(session);
     cueBall.vx = shot.vx;
     cueBall.vy = shot.vy;
@@ -377,6 +605,10 @@
 
   function fireAi(session) {
     if (session.phase !== fsm.PHASE.Aim) return { kind: 'none' };
+    if (!canAim(session)) {
+      session.toast = { text: '对方击球', life: 1.1 };
+      return { kind: 'wait-turn' };
+    }
     var cueBall = findCue(session);
     var target = session.target;
     var plan = ai.plan(cueBall, target, session.config);
@@ -393,6 +625,16 @@
     if (sfx && sfx.cue) sfx.cue();
     session.toast = { text: '弱AI试杆', life: 1.0 };
     return { kind: 'ai', power: plan.power, phase: session.phase };
+  }
+
+  function toggleAim3d(session) {
+    session.aim3d = !session.aim3d;
+    session.viewMode = 'top';
+    session.toast = {
+      text: session.aim3d ? '瞄准3D 占位' : '俯视瞄准',
+      life: 1.2
+    };
+    return session.aim3d;
   }
 
   function getDebugState(session) {
@@ -414,6 +656,11 @@
       resolution: session.resolution,
       award: session.award,
       settle: session.settle,
+      turn: session.turn,
+      versus: session.versus,
+      roomId: session.room ? session.room.roomId : null,
+      winner: session.winner,
+      scores: session.scores.slice(),
       landFlash: session.landFlash
         ? { tileId: session.landFlash.tileId, frames: session.landFlash.frames }
         : null
@@ -439,6 +686,13 @@
         session.shot.firstContactId = target.id;
       }
     }
+    if (opts.pocketNine) {
+      var nine = balls.findByN(session.balls, 9);
+      if (nine) {
+        nine.pocketed = true;
+        session.shot.pocketed.push(nine.id);
+      }
+    }
     if (opts.cushions != null) session.shot.cushions = opts.cushions;
     if (opts.firstContact === true && target) session.shot.firstContactId = target.id;
     if (opts.firstContact === false) session.shot.firstContactId = 'b9';
@@ -449,10 +703,11 @@
     session.shot.pocketedLowest = session.shot.targetId
       ? session.shot.pocketed.indexOf(session.shot.targetId) !== -1
       : false;
+    session.shot.pocketedNine = session.shot.pocketed.indexOf('b9') !== -1;
     session.stop.stopped = true;
     resolvePocket(session);
     if (session.phase === fsm.PHASE.WaitCueStop) enterStarZone(session);
-    return session.settle;
+    return session.settle || session.award;
   }
 
   return {
@@ -463,7 +718,14 @@
     handlePointerMove: handlePointerMove,
     handlePointerUp: handlePointerUp,
     resize: resize,
-    restart: restart,
+    restart: newGame,
+    newGame: newGame,
+    createRoom: createRoom,
+    joinRoom: joinRoom,
+    inviteRoom: inviteRoom,
+    pullRoom: pullRoom,
+    pushRoom: pushRoom,
+    canAim: canAim,
     toggleAim3d: toggleAim3d,
     fireAi: fireAi,
     resolvePocket: resolvePocket,

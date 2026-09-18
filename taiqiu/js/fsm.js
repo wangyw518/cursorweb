@@ -25,24 +25,28 @@
   function classify(shot) {
     var scratch = !!shot.scratch;
     var pocketedLowest = !!shot.pocketedLowest;
+    var pocketedNine = !!shot.pocketedNine;
     var first = shot.firstContactId || null;
     var targetId = shot.targetId || null;
     var hitTargetFirst = !!(targetId && first === targetId);
     var noContact = !first;
 
     if (scratch) {
-      return { legal: false, foul: true, reason: 'scratch', enterStarZone: false };
+      return { legal: false, foul: true, reason: 'scratch', enterStarZone: false, win: false };
     }
     if (noContact) {
-      return { legal: false, foul: true, reason: 'whiff', enterStarZone: false };
+      return { legal: false, foul: true, reason: 'whiff', enterStarZone: false, win: false };
     }
     if (!hitTargetFirst) {
-      return { legal: false, foul: true, reason: 'order', enterStarZone: false };
+      return { legal: false, foul: true, reason: 'order', enterStarZone: false, win: false };
+    }
+    if (pocketedNine) {
+      return { legal: true, foul: false, reason: 'nine', enterStarZone: true, win: true };
     }
     if (!pocketedLowest) {
-      return { legal: false, foul: false, reason: 'miss', enterStarZone: false };
+      return { legal: false, foul: false, reason: 'miss', enterStarZone: false, win: false };
     }
-    return { legal: true, foul: false, reason: 'legal', enterStarZone: true };
+    return { legal: true, foul: false, reason: 'legal', enterStarZone: true, win: false };
   }
 
   function nextAfterResolve(resolution) {

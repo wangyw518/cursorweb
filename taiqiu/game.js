@@ -119,6 +119,37 @@
       });
     }
 
+    function parseQuery(raw) {
+      if (!raw) return {};
+      if (typeof raw === 'object') return raw;
+      var out = {};
+      String(raw).split('&').forEach(function (part) {
+        var kv = part.split('=');
+        if (!kv[0]) return;
+        var key = decodeURIComponent(kv[0]);
+        var val = decodeURIComponent(kv[1] || '');
+        out[key] = val;
+      });
+      return out;
+    }
+
+    function maybeJoin(opts) {
+      var q = parseQuery(opts && (opts.query != null ? opts.query : opts));
+      if (!q.roomId) return;
+      if (session.room && session.room.roomId === q.roomId) {
+        sessionMod.pullRoom(session);
+        return;
+      }
+      sessionMod.joinRoom(session, q.roomId);
+    }
+
+    if (typeof wx.getLaunchOptionsSync === 'function') {
+      try { maybeJoin(wx.getLaunchOptionsSync()); } catch (err) {}
+    }
+    if (typeof wx.onShow === 'function') {
+      wx.onShow(maybeJoin);
+    }
+
     var g = typeof globalThis !== 'undefined' ? globalThis : window;
     g.__taiqiu = {
       session: session,
