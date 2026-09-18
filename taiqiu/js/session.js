@@ -614,7 +614,7 @@
       versus: false,
       hotseat: true,
       mySeat: 0,
-      mode: 'practice',
+      mode: '',
       localAi: false,
       aiThink: 0,
       aiPlan: null,
