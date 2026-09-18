@@ -52,7 +52,7 @@
         h: 26,
         label: '新开一局'
       },
-      hint: { x: viewport.width - pad, y: playBottom - 4 },
+      hint: { x: viewport.width - pad, y: playTop + 10 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 36, w: Math.max(80, viewport.width - pad * 2), h: 6 },
       settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
