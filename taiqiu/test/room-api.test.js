@@ -274,7 +274,7 @@ function httpJson(port, method, path, body, cb) {
 }
 
 function runHttp(cb) {
-  var started = roomServer.listen(0, function (addr) {
+  var started = roomServer.listen({ port: 0, host: '127.0.0.1' }, function (addr) {
     var port = addr.port;
     httpJson(port, 'POST', '/api/rooms', {}, function (err, created) {
       if (err) return cb(err);

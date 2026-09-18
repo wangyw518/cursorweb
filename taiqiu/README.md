@@ -114,9 +114,21 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 1. Keep the same client. Do not change shot / HUD code.
 2. Set `js/config.json` → `room.roomApiBase` to your origin (no trailing slash), **or** open preview with `?api=https://your-host`.
 3. Implement the four paths above. The client already posts `shotSeq`, aim, power, optional spin, `events[]`, and `ballsSnapshot`.
-4. Optional local stand-in: `node taiqiu/dev/room-server.js 8788` then `?api=http://127.0.0.1:8788`.
+4. Optional local stand-in: `node taiqiu/dev/room-server.js 8788` then `?api=http://127.0.0.1:8788`. Bind host defaults to `0.0.0.0` (`HOST` / `TAIQIU_ROOM_HOST`, or argv `[port] [host]`); tests can still pass `{ host: '127.0.0.1' }`.
 
 Empty `roomApiBase` always uses the mock, even if a cloud env is listed.
+
+### Docker / 局域网房间服
+
+在 `taiqiu/` 目录一键起房间服（容器听 `0.0.0.0:8788`）：
+
+```bash
+docker build -t taiqiu-room .
+docker run --rm -p 8788:8788 taiqiu-room
+# 或: docker compose up --build
+```
+
+客户端把 `js/config.json` → `room.roomApiBase`（或预览 `?api=`）设为 `http://<电脑局域网IP>:8788`，不要填 `127.0.0.1`（手机访问的是自己）。微信开发者工具开发版请勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」。同网两台手机即可打 2P。
 
 ### How to test mock 2P (two pages / two simulators)
 

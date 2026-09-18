@@ -13,7 +13,11 @@
  *   POST /api/rooms/:id/shot
  *   GET  /api/rooms/:id
  *
- *   node taiqiu/dev/room-server.js [port]
+ *   node taiqiu/dev/room-server.js [port] [host]
+ *   HOST=0.0.0.0 PORT=8788 node taiqiu/dev/room-server.js
+ *
+ * Default bind is 0.0.0.0:8788 (Docker / LAN). Tests may pass
+ * { host: '127.0.0.1' } or TAIQIU_ROOM_HOST=127.0.0.1.
  */
 'use strict';
 
@@ -117,20 +121,49 @@ function createHandler(store) {
   return handle;
 }
 
+function envHost() {
+  var h = process.env.TAIQIU_ROOM_HOST || process.env.HOST;
+  if (h == null || String(h).trim() === '') return '0.0.0.0';
+  return String(h).trim();
+}
+
+function envPort(fallback) {
+  var raw = process.env.TAIQIU_ROOM_PORT || process.env.PORT;
+  var n = raw != null ? parseInt(raw, 10) : 0;
+  if (n > 0) return n;
+  return fallback;
+}
+
 function listen(port, store, cb) {
+  var host = envHost();
+  if (port && typeof port === 'object') {
+    var opts = port;
+    if (typeof store === 'function') cb = store;
+    port = opts.port;
+    if (opts.host != null && String(opts.host).trim() !== '') host = String(opts.host).trim();
+    store = opts.store || null;
+    if (opts.cb) cb = opts.cb;
+  }
   if (typeof store === 'function') { cb = store; store = null; }
+  if (typeof store === 'string') {
+    host = store;
+    store = null;
+  }
   var used = store || storeMod.createStore();
   var server = http.createServer(createHandler(used));
-  server.listen(port || 0, '127.0.0.1', function () {
+  server.listen(port || 0, host, function () {
     if (cb) cb(server.address());
   });
   return { server: server, store: used };
 }
 
 if (require.main === module) {
-  var port = parseInt(process.argv[2], 10) || 8788;
-  listen(port, function (addr) {
-    console.log('[taiqiu] room API http://127.0.0.1:' + addr.port);
+  var port = parseInt(process.argv[2], 10);
+  if (!(port > 0)) port = envPort(8788);
+  var host = process.argv[3] || envHost();
+  listen({ port: port, host: host }, function (addr) {
+    var shown = addr.address === '::' ? '0.0.0.0' : (addr.address || host);
+    console.log('[taiqiu] room API http://' + shown + ':' + addr.port);
     console.log('  POST /room/create');
     console.log('  POST /room/join');
     console.log('  POST /room/shot');

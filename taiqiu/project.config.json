@@ -23,6 +23,18 @@
         "value": "index.html"
       },
       {
+        "type": "file",
+        "value": "Dockerfile"
+      },
+      {
+        "type": "file",
+        "value": "docker-compose.yml"
+      },
+      {
+        "type": "file",
+        "value": ".dockerignore"
+      },
+      {
         "type": "folder",
         "value": "cloudfunctions"
       }
