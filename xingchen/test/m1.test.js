@@ -52,6 +52,16 @@ function tickUntilSettled(session, maxSteps) {
   return session.award;
 }
 
+check('frozen grid is 4×5 and ring bonus is off the main path', function () {
+  assert.strictEqual(config.gridCols, 4);
+  assert.strictEqual(config.gridRows, 5);
+  assert.strictEqual(config.ringBonus, false);
+  var session = freshSession();
+  assert.strictEqual(session.grid.cols, 4);
+  assert.strictEqual(session.grid.rows, 5);
+  assert.strictEqual(session.grid.cells.length, 20);
+});
+
 check('annular band scores; hole and outside miss', function () {
   var rings = [{ x: 0, y: 0, innerR: 20, outerR: 40, tier: 1, colorKey: 'ringBlue' }];
   assert.strictEqual(scoreRings.inBand(rings[0], 30, 0), true);
@@ -111,19 +121,26 @@ check('OOB (center past bounds) scores 0 immediately and beats stop detect', fun
   assert.strictEqual(session.stop.stopped, false);
 });
 
-check('stopped on a gold band awards 200 and writes local best', function () {
-  var session = freshSession();
-  var gold = session.rings.filter(function (r) { return r.tier === 3; })[0];
-  var x = gold.x + (gold.innerR + gold.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, gold.y, 0, 0);
+check('stopped on a relic cell awards grid points and writes local best', function () {
+  storage.resetMemory();
+  var session = sessionMod.create(viewport(), config, { level: { target: 50, shots: 1 } });
+  var relic = session.grid.cells.filter(function (c) { return c.kind === 'relic'; })[0];
+  assert.ok(relic, '4×5 grid has a relic cell');
+  var x = relic.x + relic.w * 0.5;
+  var y = relic.y + relic.h * 0.5;
+  sessionMod.debugPlace(session, x, y, 0, 0);
   var award = tickUntilSettled(session, 20);
   assert.ok(award);
-  assert.strictEqual(award.tier, 3);
-  assert.strictEqual(award.ringScore, 200);
-  assert.ok(award.score >= 200);
+  assert.strictEqual(award.cellKind, 'relic');
+  assert.strictEqual(award.cellName, '古星遗物');
+  assert.strictEqual(award.gridScore, 60);
+  assert.strictEqual(award.score, 60);
+  assert.strictEqual(award.ringScore, 0);
   assert.strictEqual(session.settle.isNew, true);
   assert.strictEqual(session.settle.won, true);
-  assert.ok(storage.load().best >= 200);
+  assert.strictEqual(session.settle.cellName, '古星遗物');
+  assert.ok(hud.settleCopy(session.settle).cell.indexOf('古星遗物') !== -1);
+  assert.ok(storage.load().best >= 60);
 });
 
 check('settle shows gap to best when not a record; replay restores aim', function () {
@@ -131,9 +148,8 @@ check('settle shows gap to best when not a record; replay restores aim', functio
   storage.save({ best: 200, stamina: 30, lastRegenAt: 0, levelId: 1 });
   var session = sessionMod.create(viewport(), config, { level: { target: 500, shots: 1 } });
   assert.strictEqual(session.best, 200);
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
+  var dust = session.grid.cells.filter(function (c) { return c.kind === 'dust'; })[0];
+  sessionMod.debugPlace(session, dust.x + dust.w * 0.5, dust.y + dust.h * 0.5, 0, 0);
   tickUntilSettled(session, 20);
   assert.ok(session.settle);
   assert.strictEqual(session.settle.lost, true);
@@ -176,9 +192,8 @@ check('tiers are 10/30/80/200', function () {
 
 check('stop hold is 120ms before a table stop scores', function () {
   var session = freshSession();
-  var green = session.rings.filter(function (r) { return r.tier === 0; })[0];
-  var x = green.x + (green.innerR + green.outerR) * 0.5;
-  sessionMod.debugPlace(session, x, green.y, 0, 0);
+  var dust = session.grid.cells.filter(function (c) { return c.kind === 'dust'; })[0];
+  sessionMod.debugPlace(session, dust.x + dust.w * 0.5, dust.y + dust.h * 0.5, 0, 0);
   sessionMod.update(session, 0.06);
   assert.strictEqual(session.phase, 'flight');
   assert.ok(session.stop.holdMs >= 60);

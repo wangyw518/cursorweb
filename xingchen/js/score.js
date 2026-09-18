@@ -54,26 +54,40 @@
     };
   }
 
-  function combine(ringAward, gridAward, skill) {
-    var ring = ringAward || fromPick(null, null);
-    var grid = (gridAward && gridAward.points) || 0;
-    var ringScore = ring.oob ? 0 : (ring.score || 0);
-    var total = ringScore + grid;
+  /**
+   * Primary score is the grid cell under the ball center.
+   * Ring-band points are optional additive only when config.ringBonus is true.
+   */
+  function combine(ringAward, gridAward, skill, config) {
+    var ring = ringAward || fromPick(null, config);
+    var gridPts = (gridAward && gridAward.points) || 0;
+    var cell = (gridAward && gridAward.cell) || null;
+    var allowRing = !!(config && config.ringBonus) && !ring.oob;
+    var ringScore = allowRing ? (ring.score || 0) : 0;
+    var total = gridPts + ringScore;
     return {
-      points: ring.points || 0,
-      edge: !!ring.edge,
-      multiplier: ring.multiplier || 1,
+      points: gridPts,
+      edge: allowRing && !!ring.edge,
+      multiplier: allowRing ? (ring.multiplier || 1) : 1,
       ringScore: ringScore,
-      gridScore: grid,
+      gridScore: gridPts,
       score: total,
-      tier: ring.tier,
+      tier: cell ? cellRankOf(cell) : -1,
       oob: !!ring.oob,
       miss: total === 0 && !ring.oob,
-      ring: ring.ring,
+      ring: allowRing ? ring.ring : null,
+      cell: cell,
+      cellName: cell && cell.name ? cell.name : '',
+      cellKind: cell && cell.kind ? cell.kind : '',
       harvested: (gridAward && gridAward.cells) || [],
       names: (gridAward && gridAward.names) || [],
       skill: skill || null
     };
+  }
+
+  function cellRankOf(cell) {
+    if (!cell) return -1;
+    return cell.points || 0;
   }
 
   return {

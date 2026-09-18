@@ -18,7 +18,7 @@
   }
 
   function regen(state, now, config) {
-    var interval = (config && config.staminaRegenMs) || 600000;
+    var interval = (config && config.staminaRegenMs) || 1800000;
     if (!state.lastRegenAt) {
       state.lastRegenAt = now;
       return 0;
@@ -40,6 +40,7 @@
     return state.value >= (cost == null ? 1 : cost);
   }
 
+  /** Spend on a fired shot (session), not on level start. */
   function spend(state, cost) {
     var n = cost == null ? 1 : cost;
     if (!canStart(state, n)) return false;

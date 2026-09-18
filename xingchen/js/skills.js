@@ -41,16 +41,27 @@
     return skill;
   }
 
+  function splitMax(config) {
+    var n = (config && config.splitMaxBalls) != null ? config.splitMaxBalls : 2;
+    if (n < 1) return 1;
+    if (n > 2) return 2;
+    return n;
+  }
+
   function splitVelocities(vx, vy, config) {
     var angle = Math.atan2(vy, vx);
     var speed = Math.hypot(vx, vy);
     var spread = (config && config.splitAngle) != null ? config.splitAngle : 0.28;
     var scale = (config && config.splitPowerScale) != null ? config.splitPowerScale : 0.78;
-    return [
-      { vx: vx, vy: vy },
-      { vx: Math.cos(angle + spread) * speed * scale, vy: Math.sin(angle + spread) * speed * scale },
-      { vx: Math.cos(angle - spread) * speed * scale, vy: Math.sin(angle - spread) * speed * scale }
-    ];
+    var maxBalls = splitMax(config);
+    var out = [{ vx: vx, vy: vy }];
+    if (maxBalls >= 2) {
+      out.push({
+        vx: Math.cos(angle + spread) * speed * scale,
+        vy: Math.sin(angle + spread) * speed * scale
+      });
+    }
+    return out;
   }
 
   function iceFriction(config) {
@@ -71,6 +82,7 @@
     arm: arm,
     consume: consume,
     splitVelocities: splitVelocities,
+    splitMax: splitMax,
     iceFriction: iceFriction,
     label: label
   };

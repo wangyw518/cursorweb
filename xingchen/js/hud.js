@@ -38,8 +38,9 @@
       skillFire: { x: skillsLeft, y: skillY, w: skillW, h: skillH, label: '炎核', skill: 'fire' },
       skillIce: { x: skillsLeft + skillW + skillGap, y: skillY, w: skillW, h: skillH, label: '霜核', skill: 'ice' },
       skillSplit: { x: skillsLeft + (skillW + skillGap) * 2, y: skillY, w: skillW, h: skillH, label: '裂核', skill: 'split' },
-      settleScore: { x: cx, y: cy - 58 },
-      settleGap: { x: cx, y: cy - 16 },
+      settleScore: { x: cx, y: cy - 64 },
+      settleCell: { x: cx, y: cy - 22 },
+      settleGap: { x: cx, y: cy - 2 },
       replay: { x: cx - 72, y: cy + 18, w: 144, h: 40, label: '再试一次' },
       next: { x: cx - 72, y: cy + 18, w: 144, h: 40, label: '下一关' },
       share: { x: cx - 72, y: cy + 66, w: 144, h: 36, label: '分享' },
@@ -176,15 +177,37 @@
     ctx.restore();
   }
 
+  function landedCellLine(settle) {
+    if (!settle || settle.oob || settle.lastOob) return '落点格  界外';
+    if (settle.cellName) return '落点格  ' + settle.cellName;
+    return '落点格  空';
+  }
+
   function settleCopy(settle) {
-    if (!settle) return { title: '本局分数', line: '' };
-    if (settle.needStamina) return { title: '星尘不足', line: '分享或补给后继续' };
-    if (settle.won) return { title: '奇境通关', line: settle.isNew ? '新纪录' : '目标  ' + settle.target };
-    if (settle.lost) return { title: '未达星轨', line: '距目标  ' + Math.max(0, settle.target - settle.score) };
-    if (settle.oob) return { title: '偏离星表', line: '' };
-    if (settle.isNew) return { title: '本局分数', line: '新纪录' };
-    if (settle.best === 0 && settle.score === 0) return { title: '本局分数', line: '暂无纪录' };
-    return { title: '本局分数', line: '距最高分  ' + settle.gap };
+    if (!settle) return { title: '本局分数', line: '', cell: '落点格  空' };
+    if (settle.needStamina) {
+      return { title: '星尘不足', line: '分享或补给后继续', cell: '' };
+    }
+    if (settle.won) {
+      return {
+        title: '奇境通关',
+        line: settle.isNew ? '新纪录' : '目标  ' + settle.target,
+        cell: landedCellLine(settle)
+      };
+    }
+    if (settle.lost) {
+      return {
+        title: '未达星轨',
+        line: '距目标  ' + Math.max(0, settle.target - settle.score),
+        cell: landedCellLine(settle)
+      };
+    }
+    if (settle.oob) return { title: '偏离星表', line: '', cell: landedCellLine(settle) };
+    if (settle.isNew) return { title: '本局分数', line: '新纪录', cell: landedCellLine(settle) };
+    if (settle.best === 0 && settle.score === 0) {
+      return { title: '本局分数', line: '暂无纪录', cell: landedCellLine(settle) };
+    }
+    return { title: '本局分数', line: '距最高分  ' + settle.gap, cell: landedCellLine(settle) };
   }
 
   function drawSettle(ctx, ui, state, colors, viewport) {
@@ -193,7 +216,7 @@
     ctx.fillRect(0, 0, viewport.width, viewport.height);
 
     var panelW = 268;
-    var panelH = 268;
+    var panelH = 286;
     var px = ui.settleScore.x - panelW * 0.5;
     var py = ui.settleScore.y - 64;
     roundRect(ctx, px, py, panelW, panelH, 16);
@@ -213,6 +236,12 @@
     ctx.fillStyle = colors.scorePop || '#FDE68A';
     ctx.font = '700 36px ' + FONT;
     ctx.fillText(String(state.settle.score || 0), ui.settleScore.x, ui.settleScore.y + 8);
+
+    ctx.font = '14px ' + FONT;
+    ctx.fillStyle = state.settle.cellName
+      ? (colors.cellRelic || '#F5C542')
+      : (colors.hudDim || '#8AA0C8');
+    ctx.fillText(copy.cell, (ui.settleCell || ui.settleGap).x, (ui.settleCell || ui.settleGap).y);
 
     ctx.font = '14px ' + FONT;
     ctx.fillStyle = state.settle.won || state.settle.isNew
@@ -305,6 +334,7 @@
     draw: draw,
     hintFor: hintFor,
     settleCopy: settleCopy,
+    landedCellLine: landedCellLine,
     inRect: inRect
   };
 });

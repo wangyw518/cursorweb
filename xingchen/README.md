@@ -19,13 +19,13 @@ Do not import the repository root. The playable project root is `xingchen/`.
 
 ## Loop
 
-Drag aim + power → fire one ball → collide on statics → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score **grid treasure + ring band** → next rod, or settle when the K-shot target is met / missed.
+Drag aim + power → fire one ball → collide on statics → stop when `|v| < stopSpeed` for `stopHoldMs` (120ms) → score the **grid cell under the ball center** → next rod, or settle when the K-shot target is met / missed.
 
 - **Level:** score-in-K-shots. L1 `80 / 3` rods, L2 `160 / 3`, L3 `240 / 4`.
-- **Stamina:** 30. Starting a level costs 1. Share stub +1, 星尘补给 ad stub +5. Regen 1 / 10 min locally.
-- **Grid:** 5×6 treasure cells (星尘 / 晶核 / 星云屑 / 古星遗物). Landing collects the cell. Not filled-disk rings.
-- **Skills (once per level):** 炎核 burns 3×3, 霜核 doubles the cell and raises friction, 裂核 splits into 3 balls.
-- **Rings:** annular bands still add 10 / 30 / 80 / 200, edge `×1.2`.
+- **Stamina:** 30. Each fired shot costs 1 (not on level start). Share stub +1, 星尘补给 ad stub +5. Regen 1 / 30 min locally (`staminaRegenMs=1800000`).
+- **Grid:** 4×5 treasure cells (20; 星尘 / 晶核 / 星云屑 / 古星遗物). Landing collects the cell under the ball center. Not filled-disk rings.
+- **Skills (once per level):** 炎核 burns 3×3, 霜核 doubles the cell and raises friction, 裂核 splits into 2 balls (`splitMaxBalls=2`) and scores the higher-tier cell after both stop.
+- **Rings:** visual only unless `ringBonus` is on (optional additive). Primary score is the grid cell.
 - **Out of table:** ball center past bounds scores 0 for that rod (beats stop-detect).
 - **Trajectory preview:** reflection polyline vs statics. Not a full sim.
 

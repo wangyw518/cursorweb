@@ -114,6 +114,7 @@
     session.toast = null;
     session.flash = 0;
     session.flashRing = null;
+    session.flashCell = null;
     session.flashFrames = 0;
     session.pendingBurst = null;
     session.phase = 'aim';
@@ -142,7 +143,6 @@
       persistMeta(session);
       return { kind: 'need-stamina' };
     }
-    stamina.spend(session.stamina, cost);
     beginLevel(session, levelId, override);
     persistMeta(session);
     return { kind: 'start', levelId: session.levelId };
@@ -169,6 +169,7 @@
       toast: null,
       flash: 0,
       flashRing: null,
+      flashCell: null,
       flashFrames: 0,
       pendingBurst: null,
       preview: { points: [], bounces: 0 },
@@ -236,18 +237,23 @@
   }
 
   function emitScoreFx(session, award) {
-    var x = session.ball.x;
-    var y = session.ball.y;
+    var landed = (award.harvested && award.harvested[0]) || award.cell || null;
+    var x = landed ? landed.x + landed.w * 0.5 : session.ball.x;
+    var y = landed ? landed.y + landed.h * 0.5 : session.ball.y;
     var hex = award.oob
       ? (session.config.colors.ringPurple || '#C084FC')
-      : (award.ring ? fx.ringHex(award.ring, session.config.colors) : session.config.colors.scorePop);
+      : (landed && landed.kind ? fx.cellHex(landed.kind, session.config.colors) : session.config.colors.scorePop);
     session.flashRing = award.ring || null;
+    session.flashCell = landed;
     session.flashFrames = 1;
     session.flash = award.oob ? 0.18 : 0.28;
     session.pendingBurst = { x: x, y: y, hex: hex };
+    var cellLabel = award.cellName || (landed && landed.name) || '';
     var label = award.oob
       ? '0'
-      : ((award.score > 0 ? '+' + award.score : '+0') + (award.edge ? ' 擦边' : ''));
+      : (cellLabel
+        ? (cellLabel + '  +' + award.score)
+        : ((award.score > 0 ? '+' + award.score : '+0') + (award.edge ? ' 擦边' : '')));
     session.popups = [{
       x: x,
       y: y - 16,
@@ -257,19 +263,19 @@
     }];
     if (award.oob) {
       session.toast = { text: '偏离星表', ttl: 1.0, hex: session.config.colors.ringPurple };
-    } else if (award.skill) {
-      session.toast = { text: skills.label(award.skill) + '  +' + award.score, ttl: 0.9, hex: hex };
-    } else if (award.edge) {
-      session.toast = { text: '擦边 ×1.2', ttl: 0.9, hex: session.config.colors.aim };
-    } else if (award.gridScore > 0) {
-      session.toast = { text: '拾取  +' + award.gridScore, ttl: 0.85, hex: session.config.colors.cellCrystal };
-    } else if (!award.miss && award.score > 0) {
-      var names = session.config.tierNames || [];
+    } else if (cellLabel) {
+      var skillPrefix = award.skill ? (skills.label(award.skill) + ' · ') : '';
       session.toast = {
-        text: (names[award.tier] || '') + '  +' + award.score,
-        ttl: 0.9,
+        text: skillPrefix + '落点格  ' + cellLabel + '  +' + award.score,
+        ttl: 0.95,
         hex: hex
       };
+    } else if (award.edge) {
+      session.toast = { text: '擦边 ×1.2', ttl: 0.9, hex: session.config.colors.aim };
+    } else if (!award.miss && award.score > 0) {
+      session.toast = { text: '拾取  +' + award.score, ttl: 0.85, hex: hex };
+    } else {
+      session.toast = { text: '落点格  空', ttl: 0.75, hex: session.config.colors.hudDim };
     }
   }
 
@@ -286,23 +292,46 @@
     }
   }
 
-  function harvestBalls(session) {
-    var skill = session.shotSkill;
-    var total = { points: 0, cells: [], names: [] };
+  function landingCandidates(session) {
+    var out = [];
     var i;
     for (i = 0; i < session.balls.length; i++) {
       var b = session.balls[i];
       if (b.done) continue;
       if (table.isOutOfBounds(session.table.bounds, b.x, b.y)) continue;
-      var one = grid.harvest(session.grid, b.x, b.y, { skill: skill, config: session.config });
-      total.points += one.points;
-      total.cells = total.cells.concat(one.cells);
-      total.names = total.names.concat(one.names);
+      out.push({
+        ball: b,
+        cell: grid.cellAt(session.grid, b.x, b.y)
+      });
     }
-    return total;
+    return out;
   }
 
-  function bestRingAward(session) {
+  /**
+   * Primary settle reads the grid cell under the ball center (grid.cellAt).
+   * Split (2 balls) scores only the higher-tier of those two cells.
+   */
+  function harvestBalls(session) {
+    var skill = session.shotSkill;
+    var landings = landingCandidates(session);
+    if (!landings.length) {
+      return { points: 0, cells: [], names: [], cell: null };
+    }
+    var chosen = landings[0];
+    var i;
+    for (i = 1; i < landings.length; i++) {
+      if (grid.higherTier(landings[i].cell, chosen.cell) === landings[i].cell) {
+        chosen = landings[i];
+      }
+    }
+    return grid.harvest(session.grid, chosen.ball.x, chosen.ball.y, {
+      skill: skill,
+      config: session.config
+    });
+  }
+
+  function optionalRingAward(session) {
+    if (!session.config.ringBonus) return score.fromPick(null, session.config);
     var best = score.fromPick(null, session.config);
     var i;
     for (i = 0; i < session.balls.length; i++) {
@@ -321,20 +350,25 @@
     var best = isNew ? session.level.score : prevBest;
     if (isNew) session.best = best;
     else session.best = prevBest;
+    var last = session.award || {};
     session.settle = {
       score: session.level.score,
       best: best,
       gap: isNew ? 0 : Math.max(0, prevBest - session.level.score),
       isNew: isNew,
-      oob: !!(session.award && session.award.oob && session.level.score === 0),
-      edge: !!(session.award && session.award.edge),
-      tier: session.award ? session.award.tier : -1,
+      oob: !!(last.oob && session.level.score === 0),
+      lastOob: !!last.oob,
+      edge: !!last.edge,
+      tier: last.tier,
       miss: session.level.score === 0,
       won: verdict === 'win',
       lost: verdict === 'lose',
       target: session.level.target,
       hasNext: verdict === 'win' && level.hasNext(session.config, session.level.id),
-      needStamina: false
+      needStamina: false,
+      cellName: last.cellName || '',
+      cellKind: last.cellKind || '',
+      cell: last.cell || null
     };
     persistMeta(session);
     session.settleIn = (session.config.settleDelayMs || 280) / 1000;
@@ -459,6 +493,12 @@
     if (!grabbed && !onTable) {
       return { kind: 'miss-grab' };
     }
+    stamina.regen(session.stamina, nowMs(), session.config);
+    var aimCost = session.config.staminaCost == null ? 1 : session.config.staminaCost;
+    if (!stamina.canStart(session.stamina, aimCost)) {
+      session.toast = { text: '星尘不足', ttl: 0.8, hex: session.config.colors.hudDim };
+      return { kind: 'need-stamina' };
+    }
     launcher.beginDrag(session.launcher, x, y, session.ball);
     session.phase = 'charging';
     refreshPreview(session);
@@ -481,6 +521,15 @@
       session.phase = 'aim';
       return { kind: 'cancel', power: shot.power };
     }
+    stamina.regen(session.stamina, nowMs(), session.config);
+    var shotCost = session.config.staminaCost == null ? 1 : session.config.staminaCost;
+    if (!stamina.canStart(session.stamina, shotCost)) {
+      session.phase = 'aim';
+      session.toast = { text: '星尘不足', ttl: 0.8, hex: session.config.colors.hudDim };
+      return { kind: 'need-stamina' };
+    }
+    stamina.spend(session.stamina, shotCost);
+    persistMeta(session);
     var skill = skills.consume(session.skills);
     session.shotSkill = skill;
     session.shotConfig = session.config;
@@ -504,8 +553,9 @@
     session.stops = [stopDetect.create()];
     if (skill === 'split') {
       var extras = skills.splitVelocities(shot.vx, shot.vy, session.config);
+      var maxBalls = skills.splitMax(session.config);
       var i;
-      for (i = 1; i < extras.length; i++) {
+      for (i = 1; i < extras.length && session.balls.length < maxBalls; i++) {
         session.balls.push({
           x: session.ball.x,
           y: session.ball.y,
@@ -556,6 +606,7 @@
       if (session.flashFrames <= 0) {
         pushBurst(session);
         session.flashRing = null;
+        session.flashCell = null;
       }
     }
     if (session.flash > 0 && session.flashFrames <= 0) {
@@ -601,12 +652,17 @@
     var resolved = allBallsResolved(session);
     if (!resolved.done) return;
     if (resolved.allOob) {
-      resolveShot(session, score.combine(score.outOfBounds(), { points: 0, cells: [], names: [] }, session.shotSkill));
+      resolveShot(session, score.combine(
+        score.outOfBounds(),
+        { points: 0, cells: [], names: [], cell: null },
+        session.shotSkill,
+        session.config
+      ));
       return;
     }
-    var ringAward = bestRingAward(session);
+    var ringAward = optionalRingAward(session);
     var gridAward = harvestBalls(session);
-    resolveShot(session, score.combine(ringAward, gridAward, session.shotSkill));
+    resolveShot(session, score.combine(ringAward, gridAward, session.shotSkill, session.config));
   }
 
   function render(session, ctx) {
@@ -614,7 +670,7 @@
     var colors = session.config.colors;
     fx.fillDeepSpace(ctx, vp.width, vp.height, colors);
     fx.drawTable(ctx, session.table, colors);
-    fx.drawGrid(ctx, session.grid, colors);
+    fx.drawGrid(ctx, session.grid, colors, session.flashCell);
     fx.drawDust(ctx, session.dust);
     fx.drawVoids(ctx, session.table, colors);
     fx.drawWalls(ctx, session.table.walls, colors);
@@ -666,6 +722,7 @@
       settle: session.settle,
       best: session.best,
       flashFrames: session.flashFrames,
+      flashCell: session.flashCell,
       particleCount: session.particles.length,
       stop: { holdMs: session.stop.holdMs, stopped: session.stop.stopped },
       level: session.level,

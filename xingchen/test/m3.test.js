@@ -15,6 +15,7 @@ var sessionMod = require('../js/session');
 var storage = require('../js/storage');
 var table = require('../js/table');
 var hud = require('../js/hud');
+var stopDetect = require('../js/stopDetect');
 
 var failures = 0;
 
@@ -59,6 +60,22 @@ function board() {
   return table.layout(viewport(), config, ui.playRect);
 }
 
+check('frozen config: 4×5 grid, splitMaxBalls=2, stamina per shot / 30 min', function () {
+  assert.strictEqual(config.gridCols, 4);
+  assert.strictEqual(config.gridRows, 5);
+  assert.strictEqual(config.splitMaxBalls, 2);
+  assert.strictEqual(config.staminaMax, 30);
+  assert.strictEqual(config.staminaCost, 1);
+  assert.strictEqual(config.staminaRegenMs, 1800000);
+  assert.ok(config.staminaNote);
+  assert.ok(config.staminaNote.indexOf('shot') !== -1);
+  assert.strictEqual(config.ringBonus, false);
+  var g = grid.create(board(), config);
+  assert.strictEqual(g.cols, 4);
+  assert.strictEqual(g.rows, 5);
+  assert.strictEqual(g.cells.length, 20);
+});
+
 check('grid treasure cells score by kind, not as filled rings', function () {
   var g = grid.create(board(), config);
   var relic = g.cells.filter(function (c) { return c.kind === 'relic'; })[0];
@@ -86,6 +103,16 @@ check('fire harvests the landing cell plus neighbors', function () {
   assert.ok(burned.cells.length >= 2);
 });
 
+check('higher-tier helper prefers relic over dust', function () {
+  var g = grid.create(board(), config);
+  var relic = g.cells.filter(function (c) { return c.kind === 'relic'; })[0];
+  var dust = g.cells.filter(function (c) { return c.kind === 'dust'; })[0];
+  assert.strictEqual(grid.higherTier(dust, relic), relic);
+  assert.strictEqual(grid.higherTier(relic, dust), relic);
+  var under = grid.cellAt(g, relic.x + relic.w * 0.5, relic.y + relic.h * 0.5);
+  assert.strictEqual(under, relic);
+});
+
 check('ice doubles the landing treasure cell', function () {
   var g = grid.create(board(), config);
   var crystal = g.cells.filter(function (c) { return c.kind === 'crystal'; })[0];
@@ -96,15 +123,18 @@ check('ice doubles the landing treasure cell', function () {
   assert.strictEqual(iced.points, 36);
 });
 
-check('skills arm once per level; split yields three velocities', function () {
+check('skills arm once per level; split yields at most two velocities', function () {
   var state = skills.create();
   assert.strictEqual(skills.arm(state, 'fire').ok, true);
   assert.strictEqual(skills.consume(state), 'fire');
   assert.strictEqual(skills.arm(state, 'fire').ok, false);
   assert.strictEqual(skills.arm(state, 'ice').ok, true);
   var vel = skills.splitVelocities(100, 0, config);
-  assert.strictEqual(vel.length, 3);
-  assert.ok(vel[1].vy !== 0 && vel[2].vy !== 0);
+  assert.strictEqual(vel.length, 2);
+  assert.ok(vel.length <= config.splitMaxBalls);
+  assert.ok(vel[1].vy !== 0);
+  var forced = skills.splitVelocities(100, 0, { splitMaxBalls: 9, splitAngle: 0.28, splitPowerScale: 0.78 });
+  assert.strictEqual(forced.length, 2);
 });
 
 check('level is score-in-K-shots: win at target, lose when rods run out', function () {
@@ -152,19 +182,33 @@ check('share and ad stubs restore stamina without cash copy', function () {
   assert.strictEqual(ads.watch({ grant: 5 }).kind, 'ad');
 });
 
-check('session grid + level: gold ring can clear K-shot target', function () {
+check('session grid + level: relic cell scores toward K-shot; stamina is not spent on start', function () {
   var session = fresh();
   assert.strictEqual(session.level.shots, 3);
   assert.strictEqual(session.level.target, 80);
-  assert.ok(session.stamina.value <= 29);
-  var gold = session.rings.filter(function (r) { return r.tier === 3; })[0];
-  sessionMod.debugPlace(session, gold.x + (gold.innerR + gold.outerR) * 0.5, gold.y, 0, 0);
+  assert.strictEqual(session.stamina.value, 30);
+  var relic = session.grid.cells.filter(function (c) { return c.kind === 'relic'; })[0];
+  sessionMod.debugPlace(session, relic.x + relic.w * 0.5, relic.y + relic.h * 0.5, 0, 0);
   tickShot(session, 20);
-  assert.ok(session.award.ringScore >= 200 || session.award.score >= 80);
-  assert.ok(session.phase === 'scored' || session.phase === 'settle' || session.level.won);
+  assert.strictEqual(session.award.cellKind, 'relic');
+  assert.strictEqual(session.award.gridScore, 60);
+  assert.strictEqual(session.award.score, 60);
+  assert.ok(session.award.cell, 'settle reads grid.cellAt under the ball center');
+  assert.ok(session.phase === 'aim' || session.phase === 'scored' || session.phase === 'settle');
 });
 
-check('split shot spawns extra balls', function () {
+check('firing a shot decrements stamina by 1', function () {
+  var session = fresh();
+  assert.strictEqual(session.stamina.value, 30);
+  var ball = session.ball;
+  sessionMod.handlePointerDown(session, ball.x, ball.y + 8);
+  sessionMod.handlePointerMove(session, ball.x, ball.y + 90);
+  var fire = sessionMod.handlePointerUp(session, ball.x, ball.y + 90);
+  assert.strictEqual(fire.kind, 'fire');
+  assert.strictEqual(session.stamina.value, 29);
+});
+
+check('split shot never spawns a third ball and scores the higher-tier cell', function () {
   var session = fresh();
   var ball = session.ball;
   sessionMod.handlePointerDown(session, ball.x, ball.y + 8);
@@ -172,7 +216,28 @@ check('split shot spawns extra balls', function () {
   skills.arm(session.skills, 'split');
   var fire = sessionMod.handlePointerUp(session, ball.x, ball.y + 90);
   assert.strictEqual(fire.skill, 'split');
-  assert.strictEqual(session.balls.length, 3);
+  assert.strictEqual(session.balls.length, 2);
+  assert.ok(session.balls.length <= config.splitMaxBalls);
+
+  storage.resetMemory();
+  var scored = sessionMod.create(viewport(), config);
+  var dust = scored.grid.cells.filter(function (c) { return c.kind === 'dust'; })[0];
+  var relic = scored.grid.cells.filter(function (c) { return c.kind === 'relic'; })[0];
+  scored.shotSkill = 'split';
+  scored.balls = [
+    { x: dust.x + dust.w * 0.5, y: dust.y + dust.h * 0.5, vx: 0, vy: 0, r: 9, done: false },
+    { x: relic.x + relic.w * 0.5, y: relic.y + relic.h * 0.5, vx: 0, vy: 0, r: 9, done: false }
+  ];
+  scored.ball = scored.balls[0];
+  scored.stops = [stopDetect.create(), stopDetect.create()];
+  scored.stop = scored.stops[0];
+  scored.phase = 'flight';
+  tickShot(scored, 20);
+  assert.ok(scored.award);
+  assert.strictEqual(scored.award.cellKind, 'relic');
+  assert.strictEqual(scored.award.score, 60);
+  assert.strictEqual(relic.collected, true);
+  assert.strictEqual(dust.collected, false);
 });
 
 check('starting a level with 0 stamina is blocked until stub grant', function () {

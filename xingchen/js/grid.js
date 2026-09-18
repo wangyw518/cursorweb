@@ -5,13 +5,13 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  // 4 cols × 5 rows = 20 cells (frozen GDD).
   var PATTERN = [
-    'dust', 'empty', 'relic', 'empty', 'dust',
-    'empty', 'crystal', 'empty', 'crystal', 'empty',
-    'nebula', 'empty', 'dust', 'empty', 'nebula',
-    'empty', 'dust', 'empty', 'crystal', 'empty',
-    'crystal', 'empty', 'nebula', 'empty', 'dust',
-    'empty', 'empty', 'empty', 'empty', 'empty'
+    'dust', 'empty', 'relic', 'dust',
+    'empty', 'crystal', 'empty', 'crystal',
+    'nebula', 'empty', 'dust', 'nebula',
+    'empty', 'dust', 'crystal', 'empty',
+    'crystal', 'empty', 'nebula', 'dust'
   ];
 
   function kindMeta(id, config) {
@@ -21,8 +21,8 @@
   }
 
   function create(table, config) {
-    var cols = (config && config.gridCols) || 5;
-    var rows = (config && config.gridRows) || 6;
+    var cols = (config && config.gridCols) || 4;
+    var rows = (config && config.gridRows) || 5;
     var b = table.bounds;
     var padX = 12;
     var padTop = 10;
@@ -89,6 +89,16 @@
     return out;
   }
 
+  function cellRank(cell) {
+    if (!cell) return -1;
+    return cell.points || 0;
+  }
+
+  /** Prefer the higher-tier treasure cell (by points). Ties keep `a`. */
+  function higherTier(a, b) {
+    return cellRank(a) >= cellRank(b) ? (a || b) : b;
+  }
+
   function takeCell(cell, mul) {
     if (!cell || cell.collected || !cell.points) return 0;
     var frost = cell.frost ? mul : 1;
@@ -137,6 +147,8 @@
     cellAt: cellAt,
     neighbors: neighbors,
     harvest: harvest,
+    higherTier: higherTier,
+    cellRank: cellRank,
     kindMeta: kindMeta
   };
 });

@@ -107,16 +107,21 @@
     return colors.grid || '#1E3A5F';
   }
 
-  function drawGrid(ctx, grid, colors) {
+  function drawGrid(ctx, grid, colors, flashCell) {
     if (!grid) return;
     ctx.save();
     var i;
     for (i = 0; i < grid.cells.length; i++) {
       var cell = grid.cells[i];
-      ctx.strokeStyle = colors.grid || '#1E3A5F';
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = 1;
+      var flashing = flashCell && (flashCell === cell || flashCell.i === cell.i);
+      ctx.strokeStyle = flashing ? '#FFFFFF' : (colors.grid || '#1E3A5F');
+      ctx.globalAlpha = flashing ? 1 : 0.35;
+      ctx.lineWidth = flashing ? 2.2 : 1;
       ctx.strokeRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
+      if (flashing) {
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(cell.x + 1, cell.y + 1, cell.w - 2, cell.h - 2);
+      }
       if (cell.kind === 'empty' || cell.collected) continue;
       var hex = cellHex(cell.kind, colors);
       var cx = cell.x + cell.w * 0.5;
