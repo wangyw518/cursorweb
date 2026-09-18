@@ -1,51 +1,94 @@
 /**
- * Minimal HTTP room server for taiqiu 2P.
- * POST /api/rooms
- * POST /api/rooms/:id/join
- * POST /api/rooms/:id/shot
- * GET  /api/rooms/:id
+ * HTTP room server for taiqiu 2P.
+ *
+ * Draft endpoints:
+ *   POST /room/create
+ *   POST /room/join
+ *   POST /room/shot
+ *   GET  /room/state?roomId=
+ *
+ * Legacy aliases (same store):
+ *   POST /api/rooms
+ *   POST /api/rooms/:id/join
+ *   POST /api/rooms/:id/shot
+ *   GET  /api/rooms/:id
  *
  *   node taiqiu/dev/room-server.js [port]
  */
 'use strict';
 
 var http = require('http');
+var urlMod = require('url');
 var storeMod = require('../js/roomStore');
+
+function send(res, code, body) {
+  var json = JSON.stringify(body);
+  res.writeHead(code, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(json),
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'content-type'
+  });
+  res.end(json);
+}
+
+function readBody(req, cb) {
+  var chunks = '';
+  req.on('data', function (c) { chunks += c; });
+  req.on('end', function () {
+    if (!chunks) return cb({});
+    try { cb(JSON.parse(chunks)); } catch (err) { cb(null); }
+  });
+}
+
+function decorateCreate(res) {
+  if (!res || !res.ok) return res;
+  res.role = 'host';
+  return res;
+}
+
+function decorateJoin(res) {
+  if (!res || !res.ok) return res;
+  res.role = 'guest';
+  return res;
+}
 
 function createHandler(store) {
   store = store || storeMod.createStore();
 
-  function send(res, code, body) {
-    var json = JSON.stringify(body);
-    res.writeHead(code, {
-      'content-type': 'application/json; charset=utf-8',
-      'content-length': Buffer.byteLength(json),
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type'
-    });
-    res.end(json);
-  }
-
-  function readBody(req, cb) {
-    var chunks = '';
-    req.on('data', function (c) { chunks += c; });
-    req.on('end', function () {
-      if (!chunks) return cb({});
-      try { cb(JSON.parse(chunks)); } catch (err) { cb(null); }
-    });
-  }
-
   function handle(req, res) {
     if (req.method === 'OPTIONS') return send(res, 204, { ok: true });
-    var url = req.url || '';
-    var q = url.indexOf('?');
-    if (q !== -1) url = url.slice(0, q);
+    var parsed = urlMod.parse(req.url || '', true);
+    var url = parsed.pathname || '';
+
+    if (req.method === 'POST' && url === '/room/create') {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        send(res, 200, decorateCreate(store.dispatch('create', body)));
+      });
+    }
+    if (req.method === 'POST' && url === '/room/join') {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        send(res, 200, decorateJoin(store.dispatch('join', body)));
+      });
+    }
+    if (req.method === 'POST' && url === '/room/shot') {
+      return readBody(req, function (body) {
+        if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        send(res, 200, store.dispatch('shot', body));
+      });
+    }
+    if (req.method === 'GET' && url === '/room/state') {
+      var roomId = parsed.query && parsed.query.roomId;
+      return send(res, 200, store.dispatch('state', { roomId: roomId }));
+    }
 
     if (req.method === 'POST' && url === '/api/rooms') {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
-        send(res, 200, store.dispatch('create', body));
+        send(res, 200, decorateCreate(store.dispatch('create', body)));
       });
     }
     var join = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/join$/);
@@ -53,7 +96,7 @@ function createHandler(store) {
       return readBody(req, function (body) {
         body = body || {};
         body.roomId = join[1];
-        send(res, 200, store.dispatch('join', body));
+        send(res, 200, decorateJoin(store.dispatch('join', body)));
       });
     }
     var shot = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/shot$/);
@@ -88,10 +131,10 @@ if (require.main === module) {
   var port = parseInt(process.argv[2], 10) || 8788;
   listen(port, function (addr) {
     console.log('[taiqiu] room API http://127.0.0.1:' + addr.port);
-    console.log('  POST /api/rooms');
-    console.log('  POST /api/rooms/:id/join');
-    console.log('  POST /api/rooms/:id/shot');
-    console.log('  GET  /api/rooms/:id');
+    console.log('  POST /room/create');
+    console.log('  POST /room/join');
+    console.log('  POST /room/shot');
+    console.log('  GET  /room/state?roomId=');
   });
 }
 

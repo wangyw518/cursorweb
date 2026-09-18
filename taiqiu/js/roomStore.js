@@ -32,21 +32,36 @@
     return roomId + (seat === 0 ? ':h' : ':g');
   }
 
+  function roleOfSeat(seat) {
+    return seat === 1 ? 'guest' : 'host';
+  }
+
+  function seatOfRole(role, fallback) {
+    if (role === 'guest' || role === 1) return 1;
+    if (role === 'host' || role === 0) return 0;
+    return fallback;
+  }
+
   function emptyState(roomId) {
     return {
       roomId: roomId,
       hostSeat: 0,
       guestJoined: false,
       turn: 0,
+      turnRole: 'host',
       seq: 0,
+      shotSeq: 0,
       balls: null,
+      ballsSnapshot: null,
       phase: 'Aim',
       scores: [0, 0],
       winner: null,
       targetN: 1,
       matchOver: false,
       lastReason: null,
-      lastSeat: null
+      lastSeat: null,
+      lastRole: null,
+      lastShot: null
     };
   }
 
@@ -54,6 +69,25 @@
     if (reason === 'legal' || reason === 'nine' || reason === 'sync') return fromSeat;
     if (reason === 'new-game') return 0;
     return fromSeat === 0 ? 1 : 0;
+  }
+
+  function reasonFromEvents(events, fallback) {
+    if (fallback) return fallback;
+    events = events || [];
+    var i;
+    for (i = 0; i < events.length; i++) {
+      var e = events[i] || {};
+      var t = e.type || e.kind;
+      if (t === 'nine' || (t === 'pocket' && (e.n === 9 || e.ball === 9) && e.legal !== false)) {
+        return 'nine';
+      }
+      if (t === 'scratch') return 'scratch';
+      if (t === 'foul' || e.foul) return e.reason || 'foul';
+      if (t === 'legal' || (t === 'pocket' && e.legal !== false)) return 'legal';
+      if (t === 'miss') return 'miss';
+      if (t === 'new-game') return 'new-game';
+    }
+    return 'miss';
   }
 
   function createStore() {
@@ -69,7 +103,11 @@
       var roomId = payload.roomId || randomId();
       if (rooms[roomId]) roomId = randomId();
       var state = emptyState(roomId);
-      if (payload.balls) state.balls = clone(payload.balls);
+      var opening = payload.ballsSnapshot || payload.balls;
+      if (opening) {
+        state.balls = clone(opening);
+        state.ballsSnapshot = clone(opening);
+      }
       if (payload.scores) state.scores = payload.scores.slice();
       if (payload.targetN != null) state.targetN = payload.targetN;
       write(roomId, state);
@@ -77,6 +115,7 @@
         ok: true,
         action: 'create',
         roomId: roomId,
+        role: 'host',
         seat: 0,
         token: tokenFor(roomId, 0),
         state: clone(state)
@@ -93,6 +132,7 @@
         ok: true,
         action: 'join',
         roomId: roomId,
+        role: 'guest',
         seat: 1,
         token: tokenFor(roomId, 1),
         state: clone(state)
@@ -104,21 +144,30 @@
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'shot', reason: 'missing', roomId: roomId };
       var fromSeat = payload.fromSeat;
+      if (fromSeat !== 0 && fromSeat !== 1) fromSeat = seatOfRole(payload.role, null);
       if (fromSeat !== 0 && fromSeat !== 1) {
         return { ok: false, action: 'shot', reason: 'bad-seat', roomId: roomId };
       }
       if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
         return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
       }
-      var reason = payload.reason || 'miss';
+      var reason = reasonFromEvents(payload.events, payload.reason);
       if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
         return { ok: false, action: 'shot', reason: 'not-your-turn', roomId: roomId, state: clone(state) };
       }
-      if (payload.balls) state.balls = clone(payload.balls);
+      if (payload.shotSeq != null && state.shotSeq != null && payload.shotSeq <= state.shotSeq && reason !== 'new-game') {
+        return { ok: false, action: 'shot', reason: 'stale-seq', roomId: roomId, state: clone(state) };
+      }
+      var snap = payload.ballsSnapshot || payload.balls;
+      if (snap) {
+        state.balls = clone(snap);
+        state.ballsSnapshot = clone(snap);
+      }
       if (payload.scores) state.scores = payload.scores.slice();
       if (payload.phase) state.phase = payload.phase;
       if (payload.targetN != null) state.targetN = payload.targetN;
       state.turn = nextTurn(fromSeat, reason);
+      state.turnRole = roleOfSeat(state.turn);
       state.matchOver = reason === 'nine';
       state.winner = reason === 'nine' ? fromSeat : (reason === 'new-game' ? null : state.winner);
       if (reason === 'new-game') {
@@ -127,12 +176,26 @@
         state.scores = payload.scores ? payload.scores.slice() : [0, 0];
         state.phase = 'Aim';
         state.targetN = payload.targetN != null ? payload.targetN : 1;
+        state.shotSeq = 0;
+        state.turn = 0;
+        state.turnRole = 'host';
       }
       if (reason === 'nine') state.phase = payload.phase || 'Settle';
       state.lastReason = reason;
       state.lastSeat = fromSeat;
+      state.lastRole = roleOfSeat(fromSeat);
+      state.lastShot = {
+        shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq + 1,
+        aimAngle: payload.aimAngle,
+        power: payload.power,
+        spin: payload.spin,
+        events: payload.events ? clone(payload.events) : []
+      };
       state.guestJoined = !!(state.guestJoined || payload.guestJoined);
       state.seq += 1;
+      if (reason !== 'new-game') {
+        state.shotSeq = payload.shotSeq != null ? payload.shotSeq : state.seq;
+      }
       write(roomId, state);
       return { ok: true, action: 'shot', roomId: roomId, state: clone(state) };
     }
@@ -156,6 +219,18 @@
       rooms = {};
     }
 
+    function dump() {
+      return clone(rooms);
+    }
+
+    function hydrate(map) {
+      rooms = {};
+      if (!map) return;
+      var keys = Object.keys(map);
+      var i;
+      for (i = 0; i < keys.length; i++) rooms[keys[i]] = clone(map[keys[i]]);
+    }
+
     return {
       create: create,
       join: join,
@@ -163,6 +238,8 @@
       state: stateOf,
       dispatch: dispatch,
       reset: reset,
+      dump: dump,
+      hydrate: hydrate,
       tokenFor: tokenFor,
       nextTurn: nextTurn,
       randomId: randomId
@@ -174,6 +251,9 @@
     randomId: randomId,
     tokenFor: tokenFor,
     nextTurn: nextTurn,
-    emptyState: emptyState
+    emptyState: emptyState,
+    roleOfSeat: roleOfSeat,
+    seatOfRole: seatOfRole,
+    reasonFromEvents: reasonFromEvents
   };
 });

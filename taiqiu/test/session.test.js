@@ -12,6 +12,7 @@ var ai = require('../js/ai');
 var sfx = require('../js/sfx');
 var hud = require('../js/hud');
 var net = require('../js/net');
+var roomApi = require('../js/roomApi');
 var share = require('../js/share');
 
 var failures = 0;
@@ -342,10 +343,12 @@ check('好友对局 creates a room and shareAppMessage carries roomId', function
   var made = sessionMod.createRoom(s);
   assert.ok(made.roomId);
   assert.ok(!made.stub);
+  assert.strictEqual(s.role, 'host');
   assert.ok(s.roomPanel);
   assert.strictEqual(s.roomPanel.roomId, made.roomId);
   assert.ok(s.roomPanel.hint.indexOf('占位') === -1);
   assert.ok(s.roomPanel.hint.indexOf('同步') !== -1);
+  assert.ok(s.roomPanel.hint.indexOf('roomId=') !== -1);
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.ok(invite.payload.query.indexOf('roomId=') === 0);
@@ -381,6 +384,29 @@ check('WeChat 2P room create / join / shareAppMessage roomId / sync after shot',
   assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - oneX) < 0.01);
   assert.strictEqual(sessionMod.canAim(host), false);
   assert.strictEqual(sessionMod.canAim(guest), true);
+});
+
+check('2P guest cannot aim on host turn; out-of-turn shot is rejected', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  assert.strictEqual(sessionMod.canAim(host), true);
+  assert.strictEqual(sessionMod.canAim(guest), false);
+  var before = roomApi.state(host.room.roomId);
+  var denied = roomApi.shot(host.room.roomId, {
+    shotSeq: 1,
+    role: 'guest',
+    token: guest.room.token,
+    events: [{ type: 'miss' }],
+    ballsSnapshot: []
+  });
+  assert.strictEqual(denied.ok, false);
+  assert.strictEqual(denied.reason, 'not-your-turn');
+  assert.strictEqual(roomApi.state(host.room.roomId).state.shotSeq, before.state.shotSeq);
+  var wait = sessionMod.handlePointerDown(guest, guest.balls[0].x, guest.balls[0].y);
+  assert.strictEqual(wait.kind, 'wait-turn');
 });
 
 check('2P miss switches turn; legal 1-8 keeps the shooter', function () {

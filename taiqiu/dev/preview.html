@@ -77,15 +77,38 @@
         },
         onWindowResize: function () {},
         shareAppMessage: function () {},
-        getLaunchOptionsSync: function () { return { query: {} }; },
-        onShow: function () {},
+        getLaunchOptionsSync: function () {
+          var q = {};
+          try {
+            var sp = new URLSearchParams(location.search);
+            sp.forEach(function (v, k) { q[k] = v; });
+          } catch (e) {}
+          return { query: q };
+        },
+        onShow: function (cb) {
+          if (typeof cb === 'function') {
+            try { cb(window.wx.getLaunchOptionsSync()); } catch (err) {}
+          }
+        },
+        request: function (opts) {
+          opts = opts || {};
+          var method = opts.method || 'GET';
+          fetch(opts.url, {
+            method: method,
+            headers: opts.header || { 'content-type': 'application/json' },
+            body: method === 'GET' ? undefined : JSON.stringify(opts.data || {})
+          }).then(function (res) { return res.json().then(function (data) { return { data: data }; }); })
+            .then(function (pack) { if (opts.success) opts.success(pack); })
+            .catch(function (err) { if (opts.fail) opts.fail(err); });
+        },
         setStorageSync: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
         getStorageSync: function (k) {
           try {
             var raw = localStorage.getItem(k);
             return raw ? JSON.parse(raw) : '';
           } catch (e) { return ''; }
-        }
+        },
+        removeStorageSync: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
       };
       bind('onTouchStart', 'pointerdown');
       window.addEventListener('pointermove', function (e) {
@@ -121,6 +144,7 @@
         '../js/sfx.js',
         '../js/ai.js',
         '../js/roomStore.js',
+        '../js/roomApi.js',
         '../js/net.js',
         '../js/hud.js',
         '../js/render.js',
@@ -143,8 +167,8 @@
           try { api = new URLSearchParams(location.search).get('api') || ''; } catch (err) {}
           if (api) {
             cfg.room = cfg.room || {};
+            cfg.room.roomApiBase = api;
             cfg.room.httpUrl = api;
-            cfg.room.transport = 'http';
           }
           window.TaiqiuConfig = cfg;
           var chain = Promise.resolve();

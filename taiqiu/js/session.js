@@ -15,7 +15,7 @@
     typeof require === 'function' ? require('./sfx') : root.TaiqiuSfx,
     typeof require === 'function' ? require('./ai') : root.TaiqiuAi,
     typeof require === 'function' ? require('./render') : root.TaiqiuRender,
-    typeof require === 'function' ? require('./net') : root.TaiqiuNet
+    typeof require === 'function' ? require('./roomApi') : (root.TaiqiuRoomApi || root.TaiqiuNet)
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TaiqiuSession = api;
@@ -35,7 +35,7 @@
   sfx,
   ai,
   render,
-  net
+  roomApi
 ) {
   'use strict';
 
@@ -91,13 +91,50 @@
     return session.preview;
   }
 
+  function eventsFromResolution(session, reason) {
+    var events = [];
+    var res = session.resolution || {};
+    var shot = session.shot || {};
+    var i;
+    if (shot.pocketed && shot.pocketed.length) {
+      for (i = 0; i < shot.pocketed.length; i++) {
+        var id = shot.pocketed[i];
+        var n = id === 'cue' ? 0 : parseInt(String(id).replace('b', ''), 10);
+        events.push({
+          type: 'pocket',
+          n: n,
+          legal: !!(res.legal) && n !== 0
+        });
+      }
+    }
+    if (reason === 'nine' || res.win) events.push({ type: 'nine', legal: true });
+    else if (reason === 'legal') events.push({ type: 'legal' });
+    else if (reason === 'scratch' || shot.scratch) events.push({ type: 'scratch' });
+    else if (res.foul) events.push({ type: 'foul', reason: res.reason || reason });
+    else if (reason === 'new-game') events.push({ type: 'new-game' });
+    else events.push({ type: 'miss' });
+    return events;
+  }
+
   function shotPayload(session, reason, fromSeat) {
     var felt = session.table && session.table.felt;
+    var snap = roomApi.snapshotBalls(session.balls, felt);
+    var seat = fromSeat != null ? fromSeat : session.mySeat;
+    var last = session.lastShotInput || {};
+    var shotSeq = ((session.room && (session.room.lastSeq || 0)) || 0) + 1;
     return {
-      fromSeat: fromSeat != null ? fromSeat : session.mySeat,
+      roomId: session.room ? session.room.roomId : null,
+      shotSeq: shotSeq,
+      aimAngle: last.aimAngle,
+      power: last.power,
+      spin: last.spin,
+      events: session.lastShotEvents || eventsFromResolution(session, reason),
+      ballsSnapshot: snap,
+      fromSeat: seat,
+      role: seat === 1 ? 'guest' : 'host',
       token: session.room ? session.room.token : null,
       reason: reason || 'miss',
-      balls: net.snapshotBalls(session.balls, felt),
+      balls: snap,
       scores: session.scores.slice(),
       phase: session.phase,
       targetN: session.target ? session.target.n : 0,
@@ -110,12 +147,18 @@
   function applyRoomState(session, state) {
     if (!state) return session;
     var felt = session.table && session.table.felt;
-    if (state.balls) net.applyBalls(session.balls, state.balls, felt);
+    var snap = state.ballsSnapshot || state.balls;
+    if (snap) roomApi.applyBalls(session.balls, snap, felt);
     if (state.scores) session.scores = state.scores.slice();
-    if (state.turn != null) session.turn = state.turn;
+    if (state.turnRole === 'guest') session.turn = 1;
+    else if (state.turnRole === 'host') session.turn = 0;
+    else if (state.turn != null) session.turn = state.turn;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
-    if (session.room && state.seq != null) session.room.lastSeq = state.seq;
+    if (session.room) {
+      if (state.shotSeq != null) session.room.lastSeq = state.shotSeq;
+      else if (state.seq != null) session.room.lastSeq = state.seq;
+    }
     if (state.guestJoined && session.room) {
       session.room.guestJoined = true;
       session.hotseat = false;
@@ -148,16 +191,24 @@
     return state;
   }
 
+  function shouldSubmitShot(session, fromSeat) {
+    if (!session.room || !session.room.roomId) return false;
+    if (!session.versus) return false;
+    var seat = fromSeat != null ? fromSeat : session.mySeat;
+    if (session.hotseat && !(session.room.guestJoined)) return session.mySeat === 0;
+    return seat === session.mySeat;
+  }
+
   function pushRoom(session, reason, fromSeat) {
-    if (!session.room || !session.room.roomId) return null;
-    return net.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
+    if (!shouldSubmitShot(session, fromSeat)) return null;
+    return roomApi.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
       if (res && res.ok && res.state) ingestState(session, res);
     });
   }
 
   function pullRoom(session) {
     if (!session.room || !session.room.roomId) return null;
-    return net.state(session.room.roomId, function (res) {
+    return roomApi.state(session.room.roomId, function (res) {
       ingestState(session, res);
     });
   }
@@ -205,7 +256,7 @@
 
   function create(viewport, config, opts) {
     opts = opts || {};
-    if (config && config.room) net.configure(config.room);
+    if (config && config.room) roomApi.configure(config.room);
     var saved = storage.load();
     var session = {
       viewport: viewport,
@@ -381,6 +432,7 @@
     }
 
     var win = !!(session.resolution && session.resolution.win);
+    session.lastShotEvents = eventsFromResolution(session, win ? 'nine' : (award.reason || (session.resolution && session.resolution.reason) || 'miss'));
     if (win) {
       applySpotRules(session);
       session.matchOver = true;
@@ -486,7 +538,7 @@
     }
     if (session.room && session.phase === fsm.PHASE.Aim) {
       session.syncAcc += dt;
-      var pollSec = ((net.configOf && net.configOf().pollMs) || 450) / 1000;
+      var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
       if (session.syncAcc > pollSec) {
         session.syncAcc = 0;
         pullRoom(session);
@@ -531,15 +583,17 @@
     session.mySeat = 0;
     session.turn = 0;
     session.scores = [0, 0];
+    session.role = 'host';
     session.room = {
       roomId: made.roomId,
       guestJoined: false,
       token: made.token,
-      lastSeq: made.state ? made.state.seq : 0
+      role: 'host',
+      lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0
     };
     session.roomPanel = {
       roomId: made.roomId,
-      hint: '分享给好友，加入后同步台面'
+      hint: '分享给好友，加入后同步台面。第二页打开 ?roomId=' + made.roomId
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     session.toast = { text: '房间 ' + made.roomId, life: 1.8 };
@@ -550,14 +604,16 @@
     if (session.room && session.room.roomId) {
       session.roomPanel = {
         roomId: session.room.roomId,
-        hint: session.room.guestJoined ? '好友已加入 · 轮流击球' : '分享给好友，加入后同步台面'
+        hint: session.room.guestJoined
+          ? '好友已加入 · 轮流击球'
+          : '分享给好友，加入后同步台面。第二页打开 ?roomId=' + session.room.roomId
       };
       session.toast = { text: '房间 ' + session.room.roomId, life: 1.4 };
       return { kind: 'room', roomId: session.room.roomId, existing: true };
     }
     var felt = session.table && session.table.felt;
-    var made = net.createRoom({
-      balls: net.snapshotBalls(session.balls, felt),
+    var made = roomApi.create({
+      balls: roomApi.snapshotBalls(session.balls, felt),
       scores: [0, 0],
       targetN: session.target ? session.target.n : 1
     }, function (res) {
@@ -577,12 +633,16 @@
   function attachGuestRoom(session, joined, roomId) {
     session.versus = true;
     session.hotseat = false;
-    session.mySeat = joined.seat;
+    session.mySeat = joined.seat != null ? joined.seat : 1;
+    session.role = joined.role || 'guest';
     session.room = {
       roomId: joined.roomId,
       guestJoined: true,
       token: joined.token,
-      lastSeq: joined.state ? joined.state.seq : 0
+      role: session.role,
+      lastSeq: joined.state
+        ? (joined.state.shotSeq != null ? joined.state.shotSeq : joined.state.seq)
+        : 0
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     if (joined.state) applyRoomState(session, joined.state);
@@ -591,7 +651,7 @@
   }
 
   function joinRoom(session, roomId) {
-    var joined = net.joinRoom(roomId, function (res) {
+    var joined = roomApi.join(roomId, function (res) {
       if (res && res.ok && !(session.room && session.room.roomId === roomId && session.mySeat === 1)) {
         attachGuestRoom(session, res, roomId);
       }
@@ -609,7 +669,9 @@
     if (!session.room || !session.room.roomId) return createRoom(session);
     session.roomPanel = {
       roomId: session.room.roomId,
-      hint: session.room.guestJoined ? '好友已加入 · 轮流击球' : '分享给好友，加入后同步台面'
+      hint: session.room.guestJoined
+        ? '好友已加入 · 轮流击球'
+        : '分享给好友，加入后同步台面。第二页打开 ?roomId=' + session.room.roomId
     };
     session.lastShare = share.shareRoom(session.room.roomId);
     session.toast = { text: '邀请房间 ' + session.room.roomId, life: 1.6 };
@@ -689,6 +751,11 @@
     session.preview = { points: [], ghost: null, bounces: 0 };
     if (!shot.fired) return { kind: 'cancel' };
     if (!canAim(session)) return { kind: 'wait-turn' };
+    session.lastShotInput = {
+      aimAngle: shot.angle,
+      power: shot.power,
+      spin: shot.spin || 0
+    };
     var cueBall = findCue(session);
     cueBall.vx = shot.vx;
     cueBall.vy = shot.vy;
@@ -712,6 +779,11 @@
       session.toast = { text: '弱AI无目标', life: 1.2 };
       return { kind: 'ai-skip' };
     }
+    session.lastShotInput = {
+      aimAngle: Math.atan2(plan.vy, plan.vx),
+      power: plan.power,
+      spin: 0
+    };
     cueBall.vx = plan.vx;
     cueBall.vy = plan.vy;
     session.phase = fsm.PHASE.Shot;

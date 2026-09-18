@@ -31,6 +31,7 @@
   "storageKey": "taiqiu.best",
   "room": {
     "pollMs": 450,
+    "roomApiBase": "",
     "cloudEnv": "",
     "cloudFn": "taiqiuRoom",
     "httpUrl": ""

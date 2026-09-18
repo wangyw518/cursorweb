@@ -77,6 +77,7 @@ taiqiu/
     share.js
     sfx.js
     ai.js
+    roomApi.js
     net.js
     roomStore.js
   cloudfunctions/taiqiuRoom/
@@ -86,34 +87,59 @@ taiqiu/
   README.md
 ```
 
-## WeChat friend 2P (create / join / shot / state)
+## Friend 2P (turn-based)
 
-Shared API (memory, HTTP, or `wx.cloud.callFunction`):
+Client: `js/roomApi.js`. `js/config.json` → `room.roomApiBase`:
 
-| action | HTTP | cloud `event.action` |
-| --- | --- | --- |
-| create | `POST /api/rooms` | `create` |
-| join | `POST /api/rooms/:id/join` | `join` + `roomId` |
-| shot | `POST /api/rooms/:id/shot` | `shot` |
-| state | `GET /api/rooms/:id` | `state` + `roomId` |
+- **empty** → `LocalMockRoom` (in-memory + `wx` / `localStorage`). Same client, no backend.
+- **set** (e.g. `http://127.0.0.1:8788`) → `fetch` / `wx.request` the real HTTP API.
 
-Ball positions are felt-normalized (`nx`, `ny`) so two phones can share a table. The server applies turn rules: **legal → continue**, **miss/foul → switch**, **nine → win**, **new-game → rack**. Waiting seat shots are rejected.
+Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul switches; first legal 9 wins. Host/guest only submit a shot on their own turn. Aim is disabled with **对方击球** when it is not your turn. Solo still uses `continueShot` and never reracks on a miss.
 
-**WeChat Cloud (phones):**
+### API shapes (mock and real)
 
-1. Enable 云开发 for AppID `wxc8683bd9c1599d7d`.
-2. Upload `cloudfunctions/taiqiuRoom` and create collection `taiqiu_rooms`.
-3. Set `js/config.json` → `room.cloudEnv` to your env id (keep `room.cloudFn` = `taiqiuRoom`).
-4. Host taps **好友对局** → **邀请好友**. Friend opens the share card and joins. Clients poll every `room.pollMs` (450ms).
+| action | HTTP | body | response |
+| --- | --- | --- | --- |
+| create | `POST /room/create` | optional `{ balls, scores, targetN }` | `{ roomId, role: "host", state }` |
+| join | `POST /room/join` | `{ roomId }` | `{ role: "guest", state }` |
+| shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
+| state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole`, `shotSeq`, `matchOver`, `winner`) |
 
-**Local HTTP (browser / tests):**
+`events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots return `{ ok: false, reason: "not-your-turn" }`.
+
+`state.turn` is `0` (host) / `1` (guest). `state.turnRole` is `"host"` / `"guest"`.
+
+### Flip to a real backend
+
+1. Keep the same client. Do not change shot / HUD code.
+2. Set `js/config.json` → `room.roomApiBase` to your origin (no trailing slash), **or** open preview with `?api=https://your-host`.
+3. Implement the four paths above. The client already posts `shotSeq`, aim, power, optional spin, `events[]`, and `ballsSnapshot`.
+4. Optional local stand-in: `node taiqiu/dev/room-server.js 8788` then `?api=http://127.0.0.1:8788`.
+
+Empty `roomApiBase` always uses the mock, even if a cloud env is listed.
+
+### How to test mock 2P (two pages / two simulators)
+
+**Two browser pages (recommended for mock):** they share `localStorage`.
 
 ```bash
-node taiqiu/dev/room-server.js 8788
-# preview: http://127.0.0.1:8767/dev/preview.html?api=http://127.0.0.1:8788
+python3 -m http.server 8767 --directory taiqiu
 ```
 
-`room.httpUrl` in config selects HTTP; empty `cloudEnv` + empty `httpUrl` uses in-memory (same-device tests).
+1. Page A: http://127.0.0.1:8767/dev/preview.html — tap **好友对局**. Copy the 6-char room id.
+2. Page B: http://127.0.0.1:8767/dev/preview.html?roomId=XXXXXX — launch query joins as guest.
+3. Same table: A shoots, B sees the balls after poll (~450ms). Miss / foul → B's turn. Legal 1–8 → A continues. Legal 9 → match over.
+
+Page A can also tap **邀请好友** (`shareAppMessage` query `roomId=XXXXXX`).
+
+**Two WeChat simulators:** each simulator has its own `wx` storage, so the mock will **not** sync between them. Either:
+
+- open two **browser** pages as above, or
+- set `room.roomApiBase` (or `?api=`) to a running `dev/room-server.js` so both simulators talk to one HTTP room.
+
+In DevTools: compile `taiqiu/`, tap **好友对局** on simulator A, share / copy `roomId`, launch simulator B with query `roomId=XXXXXX` (or a share card). After join, only the current seat can aim.
+
+**Same-process tests** (CI): `node taiqiu/test/m1.test.js` covers LocalMockRoom create/join, miss switch, pocket continue, and out-of-turn reject.
 
 ## Local logic check
 

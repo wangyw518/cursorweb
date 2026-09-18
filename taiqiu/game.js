@@ -26,14 +26,14 @@
     return g.TaiqiuSession;
   }
 
-  function loadNet() {
+  function loadRoomApi() {
     if (typeof require === 'function') {
       try {
-        return require('./js/net');
+        return require('./js/roomApi');
       } catch (err) {}
     }
     var g = typeof globalThis !== 'undefined' ? globalThis : window;
-    return g.TaiqiuNet;
+    return g.TaiqiuRoomApi || g.TaiqiuNet;
   }
 
   function getViewport() {
@@ -65,10 +65,9 @@
   function boot() {
     var config = loadConfig();
     var sessionMod = loadSession();
-    var netMod = loadNet();
-    if (netMod && config.room) {
-      netMod.configure(config.room);
-      if (config.room.cloudEnv) netMod.initCloud(config.room.cloudEnv);
+    var roomApi = loadRoomApi();
+    if (roomApi && config.room) {
+      roomApi.configure(config.room);
     }
     var canvas = wx.createCanvas();
     var ctx = canvas.getContext('2d');

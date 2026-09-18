@@ -138,7 +138,11 @@
 
     ctx.fillStyle = colors.hudDim;
     ctx.font = '12px ' + FONT;
-    var turnPrefix = session.versus ? ('P' + ((session.turn || 0) + 1) + ' · ') : '';
+    var ownTurn = !session.versus || session.turn === session.mySeat ||
+      (session.hotseat && !(session.room && session.room.guestJoined));
+    var turnPrefix = session.versus
+      ? (ownTurn ? '你的回合 · ' : '对方击球 · ')
+      : '';
     var targetText = lowest ? (turnPrefix + '目标 ' + lowest.n + ' 号球') : (turnPrefix + '目标已完成');
     ctx.fillText(targetText, ui.target.x, ui.target.y);
 
@@ -191,7 +195,7 @@
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
       ctx.textAlign = 'right';
-      ctx.fillText('拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
+      ctx.fillText(session.versus && !ownTurn ? '对方击球 · 请等待' : '拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
     } else if (session.phase === 'Shot') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
@@ -324,7 +328,7 @@
     ctx.fillStyle = colors.hudDim;
     ctx.fillText('房间码 ' + session.roomPanel.roomId, card.x + card.w * 0.5, card.y + 66);
     ctx.font = '11px ' + FONT;
-    ctx.fillText(session.roomPanel.hint || '分享给好友，加入后同步台面', card.x + card.w * 0.5, card.y + 90);
+    wrapText(ctx, session.roomPanel.hint || '分享给好友，加入后同步台面', card.x + card.w * 0.5, card.y + 90, 228);
     if (ui.roomInvite) {
       drawButton(ctx, ui.roomInvite, colors, session.pressed === 'room');
     }

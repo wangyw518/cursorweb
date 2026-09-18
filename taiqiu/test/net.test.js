@@ -23,10 +23,12 @@ check('create / join / shot / state share one table snapshot', function () {
     balls: [{ id: 'cue', n: 0, nx: 0.5, ny: 0.8, pocketed: false }]
   });
   assert.ok(made.ok);
+  assert.strictEqual(made.role, 'host');
   assert.strictEqual(made.seat, 0);
   assert.strictEqual(made.roomId.length, 6);
   var joined = net.joinRoom(made.roomId);
   assert.strictEqual(joined.ok, true);
+  assert.strictEqual(joined.role, 'guest');
   assert.strictEqual(joined.seat, 1);
   assert.strictEqual(joined.state.guestJoined, true);
 

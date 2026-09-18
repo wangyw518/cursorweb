@@ -43,8 +43,11 @@ function emptyState(roomId) {
     hostSeat: 0,
     guestJoined: false,
     turn: 0,
+    turnRole: 'host',
     seq: 0,
+    shotSeq: 0,
     balls: null,
+    ballsSnapshot: null,
     phase: 'Aim',
     scores: [0, 0],
     winner: null,
@@ -88,7 +91,7 @@ async function create(payload) {
   if (payload.scores) state.scores = payload.scores;
   if (payload.targetN != null) state.targetN = payload.targetN;
   await write(roomId, state);
-  return { ok: true, action: 'create', roomId: roomId, seat: 0, token: tokenFor(roomId, 0), state: state };
+  return { ok: true, action: 'create', roomId: roomId, role: 'host', seat: 0, token: tokenFor(roomId, 0), state: state };
 }
 
 async function join(roomId) {
@@ -97,7 +100,7 @@ async function join(roomId) {
   state.guestJoined = true;
   state.seq += 1;
   await write(roomId, state);
-  return { ok: true, action: 'join', roomId: roomId, seat: 1, token: tokenFor(roomId, 1), state: state };
+  return { ok: true, action: 'join', roomId: roomId, role: 'guest', seat: 1, token: tokenFor(roomId, 1), state: state };
 }
 
 async function shot(payload) {
@@ -107,20 +110,41 @@ async function shot(payload) {
   if (!state) return { ok: false, action: 'shot', reason: 'missing', roomId: roomId };
   var fromSeat = payload.fromSeat;
   if (fromSeat !== 0 && fromSeat !== 1) {
+    if (payload.role === 'guest') fromSeat = 1;
+    else if (payload.role === 'host') fromSeat = 0;
+  }
+  if (fromSeat !== 0 && fromSeat !== 1) {
     return { ok: false, action: 'shot', reason: 'bad-seat', roomId: roomId };
   }
   if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
     return { ok: false, action: 'shot', reason: 'bad-token', roomId: roomId };
   }
-  var reason = payload.reason || 'miss';
+  var reason = payload.reason;
+  if (!reason && payload.events && payload.events.length) {
+    var ev = payload.events;
+    var i;
+    for (i = 0; i < ev.length; i++) {
+      var t = ev[i] && (ev[i].type || ev[i].kind);
+      if (t === 'nine') { reason = 'nine'; break; }
+      if (t === 'legal' || (t === 'pocket' && ev[i].legal)) { reason = 'legal'; break; }
+      if (t === 'scratch' || t === 'foul') { reason = t; break; }
+      if (t === 'miss') reason = 'miss';
+    }
+  }
+  if (!reason) reason = 'miss';
   if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
     return { ok: false, action: 'shot', reason: 'not-your-turn', roomId: roomId, state: state };
   }
-  if (payload.balls) state.balls = payload.balls;
+  var snap = payload.ballsSnapshot || payload.balls;
+  if (snap) {
+    state.balls = snap;
+    state.ballsSnapshot = snap;
+  }
   if (payload.scores) state.scores = payload.scores;
   if (payload.phase) state.phase = payload.phase;
   if (payload.targetN != null) state.targetN = payload.targetN;
   state.turn = nextTurn(fromSeat, reason);
+  state.turnRole = state.turn === 1 ? 'guest' : 'host';
   state.matchOver = reason === 'nine';
   state.winner = reason === 'nine' ? fromSeat : (reason === 'new-game' ? null : state.winner);
   if (reason === 'new-game') {
@@ -129,12 +153,18 @@ async function shot(payload) {
     state.scores = payload.scores || [0, 0];
     state.phase = 'Aim';
     state.targetN = payload.targetN != null ? payload.targetN : 1;
+    state.shotSeq = 0;
+    state.turn = 0;
+    state.turnRole = 'host';
   }
   if (reason === 'nine') state.phase = payload.phase || 'Settle';
   state.lastReason = reason;
   state.lastSeat = fromSeat;
   state.guestJoined = !!(state.guestJoined || payload.guestJoined);
   state.seq += 1;
+  if (reason !== 'new-game') {
+    state.shotSeq = payload.shotSeq != null ? payload.shotSeq : state.seq;
+  }
   await write(roomId, state);
   return { ok: true, action: 'shot', roomId: roomId, state: state };
 }
