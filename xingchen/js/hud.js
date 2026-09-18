@@ -31,7 +31,8 @@
       stamina: { x: viewport.width - pad, y: top + 16 },
       best: { x: viewport.width - pad, y: top + 34 },
       meter: { x: cx, y: top + 56 },
-      hint: { x: cx, y: skillY + skillH + 14 },
+      hint: { x: cx, y: skillY - 8 },
+      legend: { x: cx, y: skillY + skillH + 14 },
       toast: { x: cx, y: playTop + 22 },
       power: { x: pad, y: skillY - 6, w: viewport.width - pad * 2, h: 3 },
       skillFire: { x: skillsLeft, y: skillY, w: skillW, h: skillH, label: '炎核', skill: 'fire' },
@@ -139,8 +140,8 @@
       { hex: colors.cellNebula || '#A78BFA', label: '云' },
       { hex: colors.cellRelic || '#F5C542', label: '遗' }
     ];
-    var cx = ui.hint.x;
-    var y = ui.hint.y;
+    var cx = (ui.legend || ui.hint).x;
+    var y = (ui.legend || ui.hint).y;
     ctx.save();
     ctx.font = '11px ' + FONT;
     ctx.textAlign = 'center';
