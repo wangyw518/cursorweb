@@ -118,7 +118,7 @@
     if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && (!session || (!session.versus && session.mode !== 'ai')) && inRect(ui.ai, x, y)) return 'ai';
-    if (ui.room && inRect(ui.room, x, y)) return 'room';
+    if (ui.room && showsRoomChrome(session) && inRect(ui.room, x, y)) return 'room';
     if (ui.rerack && inRect(ui.rerack, x, y)) return 'rerack';
     return null;
   }
@@ -153,6 +153,10 @@
 
   function isPractice(session) {
     return !!(session && session.mode === 'practice' && !session.versus);
+  }
+
+  function showsRoomChrome(session) {
+    return !isAiMode(session) && !isPractice(session);
   }
 
   function turnLabel(session) {
@@ -308,7 +312,7 @@
         label: ui.ai.label
       }, colors, session.pressed === 'ai');
     }
-    if (ui.room) {
+    if (ui.room && showsRoomChrome(session)) {
       drawButton(ctx, {
         x: ui.room.x,
         y: ui.room.y,
@@ -440,8 +444,8 @@
       var guestStar = (s.stars && (s.stars.guest != null ? s.stars.guest : s.stars[1])) || (s.scores && s.scores[1]) || 0;
       ctx.font = 'bold 18px ' + FONT;
       ctx.fillText(
-        nameOf({ names: s.names }, 0) + ' ' + hostStar +
-          '  ·  ' + nameOf({ names: s.names }, 1) + ' ' + guestStar,
+        nameOf(session, 0) + ' ' + hostStar +
+          '  ·  ' + nameOf(session, 1) + ' ' + guestStar,
         ui.settleScore.x,
         ui.settleScore.y + 8
       );
@@ -455,21 +459,27 @@
       ctx.fillText(String(shown) + ' 星币', ui.settleScore.x, ui.settleScore.y + 16);
     }
 
-    ctx.font = '13px ' + FONT;
-    ctx.fillStyle = colors.hud;
-    var gapText = s.isNew ? '新纪录' : ('距最佳 还差 ' + s.gap + ' 星币');
-    ctx.fillText(gapText, ui.settleGap.x, ui.settleGap.y);
+    if (!isPractice(session) && !s.practice) {
+      ctx.font = '13px ' + FONT;
+      ctx.fillStyle = colors.hud;
+      var gapText = s.isNew ? '新纪录' : ('距最佳 还差 ' + s.gap + ' 星币');
+      ctx.fillText(gapText, ui.settleGap.x, ui.settleGap.y);
 
-    ctx.font = '11px ' + FONT;
-    ctx.fillStyle = colors.hudDim;
-    var propLine = s.starApplied
-      ? ('得分加成 ' + (s.pocketBonus || 0) + ' · 落点加成 ' + (s.zoneLabel || '新星') + ' +' + (s.landingBonus || 0))
-      : '未获得落点加成';
-    ctx.fillText(propLine, ui.settleProp.x, ui.settleProp.y);
+      ctx.font = '11px ' + FONT;
+      ctx.fillStyle = colors.hudDim;
+      var propLine = s.starApplied
+        ? ('得分加成 ' + (s.pocketBonus || 0) + ' · 落点加成 ' + (s.zoneLabel || '新星') + ' +' + (s.landingBonus || 0))
+        : '未获得落点加成';
+      ctx.fillText(propLine, ui.settleProp.x, ui.settleProp.y);
 
-    ctx.font = '10px ' + FONT;
-    ctx.fillStyle = colors.disclaimer;
-    ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 16);
+      ctx.font = '10px ' + FONT;
+      ctx.fillStyle = colors.disclaimer;
+      ctx.fillText(s.disclaimer, ui.settleProp.x, ui.settleProp.y + 16);
+    } else {
+      ctx.font = '10px ' + FONT;
+      ctx.fillStyle = colors.disclaimer;
+      ctx.fillText(s.disclaimer, ui.settleGap.x, ui.settleGap.y);
+    }
 
     drawButton(ctx, ui.replay, colors, session.pressed === 'replay');
     if (!isPractice(session) && !s.practice) {
@@ -587,6 +597,7 @@
     remainSec: remainSec,
     isAiMode: isAiMode,
     isPractice: isPractice,
+    showsRoomChrome: showsRoomChrome,
     drawNameChip: drawNameChip
   };
 });

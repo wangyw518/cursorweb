@@ -1014,7 +1014,13 @@
         isNew: gap.isNew,
         best: session.best,
         scores: session.scores.slice(),
-        names: session.names ? session.names.slice() : [seatFallback(0), seatFallback(1)]
+        names: session.names
+          ? session.names.slice()
+          : [
+            session.displayName || (isLocalAi(session) ? '玩家' : seatFallback(0)),
+            isLocalAi(session) ? aiLabel(session) : seatFallback(1)
+          ],
+        practice: session.mode === 'practice' && !session.versus
       };
       session.phase = fsm.PHASE.Settle;
       session.toast = toastFor(session, award);
@@ -1226,6 +1232,10 @@
   }
 
   function createRoom(session) {
+    if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
+      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      return { kind: 'room-skip', mode: session.mode || 'ai' };
+    }
     if (session.room && session.room.roomId) {
       session.roomPanel = {
         roomId: session.room.roomId,
@@ -1326,6 +1336,10 @@
   }
 
   function handleRoomTap(session) {
+    if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
+      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      return { kind: 'room-skip', mode: session.mode || 'ai' };
+    }
     if (session.room && session.room.roomId) return inviteRoom(session);
     return createRoom(session);
   }

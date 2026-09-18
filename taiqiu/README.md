@@ -44,8 +44,8 @@ Rewards are virtual **星币** only.
 ## Controls
 
 - Splash: **人机对战** (default highlight) and **练习模式** sit side by side. **好友对局** stays below. Neither solo mode starts a room server.
-- **人机 · 简单** (`mode=ai`, local): same 9-ball / 20s clock / continue / miss-foul switch / legal-9-wins rules as a friend room. HUD is `昵称 vs 简单AI` and `轮到你 / AI出杆中`. The simple AI aims at the current target center with light noise, looks up power by distance, fouls rarely, thinks 0.6–1.2s, then fires through `Cue.strike` (never writes `balls[]` itself). Settle is 你赢了/你输了 plus both 星币; **再来一局 / 返回**.
-- **练习** (`mode=practice`): one player keeps the table. A miss does not switch or rerack. No shot clock and no 你赢了/你输了; HUD only shows this game’s 星币. **再来一局** racks and zeros the game total.
+- **人机 · 简单** (`mode=ai`, local): same 9-ball / 20s clock / continue / miss-foul switch / legal-9-wins rules as a friend room. HUD is `昵称 vs 简单AI` and `轮到你 / AI出杆中` — never a fake 好友. The simple AI aims at the current target center with light noise, looks up power by distance, fouls rarely, thinks 0.6–1.2s, then fires through `Cue.strike` (never writes `balls[]` itself). Settle is 你赢了/你输了 plus both 星币; **再来一局 / 返回**. Footer **好友对局** is hidden; no room server.
+- **练习** (`mode=practice`): one player keeps the table. A miss does not switch or rerack. No shot clock and no opponent chip. Top bar is `练习` plus this session’s 星币 only. End card is session 星币 + **再来一局** — no 你赢了/你输了 headline, no 返回. Footer **好友对局** is hidden; no room server.
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull. The dashed preview is long enough to reach a far object ball (`previewLength` 720 / 3 bounces, or 1.25× table diagonal). Power uses on-screen drag length (bezel dead-zone), so a cue on any rail can still hit **满** / 100% without pulling the stick off-screen.
 - Release to shoot. A short pull cancels.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
