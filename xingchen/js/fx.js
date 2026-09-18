@@ -154,9 +154,12 @@
         : cell.rarity === 'silver' ? 'cellSilver'
           : cell.rarity === 'gold' ? 'cellGold' : 'cellEpic'] || '#C9D6EA';
       var flashing = flashCell && flashCell === cell;
-      var pulse = 0.16 + Math.sin(t * 2.1 + i * 0.35) * 0.04;
+      var pulse = 0.28 + Math.sin(t * 2.1 + i * 0.35) * 0.05;
       roundRect(ctx, cell.x, cell.y, cell.w, cell.h, 7);
-      ctx.fillStyle = rgba(hex, flashing ? 0.42 : pulse);
+      var cg = ctx.createLinearGradient(cell.x, cell.y, cell.x, cell.y + cell.h);
+      cg.addColorStop(0, rgba(hex, flashing ? 0.55 : pulse + 0.08));
+      cg.addColorStop(1, rgba(hex, flashing ? 0.22 : 0.08));
+      ctx.fillStyle = cg;
       ctx.fill();
       ctx.strokeStyle = flashing ? '#FFFFFF' : hex;
       ctx.globalAlpha = flashing ? 1 : 0.78;
@@ -283,27 +286,42 @@
     for (i = 0; i < obstacles.length; i++) {
       var o = obstacles[i];
       if (o.broken) continue;
-      ctx.shadowColor = rgba(colors.obstacleRim || '#7DD3FC', 0.55);
-      ctx.shadowBlur = 14;
-      var g = ctx.createRadialGradient(o.x - o.r * 0.28, o.y - o.r * 0.32, 1, o.x, o.y, o.r);
-      g.addColorStop(0, '#31415F');
-      g.addColorStop(0.45, colors.obstacle || '#1B2438');
-      g.addColorStop(1, '#070B18');
-      ctx.fillStyle = g;
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.shadowColor = rgba(colors.obstacleRim || '#7DD3FC', 0.7);
+      ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      var k;
+      for (k = 0; k < 6; k++) {
+        var a = Math.PI / 6 + k * Math.PI / 3;
+        var px = Math.cos(a) * o.r;
+        var py = Math.sin(a) * o.r;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      var g = ctx.createRadialGradient(-o.r * 0.25, -o.r * 0.3, 1, 0, 0, o.r);
+      g.addColorStop(0, '#5B7C99');
+      g.addColorStop(0.45, '#243656');
+      g.addColorStop(1, '#0B1224');
+      ctx.fillStyle = g;
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.strokeStyle = colors.obstacleRim || '#7DD3FC';
-      ctx.globalAlpha = 0.88;
+      ctx.globalAlpha = 0.92;
       ctx.lineWidth = 2;
       ctx.stroke();
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = rgba(colors.obstacleRim || '#7DD3FC', 0.35);
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = colors.cellEpic || '#E879F9';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(o.x - o.r * 0.28, o.y - o.r * 0.3, o.r * 0.22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.moveTo(0, -o.r * 0.42);
+      ctx.lineTo(o.r * 0.28, 0);
+      ctx.lineTo(0, o.r * 0.42);
+      ctx.lineTo(-o.r * 0.28, 0);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.restore();
   }

@@ -261,12 +261,12 @@
       ctx.fillText('星晶 ' + (state.crystals || 0), ui.stats.x + ui.stats.w, ui.stats.y);
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = colors.hudDim || '#8AA0C8';
       ctx.font = '12px ' + FONT;
-      var mid = (state.score || 0) + ' / ' + (state.target || 0) +
-        '    弹 ' + (state.shotsLeft == null ? 0 : state.shotsLeft) +
-        '    星力 ' + (state.stamina == null ? 0 : state.stamina);
-      ctx.fillText(mid, ui.hint.x, ui.stats.y);
+      ctx.fillStyle = colors.scorePop || '#FDE68A';
+      ctx.fillText((state.score || 0) + ' / ' + (state.target || 0), ui.hint.x - 52, ui.stats.y);
+      ctx.fillStyle = colors.hudDim || '#8AA0C8';
+      ctx.fillText('弹 ' + (state.shotsLeft == null ? 0 : state.shotsLeft) +
+        '   星力 ' + (state.stamina == null ? 0 : state.stamina), ui.hint.x + 48, ui.stats.y);
 
       ctx.font = '12px ' + FONT;
       ctx.fillStyle = colors.hudDim || '#8AA0C8';
