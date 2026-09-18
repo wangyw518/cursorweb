@@ -29,6 +29,12 @@
   ],
   "disclaimer": "虚拟道具，仅限游戏内使用，不可兑换现金",
   "storageKey": "taiqiu.best",
+  "room": {
+    "pollMs": 450,
+    "cloudEnv": "",
+    "cloudFn": "taiqiuRoom",
+    "httpUrl": ""
+  },
   "colors": {
     "bg": "#14110C",
     "feltDark": "#0A4A32",

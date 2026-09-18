@@ -48,7 +48,7 @@ Rewards are virtual **星币** only.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
 - Tap **弱AI试杆** for an optional noisy practice shot at the object ball.
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap **好友对局** for a client stub: a `roomId` share placeholder. Full turn sync waits for the backend room API.
+- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). After each shot the client posts `shot` and both sides poll `state`. Legal 1–8 keeps the shooter; miss / foul switches; a miss never reracks.
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -78,10 +78,42 @@ taiqiu/
     sfx.js
     ai.js
     net.js
+    roomStore.js
+  cloudfunctions/taiqiuRoom/
   dev/preview.html
+  dev/room-server.js
   test/
   README.md
 ```
+
+## WeChat friend 2P (create / join / shot / state)
+
+Shared API (memory, HTTP, or `wx.cloud.callFunction`):
+
+| action | HTTP | cloud `event.action` |
+| --- | --- | --- |
+| create | `POST /api/rooms` | `create` |
+| join | `POST /api/rooms/:id/join` | `join` + `roomId` |
+| shot | `POST /api/rooms/:id/shot` | `shot` |
+| state | `GET /api/rooms/:id` | `state` + `roomId` |
+
+Ball positions are felt-normalized (`nx`, `ny`) so two phones can share a table. The server applies turn rules: **legal → continue**, **miss/foul → switch**, **nine → win**, **new-game → rack**. Waiting seat shots are rejected.
+
+**WeChat Cloud (phones):**
+
+1. Enable 云开发 for AppID `wxc8683bd9c1599d7d`.
+2. Upload `cloudfunctions/taiqiuRoom` and create collection `taiqiu_rooms`.
+3. Set `js/config.json` → `room.cloudEnv` to your env id (keep `room.cloudFn` = `taiqiuRoom`).
+4. Host taps **好友对局** → **邀请好友**. Friend opens the share card and joins. Clients poll every `room.pollMs` (450ms).
+
+**Local HTTP (browser / tests):**
+
+```bash
+node taiqiu/dev/room-server.js 8788
+# preview: http://127.0.0.1:8767/dev/preview.html?api=http://127.0.0.1:8788
+```
+
+`room.httpUrl` in config selects HTTP; empty `cloudEnv` + empty `httpUrl` uses in-memory (same-device tests).
 
 ## Local logic check
 

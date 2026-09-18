@@ -91,31 +91,31 @@
     return session.preview;
   }
 
-  function roomPatch(session) {
+  function shotPayload(session, reason, fromSeat) {
+    var felt = session.table && session.table.felt;
     return {
-      balls: net.snapshotBalls(session.balls),
-      turn: session.turn,
+      fromSeat: fromSeat != null ? fromSeat : session.mySeat,
+      token: session.room ? session.room.token : null,
+      reason: reason || 'miss',
+      balls: net.snapshotBalls(session.balls, felt),
       scores: session.scores.slice(),
       phase: session.phase,
       targetN: session.target ? session.target.n : 0,
-      winner: session.winner,
       matchOver: !!session.matchOver,
+      winner: session.winner,
       guestJoined: !!(session.room && session.room.guestJoined)
     };
   }
 
-  function pushRoom(session) {
-    if (!session.room || !session.room.roomId) return null;
-    return net.pushState(session.room.roomId, roomPatch(session));
-  }
-
   function applyRoomState(session, state) {
     if (!state) return session;
-    if (state.balls) net.applyBalls(session.balls, state.balls);
+    var felt = session.table && session.table.felt;
+    if (state.balls) net.applyBalls(session.balls, state.balls, felt);
     if (state.scores) session.scores = state.scores.slice();
     if (state.turn != null) session.turn = state.turn;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
+    if (session.room && state.seq != null) session.room.lastSeq = state.seq;
     if (state.guestJoined && session.room) {
       session.room.guestJoined = true;
       session.hotseat = false;
@@ -131,10 +131,9 @@
     return session;
   }
 
-  function pullRoom(session) {
-    if (!session.room || !session.room.roomId) return null;
-    var state = net.pullState(session.room.roomId);
-    if (!state) return null;
+  function ingestState(session, res) {
+    var state = res && res.state ? res.state : res;
+    if (!state || !state.roomId) return null;
     if (session.phase === fsm.PHASE.Shot ||
         session.phase === fsm.PHASE.ResolvePocket ||
         session.phase === fsm.PHASE.WaitCueStop ||
@@ -147,6 +146,20 @@
     }
     applyRoomState(session, state);
     return state;
+  }
+
+  function pushRoom(session, reason, fromSeat) {
+    if (!session.room || !session.room.roomId) return null;
+    return net.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
+      if (res && res.ok && res.state) ingestState(session, res);
+    });
+  }
+
+  function pullRoom(session) {
+    if (!session.room || !session.room.roomId) return null;
+    return net.state(session.room.roomId, function (res) {
+      ingestState(session, res);
+    });
   }
 
   /**
@@ -186,12 +199,13 @@
     session.matchOver = false;
     session.winner = null;
     rack(session);
-    pushRoom(session);
+    pushRoom(session, 'new-game', session.mySeat || 0);
     return { kind: 'new-game' };
   }
 
   function create(viewport, config, opts) {
     opts = opts || {};
+    if (config && config.room) net.configure(config.room);
     var saved = storage.load();
     var session = {
       viewport: viewport,
@@ -323,6 +337,7 @@
   }
 
   function concludeShot(session, applyStar) {
+    var shooter = session.turn;
     var cueBall = findCue(session);
     var landed = null;
     if (applyStar && cueBall && !cueBall.pocketed) {
@@ -394,7 +409,7 @@
       };
       session.phase = fsm.PHASE.Settle;
       session.toast = toastFor(session, award);
-      pushRoom(session);
+      pushRoom(session, 'nine', shooter);
       return session.settle;
     }
 
@@ -402,7 +417,7 @@
     session.toast = toastFor(session, award);
     if (shouldSwitchTurn(session)) switchTurn(session);
     continueShot(session);
-    pushRoom(session);
+    pushRoom(session, award.reason || (session.resolution && session.resolution.reason) || 'miss', shooter);
     return award;
   }
 
@@ -471,7 +486,8 @@
     }
     if (session.room && session.phase === fsm.PHASE.Aim) {
       session.syncAcc += dt;
-      if (session.syncAcc > 0.45) {
+      var pollSec = ((net.configOf && net.configOf().pollMs) || 450) / 1000;
+      if (session.syncAcc > pollSec) {
         session.syncAcc = 0;
         pullRoom(session);
       }
@@ -509,54 +525,95 @@
     }
   }
 
-  function createRoom(session) {
-    if (session.room && session.room.roomId) {
-      session.toast = { text: '房间 ' + session.room.roomId, life: 1.4 };
-      return { kind: 'room', roomId: session.room.roomId, existing: true };
-    }
-    var made = net.createRoom();
+  function attachHostRoom(session, made) {
     session.versus = true;
     session.hotseat = true;
     session.mySeat = 0;
     session.turn = 0;
     session.scores = [0, 0];
-    session.room = { roomId: made.roomId, guestJoined: false };
+    session.room = {
+      roomId: made.roomId,
+      guestJoined: false,
+      token: made.token,
+      lastSeq: made.state ? made.state.seq : 0
+    };
     session.roomPanel = {
       roomId: made.roomId,
-      hint: '分享房间码给好友（占位，完整同步待房间 API）'
+      hint: '分享给好友，加入后同步台面'
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
-    session.toast = { text: '房间 ' + made.roomId + ' · 分享占位', life: 2.0 };
-    pushRoom(session);
-    return { kind: 'room', roomId: made.roomId, seat: 0, stub: true };
+    session.toast = { text: '房间 ' + made.roomId, life: 1.8 };
+    return { kind: 'room', roomId: made.roomId, seat: 0, token: made.token };
   }
 
-  function joinRoom(session, roomId) {
-    var joined = net.joinRoom(roomId);
-    if (!joined.ok) {
-      session.toast = { text: '房间无效', life: 1.4 };
-      return { kind: 'join-fail', roomId: roomId };
+  function createRoom(session) {
+    if (session.room && session.room.roomId) {
+      session.roomPanel = {
+        roomId: session.room.roomId,
+        hint: session.room.guestJoined ? '好友已加入 · 轮流击球' : '分享给好友，加入后同步台面'
+      };
+      session.toast = { text: '房间 ' + session.room.roomId, life: 1.4 };
+      return { kind: 'room', roomId: session.room.roomId, existing: true };
     }
+    var felt = session.table && session.table.felt;
+    var made = net.createRoom({
+      balls: net.snapshotBalls(session.balls, felt),
+      scores: [0, 0],
+      targetN: session.target ? session.target.n : 1
+    }, function (res) {
+      if (res && res.ok && res.roomId && !(session.room && session.room.roomId)) {
+        attachHostRoom(session, res);
+      }
+    });
+    if (made && made.ok && made.roomId) return attachHostRoom(session, made);
+    if (made && made.pending) {
+      session.toast = { text: '正在开房间…', life: 1.4 };
+      return { kind: 'room-pending' };
+    }
+    session.toast = { text: '开房间失败', life: 1.4 };
+    return { kind: 'room-fail' };
+  }
+
+  function attachGuestRoom(session, joined, roomId) {
     session.versus = true;
     session.hotseat = false;
     session.mySeat = joined.seat;
-    session.room = { roomId: joined.roomId, guestJoined: true };
+    session.room = {
+      roomId: joined.roomId,
+      guestJoined: true,
+      token: joined.token,
+      lastSeq: joined.state ? joined.state.seq : 0
+    };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
-    applyRoomState(session, joined.state);
+    if (joined.state) applyRoomState(session, joined.state);
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
-    pushRoom(session);
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
+  }
+
+  function joinRoom(session, roomId) {
+    var joined = net.joinRoom(roomId, function (res) {
+      if (res && res.ok && !(session.room && session.room.roomId === roomId && session.mySeat === 1)) {
+        attachGuestRoom(session, res, roomId);
+      }
+    });
+    if (joined && joined.ok) return attachGuestRoom(session, joined, roomId);
+    if (joined && joined.pending) {
+      session.toast = { text: '正在加入…', life: 1.4 };
+      return { kind: 'join-pending', roomId: roomId };
+    }
+    session.toast = { text: '房间无效', life: 1.4 };
+    return { kind: 'join-fail', roomId: roomId };
   }
 
   function inviteRoom(session) {
     if (!session.room || !session.room.roomId) return createRoom(session);
     session.roomPanel = {
       roomId: session.room.roomId,
-      hint: '分享房间码给好友（占位，完整同步待房间 API）'
+      hint: session.room.guestJoined ? '好友已加入 · 轮流击球' : '分享给好友，加入后同步台面'
     };
     session.lastShare = share.shareRoom(session.room.roomId);
-    session.toast = { text: '房间 ' + session.room.roomId + ' · 分享占位', life: 1.8 };
-    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId, stub: true };
+    session.toast = { text: '邀请房间 ' + session.room.roomId, life: 1.6 };
+    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId };
   }
 
   function handleRoomTap(session) {

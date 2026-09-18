@@ -64,8 +64,9 @@
       splashCard: { x: cx - 132, y: cy - 132, w: 264, h: 268 },
       start: { x: cx - 72, y: cy + 20, w: 144, h: 40, label: '开始练习' },
       roomSplash: { x: cx - 72, y: cy + 68, w: 144, h: 36, label: '好友对局' },
-      roomPanel: { x: cx - 132, y: cy - 90, w: 264, h: 168 },
-      roomClose: { x: cx - 72, y: cy + 28, w: 144, h: 34, label: '关闭' },
+      roomPanel: { x: cx - 132, y: cy - 110, w: 264, h: 220 },
+      roomInvite: { x: cx - 72, y: cy + 8, w: 144, h: 34, label: '邀请好友' },
+      roomClose: { x: cx - 72, y: cy + 50, w: 144, h: 34, label: '关闭' },
       playRect: {
         x: 10,
         y: playTop,
@@ -78,6 +79,7 @@
   function hitTest(ui, x, y, phase, session) {
     if (session && session.roomPanel) {
       if (ui.roomClose && inRect(ui.roomClose, x, y)) return 'room-close';
+      if (ui.roomInvite && inRect(ui.roomInvite, x, y)) return 'room';
       if (ui.roomPanel && inRect(ui.roomPanel, x, y)) return 'room';
     }
     if (phase === 'Splash') {
@@ -322,7 +324,10 @@
     ctx.fillStyle = colors.hudDim;
     ctx.fillText('房间码 ' + session.roomPanel.roomId, card.x + card.w * 0.5, card.y + 66);
     ctx.font = '11px ' + FONT;
-    ctx.fillText(session.roomPanel.hint || '分享给好友（占位）', card.x + card.w * 0.5, card.y + 90);
+    ctx.fillText(session.roomPanel.hint || '分享给好友，加入后同步台面', card.x + card.w * 0.5, card.y + 90);
+    if (ui.roomInvite) {
+      drawButton(ctx, ui.roomInvite, colors, session.pressed === 'room');
+    }
     drawButton(ctx, ui.roomClose, colors, session.pressed === 'room-close');
     ctx.restore();
   }

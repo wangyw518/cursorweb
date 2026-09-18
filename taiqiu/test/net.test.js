@@ -17,9 +17,11 @@ function check(name, fn) {
   }
 }
 
-check('createRoom / joinRoom / pushState / pullState share one table snapshot', function () {
+check('create / join / shot / state share one table snapshot', function () {
   net.resetMemory();
-  var made = net.createRoom();
+  var made = net.createRoom({
+    balls: [{ id: 'cue', n: 0, nx: 0.5, ny: 0.8, pocketed: false }]
+  });
   assert.ok(made.ok);
   assert.strictEqual(made.seat, 0);
   assert.strictEqual(made.roomId.length, 6);
@@ -28,25 +30,20 @@ check('createRoom / joinRoom / pushState / pullState share one table snapshot', 
   assert.strictEqual(joined.seat, 1);
   assert.strictEqual(joined.state.guestJoined, true);
 
-  var balls = [
-    { id: 'cue', n: 0, x: 10, y: 20, vx: 0, vy: 0, pocketed: false },
-    { id: 'b1', n: 1, x: 40, y: 50, vx: 1, vy: 0, pocketed: false }
-  ];
-  net.pushState(made.roomId, {
-    balls: net.snapshotBalls(balls),
-    turn: 1,
-    scores: [8, 0]
+  var shot = net.shot(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    reason: 'miss',
+    balls: net.snapshotBalls([
+      { id: 'cue', n: 0, x: 10, y: 20, pocketed: false },
+      { id: 'b1', n: 1, x: 40, y: 50, pocketed: false }
+    ])
   });
-  var pulled = net.pullState(made.roomId);
-  assert.strictEqual(pulled.turn, 1);
-  assert.strictEqual(pulled.scores[0], 8);
-  var guestBalls = [
-    { id: 'cue', n: 0, x: 0, y: 0, vx: 0, vy: 0, pocketed: false },
-    { id: 'b1', n: 1, x: 0, y: 0, vx: 0, vy: 0, pocketed: false }
-  ];
-  net.applyBalls(guestBalls, pulled.balls);
-  assert.strictEqual(guestBalls[0].x, 10);
-  assert.strictEqual(guestBalls[1].y, 50);
+  assert.strictEqual(shot.ok, true);
+  assert.strictEqual(shot.state.turn, 1);
+  var pulled = net.state(made.roomId);
+  assert.strictEqual(pulled.state.turn, 1);
+  assert.strictEqual(pulled.state.balls[1].y, 50);
 });
 
 check('missing room join fails closed', function () {

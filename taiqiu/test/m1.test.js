@@ -6,5 +6,6 @@
 require('./score.test.js');
 require('./tiles.test.js');
 require('./net.test.js');
+require('./room-api.test.js');
 require('./session.test.js');
 require('./compliance.test.js');

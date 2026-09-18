@@ -335,18 +335,21 @@ check('share stub is score-only and has no cash copy', function () {
   });
 });
 
-check('好友对局 stub shows a roomId share placeholder', function () {
+check('好友对局 creates a room and shareAppMessage carries roomId', function () {
   var s = fresh();
   assert.strictEqual(s.ui.room.label, '好友对局');
   assert.strictEqual(s.ui.roomSplash.label, '好友对局');
   var made = sessionMod.createRoom(s);
   assert.ok(made.roomId);
+  assert.ok(!made.stub);
   assert.ok(s.roomPanel);
   assert.strictEqual(s.roomPanel.roomId, made.roomId);
-  assert.ok(s.roomPanel.hint.indexOf('占位') !== -1);
+  assert.ok(s.roomPanel.hint.indexOf('占位') === -1);
+  assert.ok(s.roomPanel.hint.indexOf('同步') !== -1);
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.ok(invite.payload.query.indexOf('roomId=') === 0);
+  assert.ok(!invite.stub);
 });
 
 check('WeChat 2P room create / join / shareAppMessage roomId / sync after shot', function () {

@@ -26,6 +26,16 @@
     return g.TaiqiuSession;
   }
 
+  function loadNet() {
+    if (typeof require === 'function') {
+      try {
+        return require('./js/net');
+      } catch (err) {}
+    }
+    var g = typeof globalThis !== 'undefined' ? globalThis : window;
+    return g.TaiqiuNet;
+  }
+
   function getViewport() {
     var info = wx.getSystemInfoSync();
     var safe = info.safeArea || {};
@@ -55,6 +65,11 @@
   function boot() {
     var config = loadConfig();
     var sessionMod = loadSession();
+    var netMod = loadNet();
+    if (netMod && config.room) {
+      netMod.configure(config.room);
+      if (config.room.cloudEnv) netMod.initCloud(config.room.cloudEnv);
+    }
     var canvas = wx.createCanvas();
     var ctx = canvas.getContext('2d');
     var viewport = getViewport();

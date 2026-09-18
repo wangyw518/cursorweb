@@ -21,6 +21,10 @@
       {
         "type": "file",
         "value": "index.html"
+      },
+      {
+        "type": "folder",
+        "value": "cloudfunctions"
       }
     ],
     "include": []
@@ -40,6 +44,7 @@
       "outputPath": ""
     }
   },
+  "cloudfunctionRoot": "cloudfunctions/",
   "compileType": "game",
   "libVersion": "3.8.0",
   "appid": "wxc8683bd9c1599d7d",

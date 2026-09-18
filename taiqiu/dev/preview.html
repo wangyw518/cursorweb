@@ -120,6 +120,7 @@
         '../js/share.js',
         '../js/sfx.js',
         '../js/ai.js',
+        '../js/roomStore.js',
         '../js/net.js',
         '../js/hud.js',
         '../js/render.js',
@@ -138,6 +139,13 @@
       fetch('../js/config.json')
         .then(function (res) { return res.json(); })
         .then(function (cfg) {
+          var api = '';
+          try { api = new URLSearchParams(location.search).get('api') || ''; } catch (err) {}
+          if (api) {
+            cfg.room = cfg.room || {};
+            cfg.room.httpUrl = api;
+            cfg.room.transport = 'http';
+          }
           window.TaiqiuConfig = cfg;
           var chain = Promise.resolve();
           files.forEach(function (src) {
