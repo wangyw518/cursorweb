@@ -80,6 +80,41 @@ check('9-ball rack has numbers 1-9 and lowest remaining is 1', function () {
   assert.strictEqual(balls.lowestNumbered(list).n, 2);
 });
 
+check('pocket centers sit on the cushion line / outside corners, not inward on cloth', function () {
+  var t = board();
+  var felt = t.felt;
+  var corners = t.pockets.filter(function (p) { return p.kind === 'corner'; });
+  corners.forEach(function (p) {
+    var insideX = p.x > felt.x + 2 && p.x < felt.x + felt.w - 2;
+    var insideY = p.y > felt.y + 2 && p.y < felt.y + felt.h - 2;
+    assert.ok(!(insideX && insideY), p.id + ' should not sit inward on the cloth');
+  });
+  var sides = t.pockets.filter(function (p) { return p.kind === 'side'; });
+  sides.forEach(function (p) {
+    assert.ok(p.x < felt.x || p.x > felt.x + felt.w, p.id + ' side pocket should sit outside the felt');
+  });
+});
+
+check('full cue power can reach the 9-ball rack from the kitchen', function () {
+  var t = board();
+  var list = balls.create(t, config);
+  var cueBall = balls.cueBall(list);
+  var one = list.filter(function (b) { return b.n === 1; })[0];
+  cueBall.vx = 0;
+  cueBall.vy = -config.powerSpeed;
+  var world = { balls: list, walls: t.walls, pockets: t.pockets };
+  var reached = false;
+  var i;
+  for (i = 0; i < 180; i++) {
+    physics.step(world, config.fixedDt, config);
+    if (Math.hypot(cueBall.x - one.x, cueBall.y - one.y) <= cueBall.r + one.r + 1) {
+      reached = true;
+      break;
+    }
+  }
+  assert.ok(reached, 'break power should reach the 1-ball');
+});
+
 check('aim preview returns a dashed polyline and optional ghost', function () {
   var t = board();
   var list = balls.create(t, config);

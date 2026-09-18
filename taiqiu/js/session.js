@@ -12,6 +12,8 @@
     typeof require === 'function' ? require('./fx') : root.TaiqiuFx,
     typeof require === 'function' ? require('./storage') : root.TaiqiuStorage,
     typeof require === 'function' ? require('./share') : root.TaiqiuShare,
+    typeof require === 'function' ? require('./sfx') : root.TaiqiuSfx,
+    typeof require === 'function' ? require('./ai') : root.TaiqiuAi,
     typeof require === 'function' ? require('./render') : root.TaiqiuRender
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -29,6 +31,8 @@
   fx,
   storage,
   share,
+  sfx,
+  ai,
   render
 ) {
   'use strict';
@@ -163,8 +167,12 @@
     var i;
     for (i = 0; i < events.contacts.length; i++) {
       var c = events.contacts[i];
-      if (c.kind === 'cushion' && c.ball && c.ball.id === 'cue') {
-        session.shot.cushions += 1;
+      if (c.kind === 'cushion') {
+        if (c.ball && c.ball.id === 'cue') session.shot.cushions += 1;
+        if (sfx && sfx.cushion) sfx.cushion();
+      }
+      if (c.kind === 'ball') {
+        if (sfx && sfx.ball) sfx.ball();
       }
       if (c.kind === 'ball' && !session.shot.firstContactId) {
         var other = null;
@@ -175,6 +183,7 @@
     }
     for (i = 0; i < events.pockets.length; i++) {
       session.shot.pocketed.push(events.pockets[i].ball.id);
+      if (sfx && sfx.pocket) sfx.pocket();
     }
     session.shot.scratch = !!(cueBall && cueBall.pocketed);
     session.shot.pocketedLowest = session.shot.targetId
@@ -316,6 +325,9 @@
       toggleAim3d(session);
       return { kind: 'aim3d', aim3d: session.aim3d, viewMode: session.viewMode };
     }
+    if (hit === 'ai' && session.phase === fsm.PHASE.Aim) {
+      return fireAi(session);
+    }
     if (session.phase === fsm.PHASE.Settle) {
       if (hit === 'replay') {
         restart(session);
@@ -359,7 +371,28 @@
     session.phase = fsm.PHASE.Shot;
     stopDetect.reset(session.stop);
     session.settleIn = 0;
+    if (sfx && sfx.cue) sfx.cue();
     return { kind: 'fire', power: shot.power, phase: session.phase };
+  }
+
+  function fireAi(session) {
+    if (session.phase !== fsm.PHASE.Aim) return { kind: 'none' };
+    var cueBall = findCue(session);
+    var target = session.target;
+    var plan = ai.plan(cueBall, target, session.config);
+    if (!plan.ok) {
+      session.toast = { text: '弱AI无目标', life: 1.2 };
+      return { kind: 'ai-skip' };
+    }
+    cueBall.vx = plan.vx;
+    cueBall.vy = plan.vy;
+    session.phase = fsm.PHASE.Shot;
+    stopDetect.reset(session.stop);
+    session.settleIn = 0;
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    if (sfx && sfx.cue) sfx.cue();
+    session.toast = { text: '弱AI试杆', life: 1.0 };
+    return { kind: 'ai', power: plan.power, phase: session.phase };
   }
 
   function getDebugState(session) {
@@ -432,6 +465,7 @@
     resize: resize,
     restart: restart,
     toggleAim3d: toggleAim3d,
+    fireAi: fireAi,
     resolvePocket: resolvePocket,
     enterStarZone: enterStarZone,
     finishSettle: finishSettle,

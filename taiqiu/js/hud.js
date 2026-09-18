@@ -15,25 +15,32 @@
     var pad = 14;
     var top = (viewport.safeTop || 20) + 6;
     var bottomSafe = viewport.safeBottom || 0;
-    var footerH = 52;
-    var playTop = top + 62;
+    var footerH = 58;
+    var playTop = top + 58;
     var playBottom = viewport.height - bottomSafe - footerH - 10;
     var cx = viewport.width * 0.5;
     var cy = viewport.height * 0.46;
     return {
       title: { x: pad, y: top + 16 },
       target: { x: pad, y: top + 36 },
-      best: { x: viewport.width - pad, y: top + 50 },
+      best: { x: pad, y: top + 52 },
       mode: {
-        x: viewport.width - pad - 84,
-        y: top + 8,
-        w: 84,
+        x: pad,
+        y: playBottom + 6,
+        w: 78,
         h: 26,
         label: '瞄准3D'
       },
-      hint: { x: cx, y: playBottom + 14 },
-      disclaimer: { x: cx, y: viewport.height - bottomSafe - 14 },
-      power: { x: pad + 24, y: playBottom + 22, w: viewport.width - pad * 2 - 48, h: 6 },
+      ai: {
+        x: pad + 86,
+        y: playBottom + 6,
+        w: 78,
+        h: 26,
+        label: '弱AI试杆'
+      },
+      hint: { x: viewport.width - pad, y: playBottom + 22 },
+      disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
+      power: { x: pad + 174, y: playBottom + 14, w: Math.max(80, viewport.width - pad * 2 - 174), h: 6 },
       settleCard: { x: cx - 132, y: cy - 128, w: 264, h: 268 },
       settleScore: { x: cx, y: cy - 86 },
       settleGap: { x: cx, y: cy - 28 },
@@ -54,6 +61,7 @@
   function hitTest(ui, x, y, phase) {
     if (phase === 'Splash') return 'start';
     if (inRect(ui.mode, x, y)) return 'aim3d';
+    if (ui.ai && inRect(ui.ai, x, y)) return 'ai';
     if (phase === 'Settle') {
       if (inRect(ui.replay, x, y)) return 'replay';
       if (inRect(ui.share, x, y)) return 'share';
@@ -105,7 +113,7 @@
     var targetText = lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成';
     ctx.fillText(targetText, ui.target.x, ui.target.y);
 
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.fillStyle = colors.hud;
     ctx.font = '12px ' + FONT;
     ctx.fillText('最佳 ' + (session.best || 0) + ' 星币', ui.best.x, ui.best.y);
@@ -117,6 +125,15 @@
       h: ui.mode.h,
       label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
     }, colors, session.pressed === 'aim3d' || session.aim3d);
+    if (ui.ai) {
+      drawButton(ctx, {
+        x: ui.ai.x,
+        y: ui.ai.y,
+        w: ui.ai.w,
+        h: ui.ai.h,
+        label: ui.ai.label
+      }, colors, session.pressed === 'ai');
+    }
 
     if (session.phase === 'Aim' && session.cue.dragging) {
       var p = session.cue.power;
@@ -129,17 +146,17 @@
     } else if (session.phase === 'Aim') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
-      ctx.textAlign = 'center';
-      ctx.fillText('俯视瞄准 · 拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
+      ctx.textAlign = 'right';
+      ctx.fillText('拖动球杆后拉蓄力', ui.hint.x, ui.hint.y);
     } else if (session.phase === 'Shot') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'right';
       ctx.fillText('出杆中…', ui.hint.x, ui.hint.y);
     } else if (session.phase === 'WaitCueStop') {
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'right';
       ctx.fillText('等待母球停稳…', ui.hint.x, ui.hint.y);
     }
 

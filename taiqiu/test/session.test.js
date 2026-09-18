@@ -8,6 +8,9 @@ var balls = require('../js/balls');
 var tiles = require('../js/tiles');
 var cue = require('../js/cue');
 var fsm = require('../js/fsm');
+var ai = require('../js/ai');
+var sfx = require('../js/sfx');
+var hud = require('../js/hud');
 
 var failures = 0;
 
@@ -68,6 +71,33 @@ check('aim3d stub does not leave top viewMode', function () {
   sessionMod.toggleAim3d(s);
   assert.strictEqual(s.aim3d, false);
   assert.strictEqual(s.viewMode, 'top');
+});
+
+check('瞄准3D button sits clear of the top-right WeChat capsule', function () {
+  var ui = hud.layout(viewport());
+  assert.ok(ui.mode.x + ui.mode.w < viewport().width * 0.5);
+  assert.ok(ui.mode.y > viewport().height * 0.55);
+});
+
+check('weak AI stub can fire a noisy shot at the object ball', function () {
+  var s = fresh();
+  var cueBall = balls.cueBall(s.balls);
+  var plan = ai.plan(cueBall, s.target, config, function () { return 0.5; });
+  assert.ok(plan.ok);
+  assert.ok(plan.vy < 0);
+  var res = sessionMod.fireAi(s);
+  assert.strictEqual(res.kind, 'ai');
+  assert.strictEqual(s.phase, fsm.PHASE.Shot);
+});
+
+check('sfx helpers are silent-safe without an audio context', function () {
+  sfx.reset();
+  assert.doesNotThrow(function () {
+    sfx.cue();
+    sfx.ball();
+    sfx.cushion();
+    sfx.pocket();
+  });
 });
 
 check('legal pocket applies 落点加成 星币 and stores best', function () {

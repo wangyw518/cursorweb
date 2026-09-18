@@ -43,8 +43,11 @@ Rewards are virtual **星币** only.
 
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull.
 - Release to shoot. A short pull cancels.
-- Tap **瞄准3D** for the stub (俯视瞄准 stays on).
+- Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
+- Tap **弱AI试杆** for an optional noisy practice shot at the object ball.
 - After settle, tap **再来一杆**.
+
+Max cue power is raised so a kitchen break can reach the rack. Pocket centers sit on the cushion line / outside corners, not inward on the cloth. Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
 ## Layout
 
@@ -69,6 +72,8 @@ taiqiu/
     fx.js
     storage.js
     share.js
+    sfx.js
+    ai.js
   dev/preview.html
   test/
   README.md

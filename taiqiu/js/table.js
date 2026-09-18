@@ -38,15 +38,17 @@
     var y1 = felt.y;
     var x2 = felt.x + felt.w;
     var y2 = felt.y + felt.h;
-    var gap = pocketR * 0.92;
+    var cornerOut = pocketR * 0.55;
+    var sideOut = pocketR * 0.42;
+    var gap = pocketR * 1.08;
 
     var pockets = [
-      { id: 'tl', kind: 'corner', x: x1, y: y1, r: pocketR },
-      { id: 'tr', kind: 'corner', x: x2, y: y1, r: pocketR },
-      { id: 'ml', kind: 'side', x: x1, y: felt.cy, r: pocketR * 0.92 },
-      { id: 'mr', kind: 'side', x: x2, y: felt.cy, r: pocketR * 0.92 },
-      { id: 'bl', kind: 'corner', x: x1, y: y2, r: pocketR },
-      { id: 'br', kind: 'corner', x: x2, y: y2, r: pocketR }
+      { id: 'tl', kind: 'corner', x: x1 - cornerOut, y: y1 - cornerOut, r: pocketR },
+      { id: 'tr', kind: 'corner', x: x2 + cornerOut, y: y1 - cornerOut, r: pocketR },
+      { id: 'ml', kind: 'side', x: x1 - sideOut, y: felt.cy, r: pocketR * 0.95 },
+      { id: 'mr', kind: 'side', x: x2 + sideOut, y: felt.cy, r: pocketR * 0.95 },
+      { id: 'bl', kind: 'corner', x: x1 - cornerOut, y: y2 + cornerOut, r: pocketR },
+      { id: 'br', kind: 'corner', x: x2 + cornerOut, y: y2 + cornerOut, r: pocketR }
     ];
 
     var walls = [

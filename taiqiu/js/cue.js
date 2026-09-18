@@ -70,7 +70,7 @@
       cancelDrag(cue);
       return { fired: false, power: power, angle: angle };
     }
-    var spd = ((config && config.powerSpeed) || 760) * power;
+    var spd = ((config && config.powerSpeed) || 1280) * power;
     cue.power = 0;
     return {
       fired: true,
