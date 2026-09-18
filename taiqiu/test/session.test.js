@@ -55,6 +55,19 @@ check('drag aim sets opposite fire direction and clamped power', function () {
   assert.ok(shot.vy < 0);
 });
 
+check('near-rail pull maps on-screen drag length to full power', function () {
+  var bounds = { x: 0, y: 0, w: 375, h: 667, pad: 4 };
+  var edge = cue.create(config);
+  cue.beginDrag(edge, 40, 4, { x: 40, y: 24, r: 8, pocketed: false }, bounds);
+  assert.ok(edge.power >= 0.99, 'pull to the screen edge must reach max power, got ' + edge.power);
+  var center = cue.create(config);
+  cue.beginDrag(center, 180, 240, { x: 180, y: 200, r: 8, pocketed: false }, bounds);
+  assert.ok(center.power < 0.45, 'a short center pull should stay partial, got ' + center.power);
+  var far = cue.create(config);
+  cue.beginDrag(far, 180, 200 + config.dragMaxPx, { x: 180, y: 200, r: 8, pocketed: false }, bounds);
+  assert.ok(far.power >= 0.99);
+});
+
 check('session starts in Aim with 9-ball order and top view', function () {
   var s = fresh();
   assert.strictEqual(s.phase, fsm.PHASE.Aim);

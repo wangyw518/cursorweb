@@ -184,6 +184,40 @@ check('full cue power can reach the 9-ball rack from the kitchen', function () {
   assert.ok(reached, 'break power should reach the 1-ball');
 });
 
+check('object balls stay frozen until the cue contacts them', function () {
+  var cueBall = physics.createBody(40, 100, 8);
+  cueBall.id = 'cue';
+  cueBall.vx = 180;
+  var a = physics.createBody(220, 97, 8);
+  a.id = 'b1';
+  var b = physics.createBody(230, 103, 8);
+  b.id = 'b2';
+  var ax = a.x;
+  var ay = a.y;
+  var bx = b.x;
+  var by = b.y;
+  var world = { balls: [cueBall, a, b], walls: [], pockets: [], lockObjects: true };
+  var i;
+  for (i = 0; i < 10; i++) physics.step(world, config.fixedDt, config);
+  assert.ok(Math.abs(a.x - ax) < 1e-8, 'ghost/object A moved before cue contact');
+  assert.ok(Math.abs(a.y - ay) < 1e-8);
+  assert.ok(Math.abs(b.x - bx) < 1e-8, 'ghost/object B moved before cue contact');
+  assert.ok(Math.abs(b.y - by) < 1e-8);
+  assert.ok(cueBall.x > 40);
+});
+
+check('object balls move after the cue makes contact', function () {
+  var cueBall = physics.createBody(80, 100, 8);
+  cueBall.id = 'cue';
+  cueBall.vx = 520;
+  var one = physics.createBody(130, 100, 8);
+  one.id = 'b1';
+  var world = { balls: [cueBall, one], walls: [], pockets: [], lockObjects: true };
+  var i;
+  for (i = 0; i < 90; i++) physics.step(world, config.fixedDt, config);
+  assert.ok(one.x > 130.5 || one.vx > 1, 'object ball should move after contact');
+});
+
 check('aim preview returns a dashed polyline and optional ghost', function () {
   var t = board();
   var list = balls.create(t, config);

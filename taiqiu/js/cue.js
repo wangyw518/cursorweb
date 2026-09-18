@@ -25,11 +25,33 @@
     return Math.hypot(x - cueBall.x, y - cueBall.y) <= cueBall.r + pad;
   }
 
-  function applyDrag(cue, x, y, cueBall) {
+  function pullSpan(ox, oy, dx, dy, bounds) {
+    var len = Math.hypot(dx, dy);
+    if (!bounds || !(bounds.w > 0) || !(bounds.h > 0)) return Infinity;
+    if (len < 1e-8) return Math.min(bounds.w, bounds.h);
+    var vx = dx / len;
+    var vy = dy / len;
+    var pad = bounds.pad == null ? 12 : bounds.pad;
+    var t = Infinity;
+    if (vx > 1e-8) t = Math.min(t, (bounds.x + bounds.w - pad - ox) / vx);
+    if (vx < -1e-8) t = Math.min(t, (bounds.x + pad - ox) / vx);
+    if (vy > 1e-8) t = Math.min(t, (bounds.y + bounds.h - pad - oy) / vy);
+    if (vy < -1e-8) t = Math.min(t, (bounds.y + pad - oy) / vy);
+    if (!(t > 0) || t === Infinity) return Math.min(bounds.w, bounds.h);
+    return Math.max(8, t);
+  }
+
+  function applyDrag(cue, x, y, cueBall, bounds) {
     var dx = cueBall.x - x;
     var dy = cueBall.y - y;
-    var dist = Math.hypot(dx, dy);
-    cue.power = Math.max(0, Math.min(1, dist / cue.dragMaxPx));
+    var pullX = x - cueBall.x;
+    var pullY = y - cueBall.y;
+    var dist = Math.hypot(pullX, pullY);
+    var denom = cue.dragMaxPx;
+    var avail = pullSpan(cueBall.x, cueBall.y, pullX, pullY, bounds);
+    if (avail < denom) denom = avail;
+    if (!(denom > 1e-6)) denom = 1;
+    cue.power = Math.max(0, Math.min(1, dist / denom));
     if (dist > 0.001) {
       cue.angle = Math.atan2(dy, dx);
       cue.ax = Math.cos(cue.angle);
@@ -38,15 +60,15 @@
     return cue;
   }
 
-  function beginDrag(cue, x, y, cueBall) {
+  function beginDrag(cue, x, y, cueBall, bounds) {
     cue.dragging = true;
-    applyDrag(cue, x, y, cueBall);
+    applyDrag(cue, x, y, cueBall, bounds);
     return cue;
   }
 
-  function moveDrag(cue, x, y, cueBall) {
+  function moveDrag(cue, x, y, cueBall, bounds) {
     if (!cue.dragging) return cue;
-    applyDrag(cue, x, y, cueBall);
+    applyDrag(cue, x, y, cueBall, bounds);
     return cue;
   }
 
@@ -101,6 +123,7 @@
   return {
     create: create,
     inGrab: inGrab,
+    pullSpan: pullSpan,
     applyDrag: applyDrag,
     beginDrag: beginDrag,
     moveDrag: moveDrag,

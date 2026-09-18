@@ -50,7 +50,19 @@
     return {
       balls: session.balls,
       walls: session.table.walls,
-      pockets: session.table.pockets
+      pockets: session.table.pockets,
+      lockObjects: session.phase === fsm.PHASE.Shot && !session.shot.firstContactId
+    };
+  }
+
+  function dragBounds(session) {
+    var v = session.viewport || {};
+    return {
+      x: 0,
+      y: 0,
+      w: v.width || 375,
+      h: v.height || 667,
+      pad: 12
     };
   }
 
@@ -729,7 +741,7 @@
       var cueBall = findCue(session);
       if (cue.inGrab(cueBall, x, y, session.config.grabSlopPx) ||
           table.contains(session.table.felt, x, y)) {
-        cue.beginDrag(session.cue, x, y, cueBall);
+        cue.beginDrag(session.cue, x, y, cueBall, dragBounds(session));
         refreshPreview(session);
         return { kind: 'aim' };
       }
@@ -739,7 +751,7 @@
 
   function handlePointerMove(session, x, y) {
     if (session.phase !== fsm.PHASE.Aim || !session.cue.dragging) return { kind: 'none' };
-    cue.moveDrag(session.cue, x, y, findCue(session));
+    cue.moveDrag(session.cue, x, y, findCue(session), dragBounds(session));
     refreshPreview(session);
     return { kind: 'aim' };
   }

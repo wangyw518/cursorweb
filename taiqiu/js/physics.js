@@ -155,19 +155,29 @@
     return best;
   }
 
-  function stepOnce(balls, walls, pockets, dt, config) {
-    var events = { cushions: 0, pockets: [], contacts: [] };
+  function isCueBody(body) {
+    return !!(body && body.id === 'cue');
+  }
+
+  function stepOnce(balls, walls, pockets, dt, config, lockObjects) {
+    var events = { cushions: 0, pockets: [], contacts: [], cueHitBall: false };
     var maxSpeed = config.maxSpeed || 920;
     var friction = config.friction == null ? 1.55 : config.friction;
     var ballE = config.ballRestitution == null ? 0.92 : config.ballRestitution;
     var cushE = config.cushionRestitution == null ? 0.68 : config.cushionRestitution;
     var damp = Math.exp(-friction * dt);
+    var locked = !!lockObjects;
     var i;
     var j;
 
     for (i = 0; i < balls.length; i++) {
       var body = balls[i];
       if (body.pocketed) continue;
+      if (locked && !isCueBody(body)) {
+        body.vx = 0;
+        body.vy = 0;
+        continue;
+      }
       clampSpeed(body, maxSpeed);
       body.x += body.vx * dt;
       body.y += body.vy * dt;
@@ -189,6 +199,7 @@
     for (i = 0; i < balls.length; i++) {
       var a = balls[i];
       if (a.pocketed) continue;
+      if (locked && !isCueBody(a)) continue;
       if (inPocketMouth(a, pockets)) continue;
       for (j = 0; j < walls.length; j++) {
         var cush = resolveCushion(a, walls[j], cushE);
@@ -203,8 +214,13 @@
       if (balls[i].pocketed) continue;
       for (j = i + 1; j < balls.length; j++) {
         if (balls[j].pocketed) continue;
+        if (locked && !isCueBody(balls[i]) && !isCueBody(balls[j])) continue;
         if (resolveBallBall(balls[i], balls[j], ballE)) {
           events.contacts.push({ kind: 'ball', a: balls[i], b: balls[j] });
+          if (isCueBody(balls[i]) || isCueBody(balls[j])) {
+            events.cueHitBall = true;
+            locked = false;
+          }
         }
       }
     }
@@ -241,12 +257,17 @@
     }
     var sub = Math.max(1, Math.min(8, Math.ceil((speed * dt) / 4.2)));
     var slice = dt / sub;
-    var merged = { cushions: 0, pockets: [], contacts: [], substeps: sub };
+    var lock = !!world.lockObjects;
+    var merged = { cushions: 0, pockets: [], contacts: [], substeps: sub, cueHitBall: false };
     for (i = 0; i < sub; i++) {
-      var ev = stepOnce(balls, world.walls || [], world.pockets || [], slice, config);
+      var ev = stepOnce(balls, world.walls || [], world.pockets || [], slice, config, lock);
       merged.cushions += ev.cushions;
       merged.pockets = merged.pockets.concat(ev.pockets);
       merged.contacts = merged.contacts.concat(ev.contacts);
+      if (ev.cueHitBall) {
+        merged.cueHitBall = true;
+        lock = false;
+      }
     }
     return merged;
   }
