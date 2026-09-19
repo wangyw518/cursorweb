@@ -640,7 +640,10 @@
       powerWasFull: false,
       turnOpenId: '',
       pocketScore: 0,
-      zoneBonus: 0
+      zoneBonus: 0,
+      pendingRoomId: '',
+      joinError: null,
+      inviteAfterCreate: false
     };
     resetRound(session);
     fetchNick(session);
@@ -1259,8 +1262,15 @@
       displayName: session.displayName || (session.names && session.names[0]) || seatFallback(0),
       openId: session.myOpenId || ''
     }, function (res) {
-      if (res && res.ok && res.roomId && !(session.room && session.room.roomId)) {
-        attachHostRoom(session, res);
+      if (res && res.ok && res.roomId) {
+        if (!(session.room && session.room.roomId)) attachHostRoom(session, res);
+        if (session.inviteAfterCreate) {
+          session.inviteAfterCreate = false;
+          shareInvite(session);
+        }
+      } else if (!res || !res.ok) {
+        session.inviteAfterCreate = false;
+        session.toast = { text: createFailHint(res && res.reason), life: 2.2 };
       }
     });
     if (made && made.ok && made.roomId) return attachHostRoom(session, made);
@@ -1268,8 +1278,9 @@
       session.toast = { text: '正在开房间…', life: 1.4 };
       return { kind: 'room-pending' };
     }
-    session.toast = { text: '开房间失败', life: 1.4 };
-    return { kind: 'room-fail' };
+    session.inviteAfterCreate = false;
+    session.toast = { text: createFailHint(made && made.reason), life: 2.2 };
+    return { kind: 'room-fail', reason: made && made.reason };
   }
 
   function attachGuestRoom(session, joined, roomId) {
@@ -1291,6 +1302,9 @@
         : 0,
       aimSeq: joined.state && joined.state.aimSeq != null ? joined.state.aimSeq : 0
     };
+    session.pendingRoomId = '';
+    session.joinError = null;
+    session._joinInFlight = '';
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     fetchNick(session);
     if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
@@ -1299,7 +1313,44 @@
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
   }
 
+  function joinFailHint(reason) {
+    if (reason === 'missing' || reason === 'bad-json') return '房间无效';
+    if (reason === 'full') return '房间已满';
+    if (reason === 'http-fail' || reason === 'no-room-api-base') return '服务器连不上';
+    return '加入失败';
+  }
+
+  function createFailHint(reason) {
+    if (reason === 'http-fail' || reason === 'no-room-api-base') return '服务器连不上，无法开房';
+    return '开房间失败';
+  }
+
+  function markJoinFail(session, roomId, reason) {
+    session.pendingRoomId = roomId || session.pendingRoomId || '';
+    session.joinError = reason || 'join-fail';
+    session.mode = 'room';
+    session.localAi = false;
+    session.toast = { text: joinFailHint(reason), life: 2.6 };
+    session.banner = {
+      text: joinFailHint(reason),
+      kind: 'foul',
+      detail: session.pendingRoomId ? '点重新加入再试' : '',
+      life: 3.4
+    };
+    return { kind: 'join-fail', roomId: roomId, reason: reason || 'join-fail' };
+  }
+
   function joinRoom(session, roomId) {
+    roomId = String(roomId || '').trim();
+    if (!roomId) return markJoinFail(session, '', 'missing');
+    if (session._joinInFlight === roomId && !session.joinError) {
+      return { kind: 'join-pending', roomId: roomId };
+    }
+    session.pendingRoomId = roomId;
+    session.joinError = null;
+    session.mode = 'room';
+    session.localAi = false;
+    session._joinInFlight = roomId;
     fetchNick(session);
     var payload = {
       roomId: roomId,
@@ -1309,30 +1360,83 @@
       openId: session.myOpenId || ''
     };
     var joined = roomApi.join(payload, function (res) {
-      if (res && res.ok && !(session.room && session.room.roomId === roomId && session.mySeat === 1)) {
+      if (session._joinInFlight === roomId) session._joinInFlight = '';
+      if (res && res.ok) {
+        session.joinError = null;
         attachGuestRoom(session, res, roomId);
+        return;
       }
+      markJoinFail(session, roomId, res && res.reason);
     });
-    if (joined && joined.ok) return attachGuestRoom(session, joined, payload.roomId);
+    if (joined && joined.ok && !joined.pending) {
+      session._joinInFlight = '';
+      session.joinError = null;
+      return attachGuestRoom(session, joined, payload.roomId);
+    }
     if (joined && joined.pending) {
-      session.toast = { text: '正在加入…', life: 1.4 };
+      session.toast = { text: '正在加入…', life: 1.6 };
       return { kind: 'join-pending', roomId: roomId };
     }
-    session.toast = { text: '房间无效', life: 1.4 };
-    return { kind: 'join-fail', roomId: roomId };
+    return markJoinFail(session, roomId, joined && joined.reason);
   }
 
-  function inviteRoom(session) {
-    if (!session.room || !session.room.roomId) return createRoom(session);
+  function enterInvite(session, opts) {
+    var invite = share.parseInvite ? share.parseInvite(opts) : { roomId: '' };
+    var roomId = invite.roomId;
+    if (!roomId) return { kind: 'none' };
+    if (session.room && session.room.roomId === roomId) {
+      session.pendingRoomId = '';
+      session.joinError = null;
+      pullRoom(session);
+      return { kind: 'join-existing', roomId: roomId, seat: session.mySeat };
+    }
+    session.mode = 'room';
+    session.localAi = false;
+    session.pendingRoomId = roomId;
+    return joinRoom(session, roomId);
+  }
+
+  function shareInvite(session) {
+    if (!session.room || !session.room.roomId) {
+      session.toast = { text: '还没有房间，无法邀请', life: 1.8 };
+      return { kind: 'invite-fail', reason: 'no-room-id' };
+    }
+    var payload = share.shareRoom(session.room.roomId);
+    if (!payload || !payload.ok || !payload.roomId || !payload.query) {
+      session.toast = { text: '邀请缺少房间码', life: 1.8 };
+      return { kind: 'invite-fail', reason: 'no-room-id' };
+    }
+    session.lastShare = payload;
     session.roomPanel = {
       roomId: session.room.roomId,
       hint: session.room.guestJoined
         ? '好友已加入 · 轮流击球'
-        : '分享给好友，加入后同步台面。第二页打开 ?roomId=' + session.room.roomId
+        : '分享给好友，加入后同步台面。房间码 ' + session.room.roomId
     };
-    session.lastShare = share.shareRoom(session.room.roomId);
     session.toast = { text: '邀请房间 ' + session.room.roomId, life: 1.6 };
-    return { kind: 'invite', payload: session.lastShare, roomId: session.room.roomId };
+    return { kind: 'invite', payload: payload, roomId: session.room.roomId };
+  }
+
+  function inviteRoom(session) {
+    if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
+      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      return { kind: 'room-skip', mode: session.mode || 'ai' };
+    }
+    if (!session.room || !session.room.roomId) {
+      session.inviteAfterCreate = true;
+      var made = createRoom(session);
+      if (session.room && session.room.roomId) {
+        session.inviteAfterCreate = false;
+        return shareInvite(session);
+      }
+      if (made && (made.kind === 'room-pending' || made.kind === 'invite-pending')) {
+        return { kind: 'invite-pending' };
+      }
+      session.inviteAfterCreate = false;
+      session.toast = { text: createFailHint(made && made.reason), life: 2.0 };
+      return { kind: 'invite-fail', reason: (made && made.reason) || 'room-fail' };
+    }
+    return shareInvite(session);
   }
 
   function handleRoomTap(session) {
@@ -1365,7 +1469,11 @@
       return { kind: 'bgm', bgm: session.bgm };
     }
     if (hit === 'room') return handleRoomTap(session);
+    if (hit === 'join-retry' && session.pendingRoomId) {
+      return joinRoom(session, session.pendingRoomId);
+    }
     if (session.phase === fsm.PHASE.Splash) {
+      if (session.pendingRoomId) return joinRoom(session, session.pendingRoomId);
       if (hit === 'practice') return startPractice(session);
       return startAi(session);
     }
@@ -1490,6 +1598,9 @@
     session.turn = 0;
     session.room = null;
     session.roomPanel = null;
+    session.pendingRoomId = '';
+    session.joinError = null;
+    session.inviteAfterCreate = false;
     session.scores = [0, 0];
     session.matchOver = false;
     session.winner = null;
@@ -1520,6 +1631,9 @@
     session.turn = 0;
     session.room = null;
     session.roomPanel = null;
+    session.pendingRoomId = '';
+    session.joinError = null;
+    session.inviteAfterCreate = false;
     session.scores = [0, 0];
     session.matchOver = false;
     session.winner = null;
@@ -1662,6 +1776,9 @@
     createRoom: createRoom,
     joinRoom: joinRoom,
     inviteRoom: inviteRoom,
+    enterInvite: enterInvite,
+    shareInvite: shareInvite,
+    joinFailHint: joinFailHint,
     pullRoom: pullRoom,
     pushRoom: pushRoom,
     pushAim: pushAim,

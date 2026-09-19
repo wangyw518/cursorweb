@@ -10,10 +10,60 @@
 
   var DISCLAIMER = '虚拟道具，仅限游戏内使用，不可兑换现金';
 
+  function parseQueryString(raw) {
+    var out = {};
+    if (raw == null || raw === '') return out;
+    if (typeof raw === 'object') {
+      Object.keys(raw).forEach(function (key) {
+        if (raw[key] == null) return;
+        out[key] = String(raw[key]);
+      });
+      return out;
+    }
+    String(raw).replace(/^\?/, '').split('&').forEach(function (part) {
+      if (!part) return;
+      var kv = part.split('=');
+      if (!kv[0]) return;
+      var key = decodeURIComponent(kv[0]);
+      var val = decodeURIComponent(kv[1] || '');
+      out[key] = val;
+    });
+    return out;
+  }
+
+  function roomIdOf(dict) {
+    if (!dict) return '';
+    var id = dict.roomId || dict.roomid || dict.room_id || '';
+    return String(id || '').trim();
+  }
+
+  function parseInvite(opts) {
+    opts = opts || {};
+    var query = parseQueryString(opts.query != null ? opts.query : null);
+    var roomId = roomIdOf(query) || roomIdOf(opts);
+    var extra = opts.referrerInfo && (opts.referrerInfo.extraData || opts.referrerInfo);
+    if (!roomId && extra) {
+      var extraQuery = typeof extra === 'string' ? parseQueryString(extra) : extra;
+      roomId = roomIdOf(extraQuery);
+      if (!roomId && extraQuery && extraQuery.query != null) {
+        roomId = roomIdOf(parseQueryString(extraQuery.query));
+      }
+    }
+    if (!roomId && opts.scene && typeof opts.scene === 'object') {
+      roomId = roomIdOf(opts.scene);
+    }
+    return {
+      roomId: roomId,
+      from: query.from || (extra && extra.from) || '',
+      query: query
+    };
+  }
+
   function compose(settle, best) {
     var coins = settle && settle.coins != null ? settle.coins : 0;
     var rank = best && coins >= best ? '本局最佳' : '练习成绩';
     return {
+      ok: true,
       title: '星券台球',
       kind: 'score',
       rank: rank,
@@ -27,17 +77,33 @@
   }
 
   function composeRoom(roomId) {
+    var id = String(roomId || '').trim();
+    if (!id) {
+      return {
+        ok: false,
+        title: '星券台球',
+        kind: 'room',
+        roomId: '',
+        query: '',
+        reason: 'no-room-id',
+        text: '来一局星券台球',
+        disclaimer: DISCLAIMER
+      };
+    }
     return {
+      ok: true,
       title: '星券台球',
       kind: 'room',
-      roomId: roomId,
-      query: 'roomId=' + roomId,
+      roomId: id,
+      query: 'roomId=' + encodeURIComponent(id) + '&from=invite',
       text: '来一局星券台球',
       disclaimer: DISCLAIMER
     };
   }
 
   function postMessage(payload) {
+    if (!payload || !payload.ok) return payload;
+    if (payload.kind === 'room' && !payload.roomId) return payload;
     try {
       if (typeof wx !== 'undefined' && wx.shareAppMessage) {
         wx.shareAppMessage({
@@ -61,6 +127,8 @@
     compose: compose,
     composeRoom: composeRoom,
     share: share,
-    shareRoom: shareRoom
+    shareRoom: shareRoom,
+    parseInvite: parseInvite,
+    parseQueryString: parseQueryString
   };
 });

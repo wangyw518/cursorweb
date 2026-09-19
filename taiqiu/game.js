@@ -36,6 +36,16 @@
     return g.TaiqiuRoomApi || g.TaiqiuNet;
   }
 
+  function loadShare() {
+    if (typeof require === 'function') {
+      try {
+        return require('./js/share');
+      } catch (err) {}
+    }
+    var g = typeof globalThis !== 'undefined' ? globalThis : window;
+    return g.TaiqiuShare;
+  }
+
   function getViewport() {
     var info = wx.getSystemInfoSync();
     var safe = info.safeArea || {};
@@ -75,6 +85,7 @@
     applyCanvasSize(canvas, ctx, viewport);
 
     var session = sessionMod.create(viewport, config);
+    var share = loadShare();
     var acc = 0;
     var last = Date.now();
     var fixedDt = config.fixedDt;
@@ -140,20 +151,6 @@
       });
     }
 
-    function parseQuery(raw) {
-      if (!raw) return {};
-      if (typeof raw === 'object') return raw;
-      var out = {};
-      String(raw).split('&').forEach(function (part) {
-        var kv = part.split('=');
-        if (!kv[0]) return;
-        var key = decodeURIComponent(kv[0]);
-        var val = decodeURIComponent(kv[1] || '');
-        out[key] = val;
-      });
-      return out;
-    }
-
     function applyLaunchName(q) {
       var nick = (q && (q.displayName || q.name)) || '';
       if (!nick) return;
@@ -162,22 +159,48 @@
       session.names[session.mySeat || 0] = nick;
     }
 
-    function maybeJoin(opts) {
-      var q = parseQuery(opts && (opts.query != null ? opts.query : opts));
-      applyLaunchName(q);
-      if (!q.roomId) return;
-      if (session.room && session.room.roomId === q.roomId) {
-        sessionMod.pullRoom(session);
-        return;
-      }
-      sessionMod.joinRoom(session, q.roomId);
+    function handleEnter(opts) {
+      var invite = (share && share.parseInvite) ? share.parseInvite(opts) : { roomId: '', query: {} };
+      applyLaunchName(invite.query);
+      if (!invite.roomId) return;
+      sessionMod.enterInvite(session, opts);
     }
 
+    function bindShareMenu() {
+      try {
+        if (wx.showShareMenu) {
+          wx.showShareMenu({ withShareTicket: true, menus: ['shareAppMessage'] });
+        }
+      } catch (err) {}
+      function shareQuery() {
+        if (session.room && session.room.roomId && share && share.composeRoom) {
+          var payload = share.composeRoom(session.room.roomId);
+          if (payload && payload.ok) {
+            return { title: payload.text, query: payload.query };
+          }
+        }
+        return null;
+      }
+      if (typeof wx.onShareAppMessage === 'function') {
+        wx.onShareAppMessage(function () {
+          return shareQuery() || { title: '星券台球', query: '' };
+        });
+      }
+    }
+
+    bindShareMenu();
+
+    if (typeof wx.onLaunch === 'function') {
+      try { wx.onLaunch(handleEnter); } catch (err) {}
+    }
     if (typeof wx.getLaunchOptionsSync === 'function') {
-      try { maybeJoin(wx.getLaunchOptionsSync()); } catch (err) {}
+      try { handleEnter(wx.getLaunchOptionsSync()); } catch (err) {}
+    }
+    if (typeof wx.getEnterOptionsSync === 'function') {
+      try { handleEnter(wx.getEnterOptionsSync()); } catch (err) {}
     }
     if (typeof wx.onShow === 'function') {
-      wx.onShow(maybeJoin);
+      wx.onShow(handleEnter);
     }
 
     var g = typeof globalThis !== 'undefined' ? globalThis : window;

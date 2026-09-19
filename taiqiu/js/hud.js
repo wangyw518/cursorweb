@@ -80,6 +80,7 @@
       start: { x: cx - 124, y: cy + 12, w: 116, h: 42, label: '人机对战' },
       practice: { x: cx + 8, y: cy + 12, w: 116, h: 42, label: '练习模式' },
       roomSplash: { x: cx - 72, y: cy + 64, w: 144, h: 36, label: '好友对局' },
+      joinRetry: { x: cx - 72, y: cy + 20, w: 144, h: 42, label: '重新加入' },
       roomPanel: { x: cx - 132, y: cy - 110, w: 264, h: 220 },
       roomInvite: { x: cx - 72, y: cy + 8, w: 144, h: 34, label: '邀请好友' },
       roomClose: { x: cx - 72, y: cy + 50, w: 144, h: 34, label: '关闭' },
@@ -109,6 +110,11 @@
       if (ui.roomPanel && inRect(ui.roomPanel, x, y)) return 'room';
     }
     if (phase === 'Splash') {
+      if (session && session.pendingRoomId) {
+        if (ui.joinRetry && inRect(ui.joinRetry, x, y)) return 'join-retry';
+        if (inRect(ui.splashCard, x, y)) return 'join-retry';
+        return 'join-retry';
+      }
       if (ui.roomSplash && inRect(ui.roomSplash, x, y)) return 'room';
       if (ui.practice && inRect(ui.practice, x, y)) return 'practice';
       if (ui.aiSplash && inRect(ui.aiSplash, x, y)) return 'start-ai';
@@ -514,6 +520,23 @@
     ctx.font = '10px ' + FONT;
     ctx.fillStyle = colors.disclaimer;
     wrapText(ctx, session.config.disclaimer, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 108, 220);
+    if (session.pendingRoomId) {
+      ctx.font = '13px ' + FONT;
+      ctx.fillStyle = colors.hud;
+      ctx.fillText(
+        session.joinError ? '加入失败' : '正在加入房间',
+        ui.splashCard.x + ui.splashCard.w * 0.5,
+        ui.splashCard.y + 168
+      );
+      ctx.font = '12px ' + FONT;
+      ctx.fillStyle = colors.hudDim;
+      ctx.fillText('房间码 ' + session.pendingRoomId, ui.splashCard.x + ui.splashCard.w * 0.5, ui.splashCard.y + 190);
+      if (ui.joinRetry) {
+        drawButton(ctx, ui.joinRetry, colors, session.pressed === 'join-retry');
+      }
+      ctx.restore();
+      return;
+    }
     if (ui.aiSplash) {
       drawButton(ctx, ui.aiSplash, colors, true);
       ctx.save();

@@ -57,8 +57,15 @@ check('missing room join fails closed', function () {
 check('room invite query carries roomId for shareAppMessage', function () {
   var payload = share.composeRoom('AB12CD');
   assert.strictEqual(payload.kind, 'room');
-  assert.strictEqual(payload.query, 'roomId=AB12CD');
+  assert.strictEqual(payload.ok, true);
+  assert.strictEqual(payload.query, 'roomId=AB12CD&from=invite');
   assert.ok(payload.text.indexOf('星券台球') !== -1);
+  var empty = share.composeRoom('');
+  assert.strictEqual(empty.ok, false);
+  assert.strictEqual(empty.query, '');
+  assert.strictEqual(share.parseInvite({ query: { roomId: 'AB12CD', from: 'invite' } }).roomId, 'AB12CD');
+  assert.strictEqual(share.parseInvite({ query: '?roomId=ZZ99&from=invite' }).roomId, 'ZZ99');
+  assert.strictEqual(share.parseInvite({ referrerInfo: { extraData: { roomId: 'SCENE1' } } }).roomId, 'SCENE1');
 });
 
 if (failures) {

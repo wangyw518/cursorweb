@@ -221,6 +221,18 @@ check('shot from the waiting seat is rejected', function () {
   assert.strictEqual(store.state(made.roomId).state.turn, 0);
 });
 
+check('second distinct openId cannot join a full room', function () {
+  var store = storeMod.createStore();
+  var made = store.create({ names: ['房主', '好友'] });
+  var first = store.join({ roomId: made.roomId, nick: '甲', openId: 'g-1' });
+  assert.strictEqual(first.ok, true);
+  var second = store.join({ roomId: made.roomId, nick: '乙', openId: 'g-2' });
+  assert.strictEqual(second.ok, false);
+  assert.strictEqual(second.reason, 'full');
+  var again = store.join({ roomId: made.roomId, nick: '甲', openId: 'g-1' });
+  assert.strictEqual(again.ok, true);
+});
+
 check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
   var store = storeMod.createStore();
   var made = store.create();

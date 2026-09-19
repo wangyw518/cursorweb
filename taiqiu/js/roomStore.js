@@ -181,6 +181,11 @@
       }
       var state = rooms[roomId];
       if (!state) return { ok: false, action: 'join', reason: 'missing', roomId: roomId };
+      var incomingId = roomIdOrPayload && roomIdOrPayload.openId ? String(roomIdOrPayload.openId) : '';
+      var existingId = state.openIds && state.openIds[1] ? String(state.openIds[1]) : '';
+      if (state.guestJoined && existingId && incomingId && existingId !== incomingId) {
+        return { ok: false, action: 'join', reason: 'full', roomId: roomId };
+      }
       state.guestJoined = true;
       if (guestName) state.names[1] = clipNick(guestName);
       var joinNick = clipNick(roomIdOrPayload && (roomIdOrPayload.nick || roomIdOrPayload.displayName));

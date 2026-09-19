@@ -51,7 +51,7 @@ Rewards are virtual **星币** only.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
 - In practice only, tap **弱AI试杆** for an optional noisy shot at the object ball (same `Cue.strike` path).
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (~140ms, Aim|Pull only, never mutates `balls[]`) so the waiting seat draws a live semi-transparent cue + dashed line + 「对方瞄准中」. After the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
+- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX&from=invite`. The friend joins from the share card (`onLaunch` + `onShow` + `getEnterOptionsSync`). While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (~140ms, Aim|Pull only, never mutates `balls[]`) so the waiting seat draws a live semi-transparent cue + dashed line + 「对方瞄准中」. After the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -132,7 +132,15 @@ docker run --rm -p 8788:8788 taiqiu-room
 # 或: docker compose up --build
 ```
 
-客户端把 `js/config.json` → `room.roomApiBase`（或预览 `?api=`）设为 `http://<电脑局域网IP>:8788`，不要填 `127.0.0.1`（手机访问的是自己）。微信开发者工具开发版请勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」。同网两台手机即可打 2P。
+客户端把 `js/config.json` → `room.roomApiBase`（或预览 `?api=`）设为 `http://<电脑局域网IP>:8788`，不要填 `127.0.0.1`（手机访问的是自己）。微信开发者工具开发版请勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」。
+
+**8788 + 双机复测邀请加入：**
+
+1. 电脑起房间服：`node taiqiu/dev/room-server.js 8788`（或 Docker `8788:8788`）。
+2. 两台设备 / 两个模拟器都把 `room.roomApiBase` 指到 `http://<电脑局域网IP>:8788`（预览可用 `?api=`）。
+3. 主机：进游戏 → **好友对局**（先开房）→ **邀请好友**。分享卡片 query 必须是 `roomId=XXXXXX&from=invite`。开房失败时不要发出空邀请。
+4. 好友：从分享卡片打开（冷启动走 `onLaunch` / `getLaunchOptionsSync`，热启动走 `onShow`）。应直接 `mode=room` 并 `POST /room/join`，不能先落单机/菜单。
+5. 成功：双方同一 `roomId`、能看到对方昵称、主机先手。失败：可见 toast + **重新加入**，不是静默回菜单。
 
 ### How to test mock 2P (two pages / two simulators)
 
@@ -146,7 +154,7 @@ python3 -m http.server 8767 --directory taiqiu
 2. Page B: http://127.0.0.1:8767/dev/preview.html?roomId=XXXXXX — launch query joins as guest.
 3. Same table: A shoots, B sees the balls after poll (~450ms). Miss / foul → B's turn. Legal 1–8 → A continues. Legal 9 → match over.
 
-Page A can also tap **邀请好友** (`shareAppMessage` query `roomId=XXXXXX`).
+Page A can also tap **邀请好友**. Share query is `roomId=XXXXXX&from=invite` — a share without `roomId` is a bug. The friend must join from `onLaunch` / `onShow` / `getEnterOptionsSync` (`query.roomId`, or `referrerInfo.extraData`). Join failure shows a toast (房间无效 / 已满 / 服务器连不上) and **重新加入**.
 
 **Two WeChat simulators:** each simulator has its own `wx` storage, so the mock will **not** sync between them. Either:
 

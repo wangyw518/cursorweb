@@ -534,6 +534,7 @@ check('好友对局 creates a room and shareAppMessage carries roomId', function
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.ok(invite.payload.query.indexOf('roomId=') === 0);
+  assert.ok(invite.payload.query.indexOf('from=invite') !== -1);
   assert.ok(!invite.stub);
 });
 
@@ -545,9 +546,9 @@ check('WeChat 2P room create / join / shareAppMessage roomId / sync after shot',
   assert.strictEqual(host.mySeat, 0);
   var invite = sessionMod.inviteRoom(host);
   assert.strictEqual(invite.kind, 'invite');
-  assert.strictEqual(invite.payload.query, 'roomId=' + made.roomId);
+  assert.strictEqual(invite.payload.query, 'roomId=' + made.roomId + '&from=invite');
   var composed = share.composeRoom(made.roomId);
-  assert.strictEqual(composed.query, 'roomId=' + made.roomId);
+  assert.strictEqual(composed.query, 'roomId=' + made.roomId + '&from=invite');
 
   var guest = sessionMod.create(viewport(), config, { skipSplash: true });
   var joined = sessionMod.joinRoom(guest, made.roomId);
@@ -945,6 +946,59 @@ check('practice mode has no clock, no turn switch, and no win headline', functio
   assert.strictEqual(s.mode, 'practice');
   assert.strictEqual(s.scores[0], 0);
   assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
+});
+
+check('invite share refuses an empty roomId and create-then-share keeps the code', function () {
+  var empty = share.shareRoom('');
+  assert.strictEqual(empty.ok, false);
+  assert.ok(!empty.query);
+  var s = fresh();
+  var invite = sessionMod.inviteRoom(s);
+  assert.strictEqual(invite.kind, 'invite');
+  assert.ok(s.room && s.room.roomId);
+  assert.ok(invite.payload.query.indexOf('roomId=' + s.room.roomId) !== -1);
+  assert.ok(invite.payload.query.indexOf('from=invite') !== -1);
+});
+
+check('launch query joins as guest without starting solo AI/practice', function () {
+  var host = sessionMod.create(viewport(), config);
+  host.displayName = '房主甲';
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config);
+  guest.displayName = '好友乙';
+  assert.strictEqual(guest.phase, fsm.PHASE.Splash);
+  var joined = sessionMod.enterInvite(guest, {
+    query: { roomId: host.room.roomId, from: 'invite' }
+  });
+  assert.strictEqual(joined.kind, 'join');
+  assert.strictEqual(guest.mode, 'room');
+  assert.strictEqual(guest.phase, fsm.PHASE.Aim);
+  assert.strictEqual(guest.mySeat, 1);
+  assert.strictEqual(guest.room.roomId, host.room.roomId);
+  assert.strictEqual(guest.localAi, false);
+  sessionMod.pullRoom(host);
+  assert.strictEqual(host.room.guestJoined, true);
+  assert.strictEqual(host.turn, 0);
+  assert.strictEqual(guest.turn, 0);
+  assert.ok(host.names[1].indexOf('好友') !== -1 || host.names[1].indexOf('乙') !== -1);
+  assert.ok(guest.names[0].indexOf('房主') !== -1 || guest.names[0].indexOf('甲') !== -1);
+  var waiting = sessionMod.create(viewport(), config);
+  waiting.pendingRoomId = host.room.roomId;
+  assert.strictEqual(hud.hitTest(waiting.ui, waiting.ui.aiSplash.x + 8, waiting.ui.aiSplash.y + 8, 'Splash', waiting), 'join-retry');
+});
+
+check('join failure stays on the invite and can retry', function () {
+  var guest = sessionMod.create(viewport(), config);
+  var fail = sessionMod.joinRoom(guest, 'ZZZZZZ');
+  assert.strictEqual(fail.kind, 'join-fail');
+  assert.strictEqual(guest.pendingRoomId, 'ZZZZZZ');
+  assert.strictEqual(guest.mode, 'room');
+  assert.strictEqual(guest.phase, fsm.PHASE.Splash);
+  assert.ok(guest.toast && guest.toast.text.indexOf('无效') !== -1);
+  assert.strictEqual(hud.hitTest(guest.ui, 180, 320, 'Splash', guest), 'join-retry');
+  var retry = sessionMod.handlePointerDown(guest, guest.ui.joinRetry.x + 8, guest.ui.joinRetry.y + 8);
+  assert.strictEqual(retry.kind, 'join-fail');
+  assert.notStrictEqual(guest.mode, 'ai');
 });
 
 check('AI timeout is local, keeps object balls, and hands the table to 简单AI', function () {
