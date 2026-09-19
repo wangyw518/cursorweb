@@ -51,7 +51,9 @@
     "cloudFn": "taiqiuRoom",
     "httpUrl": "",
     "displayName": "",
-    "guestDisplayName": ""
+    "guestDisplayName": "",
+    "shareQuery": "roomId=XXXXXX",
+    "sharePathExample": "?roomId=XXXXXX"
   },
   "colors": {
     "bg": "#14110C",

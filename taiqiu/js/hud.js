@@ -524,7 +524,7 @@
       ctx.font = '13px ' + FONT;
       ctx.fillStyle = colors.hud;
       ctx.fillText(
-        session.joinError ? '加入失败' : '正在加入房间',
+        session.joinError ? '加入失败' : '正在进入房间…',
         ui.splashCard.x + ui.splashCard.w * 0.5,
         ui.splashCard.y + 168
       );

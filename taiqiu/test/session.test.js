@@ -534,7 +534,7 @@ check('好友对局 creates a room and shareAppMessage carries roomId', function
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.ok(invite.payload.query.indexOf('roomId=') === 0);
-  assert.ok(invite.payload.query.indexOf('from=invite') !== -1);
+  assert.strictEqual(invite.payload.query, 'roomId=' + made.roomId);
   assert.ok(!invite.stub);
 });
 
@@ -546,9 +546,10 @@ check('WeChat 2P room create / join / shareAppMessage roomId / sync after shot',
   assert.strictEqual(host.mySeat, 0);
   var invite = sessionMod.inviteRoom(host);
   assert.strictEqual(invite.kind, 'invite');
-  assert.strictEqual(invite.payload.query, 'roomId=' + made.roomId + '&from=invite');
+  assert.strictEqual(invite.payload.query, 'roomId=' + made.roomId);
   var composed = share.composeRoom(made.roomId);
-  assert.strictEqual(composed.query, 'roomId=' + made.roomId + '&from=invite');
+  assert.strictEqual(composed.query, 'roomId=' + made.roomId);
+  assert.strictEqual(composed.path, '?roomId=' + made.roomId);
 
   var guest = sessionMod.create(viewport(), config, { skipSplash: true });
   var joined = sessionMod.joinRoom(guest, made.roomId);
@@ -957,7 +958,7 @@ check('invite share refuses an empty roomId and create-then-share keeps the code
   assert.strictEqual(invite.kind, 'invite');
   assert.ok(s.room && s.room.roomId);
   assert.ok(invite.payload.query.indexOf('roomId=' + s.room.roomId) !== -1);
-  assert.ok(invite.payload.query.indexOf('from=invite') !== -1);
+  assert.strictEqual(invite.payload.query, 'roomId=' + s.room.roomId);
 });
 
 check('launch query joins as guest without starting solo AI/practice', function () {
@@ -1017,7 +1018,7 @@ check('join failure stays on the invite and can retry', function () {
   assert.strictEqual(guest.pendingRoomId, 'ZZZZZZ');
   assert.strictEqual(guest.mode, 'room');
   assert.strictEqual(guest.phase, fsm.PHASE.Splash);
-  assert.ok(guest.toast && guest.toast.text.indexOf('不存在') !== -1);
+  assert.ok(guest.toast && guest.toast.text.indexOf('房间无效') !== -1);
   assert.strictEqual(hud.hitTest(guest.ui, 180, 320, 'Splash', guest), 'join-retry');
   var retry = sessionMod.handlePointerDown(guest, guest.ui.joinRetry.x + 8, guest.ui.joinRetry.y + 8);
   assert.strictEqual(retry.kind, 'join-fail');

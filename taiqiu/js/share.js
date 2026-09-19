@@ -76,6 +76,14 @@
     };
   }
 
+  function roomIdFromQuery(q) {
+    return roomIdOf(typeof q === 'string' ? parseQueryString(q) : q);
+  }
+
+  function roomIdFromLaunch(opts) {
+    return parseInvite(opts).roomId;
+  }
+
   function composeRoom(roomId) {
     var id = String(roomId || '').trim();
     if (!id) {
@@ -85,6 +93,7 @@
         kind: 'room',
         roomId: '',
         query: '',
+        path: '',
         reason: 'no-room-id',
         text: '来一局星券台球',
         disclaimer: DISCLAIMER
@@ -95,7 +104,8 @@
       title: '星券台球',
       kind: 'room',
       roomId: id,
-      query: 'roomId=' + encodeURIComponent(id) + '&from=invite',
+      query: 'roomId=' + id,
+      path: '?roomId=' + id,
       text: '来一局星券台球',
       disclaimer: DISCLAIMER
     };
@@ -129,6 +139,8 @@
     share: share,
     shareRoom: shareRoom,
     parseInvite: parseInvite,
-    parseQueryString: parseQueryString
+    parseQueryString: parseQueryString,
+    roomIdFromQuery: roomIdFromQuery,
+    roomIdFromLaunch: roomIdFromLaunch
   };
 });

@@ -167,6 +167,14 @@
     return next;
   }
 
+  function shareOf(roomId, share) {
+    if (share && share.query) return share;
+    if (storeMod && storeMod.shareFor && roomId) return storeMod.shareFor(roomId);
+    var id = String(roomId || '').trim();
+    if (!id) return share || null;
+    return { query: 'roomId=' + id, path: '?roomId=' + id };
+  }
+
   function decorateCreate(res) {
     if (!res || !res.ok) return res;
     return {
@@ -176,19 +184,23 @@
       role: 'host',
       seat: 0,
       token: res.token,
+      share: shareOf(res.roomId, res.share),
       state: decorateState(res.state)
     };
   }
 
   function decorateJoin(res) {
     if (!res || !res.ok) return res;
+    var role = res.role || (res.seat === 0 ? 'host' : 'guest');
+    var seat = res.seat != null ? res.seat : (role === 'host' ? 0 : 1);
     return {
       ok: true,
       action: 'join',
       roomId: res.roomId,
-      role: 'guest',
-      seat: 1,
+      role: role,
+      seat: seat,
       token: res.token,
+      share: shareOf(res.roomId, res.share),
       state: decorateState(res.state)
     };
   }

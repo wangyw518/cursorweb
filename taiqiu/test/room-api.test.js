@@ -585,7 +585,8 @@ runInviteHttp(function (err, result) {
     if (err) throw err;
     assert.ok(result.share.ok);
     assert.ok(result.share.query.indexOf('roomId=' + result.host.room.roomId) === 0);
-    assert.ok(result.share.query.indexOf('from=invite') !== -1);
+    assert.strictEqual(result.share.query, 'roomId=' + result.host.room.roomId);
+    assert.strictEqual(result.share.path, '?roomId=' + result.host.room.roomId);
     assert.strictEqual(result.guest.mode, 'room');
     assert.strictEqual(result.guest.phase, 'Aim');
     assert.strictEqual(result.guest.mySeat, 1);

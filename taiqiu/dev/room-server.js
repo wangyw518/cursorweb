@@ -55,7 +55,7 @@ function decorateCreate(res) {
 
 function decorateJoin(res) {
   if (!res || !res.ok) return res;
-  res.role = 'guest';
+  if (!res.role) res.role = res.seat === 0 ? 'host' : 'guest';
   return res;
 }
 
@@ -104,7 +104,7 @@ function createHandler(store) {
         send(res, 200, decorateCreate(store.dispatch('create', body)));
       });
     }
-    var join = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/join$/);
+    var join = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)\/join$/);
     if (req.method === 'POST' && join) {
       return readBody(req, function (body) {
         body = body || {};
@@ -112,7 +112,7 @@ function createHandler(store) {
         send(res, 200, decorateJoin(store.dispatch('join', body)));
       });
     }
-    var shot = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/shot$/);
+    var shot = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)\/shot$/);
     if (req.method === 'POST' && shot) {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
@@ -120,7 +120,7 @@ function createHandler(store) {
         send(res, 200, store.dispatch('shot', body));
       });
     }
-    var get = url.match(/^\/api\/rooms\/([A-Z0-9]+)$/);
+    var get = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)$/);
     if (req.method === 'GET' && get) {
       return send(res, 200, store.dispatch('state', { roomId: get[1] }));
     }

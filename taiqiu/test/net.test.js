@@ -58,7 +58,8 @@ check('room invite query carries roomId for shareAppMessage', function () {
   var payload = share.composeRoom('AB12CD');
   assert.strictEqual(payload.kind, 'room');
   assert.strictEqual(payload.ok, true);
-  assert.strictEqual(payload.query, 'roomId=AB12CD&from=invite');
+  assert.strictEqual(payload.query, 'roomId=AB12CD');
+  assert.strictEqual(payload.path, '?roomId=AB12CD');
   assert.ok(payload.text.indexOf('星券台球') !== -1);
   var empty = share.composeRoom('');
   assert.strictEqual(empty.ok, false);

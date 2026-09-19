@@ -73,6 +73,9 @@
     session.displayName = name;
     session.names = session.names || [seatFallback(0), seatFallback(1)];
     session.names[session.mySeat || 0] = name;
+    session.nicknames = session.nicknames || { host: session.names[0], guest: session.names[1] };
+    if ((session.mySeat || 0) === 1) session.nicknames.guest = name;
+    else session.nicknames.host = name;
     persist(session);
     return session;
   }
@@ -409,7 +412,11 @@
         state.nicknames.host || state.nicknames[0] || (session.names && session.names[0]) || '房主',
         state.nicknames.guest || state.nicknames[1] || (session.names && session.names[1]) || '好友'
       ];
-    } else if (state.names) session.names = state.names.slice();
+      session.nicknames = { host: session.names[0], guest: session.names[1] };
+    } else if (state.names) {
+      session.names = state.names.slice();
+      session.nicknames = { host: session.names[0], guest: session.names[1] };
+    }
     if (state.deadlineAt != null) session.aimDeadlineAt = state.deadlineAt;
     else if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
     if (state.winnerOpenId) session.winnerOpenId = state.winnerOpenId;
@@ -629,6 +636,11 @@
         (config.room && config.room.guestDisplayName) || seatFallback(1)
       ],
       displayName: saved.displayName || (config.room && config.room.displayName) || '',
+      nicknames: {
+        host: saved.displayName || (config.room && config.room.displayName) || seatFallback(0),
+        guest: (config.room && config.room.guestDisplayName) || seatFallback(1)
+      },
+      myOpenId: opts.openId || '',
       bgm: saved.bgm !== false && (config.bgm !== false),
       aimDeadlineAt: 0,
       aimSeq: 0,
@@ -646,6 +658,8 @@
       inviteAfterCreate: false
     };
     resetRound(session);
+    if (opts.openId) session.myOpenId = opts.openId;
+    if (opts.nick) applyLocalName(session, opts.nick);
     fetchNick(session);
     if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
     session.update = function (dt) { update(session, dt); };
@@ -1205,9 +1219,10 @@
     session.role = 'host';
     session.room = {
       roomId: made.roomId,
-      guestJoined: false,
+      guestJoined: !!(made.state && made.state.guestJoined),
       token: made.token,
       role: 'host',
+      share: made.share || null,
       lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0,
       aimSeq: made.state && made.state.aimSeq != null ? made.state.aimSeq : 0
     };
@@ -1222,8 +1237,13 @@
           made.state.nicknames.host || session.names[0],
           made.state.nicknames.guest || session.names[1]
         ];
+        session.nicknames = {
+          host: session.names[0],
+          guest: session.names[1]
+        };
       }
     }
+    session.nicknames = session.nicknames || { host: session.names[0], guest: session.names[1] };
     applyLocalName(session, session.displayName || session.names[0]);
     session.roomPanel = {
       roomId: made.roomId,
@@ -1308,17 +1328,30 @@
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     fetchNick(session);
     if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
+    session.nicknames = session.nicknames || {
+      host: (session.names && session.names[0]) || seatFallback(0),
+      guest: (session.names && session.names[1]) || seatFallback(1)
+    };
     applyLocalName(session, session.displayName || seatFallback(1));
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
   }
 
   function joinFailHint(reason) {
-    if (reason === 'missing' || reason === 'expired' || reason === 'bad-json') return '房间不存在或已过期';
+    if (reason === 'missing' || reason === 'not_found' || reason === 'expired' || reason === 'bad-json') {
+      return '房间无效';
+    }
     if (reason === 'full') return '房间已满';
-    if (reason === 'http-fail' || reason === 'network') return '加入失败：网络或域名不可达';
-    if (reason === 'cloud-fail') return '加入失败：云函数不可用';
-    if (reason === 'no-room-api-base') return '加入失败：未配置房间服';
+    if (reason === 'ended') return '房间已结束';
+    if (
+      reason === 'unreachable' ||
+      reason === 'http-fail' ||
+      reason === 'network' ||
+      reason === 'cloud-fail' ||
+      reason === 'no-room-api-base'
+    ) {
+      return '服务器连不上';
+    }
     return '加入失败';
   }
 
@@ -1360,6 +1393,7 @@
     session.mode = 'room';
     session.localAi = false;
     session._joinInFlight = roomId;
+    session.toast = { text: '正在进入房间…', life: 1.6 };
     fetchNick(session);
     var payload = {
       roomId: roomId,
@@ -1372,6 +1406,11 @@
       if (session._joinInFlight === roomId) session._joinInFlight = '';
       if (res && res.ok) {
         session.joinError = null;
+        if (res.role === 'host' || res.seat === 0) {
+          attachHostRoom(session, res);
+          session.pendingRoomId = '';
+          return;
+        }
         attachGuestRoom(session, res, roomId);
         return;
       }
@@ -1381,10 +1420,15 @@
     if (joined && joined.ok && !joined.pending) {
       session._joinInFlight = '';
       session.joinError = null;
+      if (joined.role === 'host' || joined.seat === 0) {
+        attachHostRoom(session, joined);
+        session.pendingRoomId = '';
+        return { kind: 'join', roomId: joined.roomId, seat: 0 };
+      }
       return attachGuestRoom(session, joined, payload.roomId);
     }
     if (joined && joined.pending) {
-      session.toast = { text: '正在加入…', life: 1.6 };
+      session.toast = { text: '正在进入房间…', life: 1.6 };
       return { kind: 'join-pending', roomId: roomId };
     }
     return markJoinFail(session, roomId, joined && joined.reason);
@@ -1601,7 +1645,7 @@
 
   function startAi(session) {
     if (session.pendingRoomId && !session.joinError) {
-      session.toast = { text: '正在加入房间…', life: 1.4 };
+      session.toast = { text: '正在进入房间…', life: 1.4 };
       return { kind: 'join-pending', roomId: session.pendingRoomId };
     }
     session.mode = 'ai';
@@ -1638,7 +1682,7 @@
 
   function startPractice(session) {
     if (session.pendingRoomId && !session.joinError) {
-      session.toast = { text: '正在加入房间…', life: 1.4 };
+      session.toast = { text: '正在进入房间…', life: 1.4 };
       return { kind: 'join-pending', roomId: session.pendingRoomId };
     }
     session.mode = 'practice';
