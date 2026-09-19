@@ -44,7 +44,7 @@
       room: slot(1, '邀请好友'),
       lobby: Object.assign(slot(2, '返回大厅'), { outline: true }),
       rerack: slot(3, '新开一局'),
-      bgm: Object.assign(slot(0, '音乐'), { w: Math.min(footerW, 72) }),
+      bgm: Object.assign(slot(0, '音乐'), { w: Math.max(44, Math.min(footerW, 72)), h: 44 }),
       hint: { x: viewport.width - pad, y: playTop + 10 },
       turn: { x: cx, y: top + 68 },
       clock: { x: viewport.width - pad, y: top + 36 },
@@ -160,7 +160,9 @@
     if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
     var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing' && !session.remoteReplay;
     if (rem) return '对方瞄准中';
-    if ((session.remoteReplay || session.remoteBusy === 'firing') && !mine) return '对方出杆中';
+    if ((session.remoteReplay || session.remoteBusy === 'firing' || session.phase === 'Shot') && !mine) {
+      return '对方击球中';
+    }
     return mine ? '轮到你出杆' : '对方出杆';
   }
 
@@ -195,6 +197,22 @@
     return String(room.displayName || '').trim();
   }
 
+  function openIdTail(openId) {
+    var s = String(openId || '').replace(/^.*:/, '');
+    if (!s) return '';
+    return s.length <= 4 ? s : s.slice(-4);
+  }
+
+  function seatOpenId(session, seat) {
+    var room = session && session.room;
+    if (room) {
+      if (seat === 1) return room.guestOpenId || (room.openIds && room.openIds[1]) || '';
+      return room.hostOpenId || (room.openIds && room.openIds[0]) || '';
+    }
+    if (session && (session.mySeat || 0) === seat) return session.myOpenId || '';
+    return '';
+  }
+
   function isOwnSeat(session, seat) {
     return !session || session.mySeat == null || session.mySeat === seat;
   }
@@ -207,9 +225,10 @@
     if (isGenericRoleName(raw)) {
       if (mine) {
         raw = (session && session.displayName) || configuredName(session, seat) || '';
+        if (isGenericRoleName(raw)) raw = openIdTail(seatOpenId(session, seat) || session.myOpenId);
         if (isGenericRoleName(raw)) raw = isAiMode(session) ? '玩家' : '我';
       } else {
-        raw = configuredName(session, seat) || '';
+        raw = configuredName(session, seat) || openIdTail(seatOpenId(session, seat)) || '';
         if (isGenericRoleName(raw)) raw = '对方';
       }
     }
@@ -720,6 +739,7 @@
     settleOutcome: settleOutcome,
     nameOf: nameOf,
     chipLabel: chipLabel,
+    openIdTail: openIdTail,
     isGenericRoleName: isGenericRoleName,
     isOwnSeat: isOwnSeat,
     liveTarget: liveTarget,

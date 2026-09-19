@@ -234,6 +234,7 @@ check('音乐 button sits in the footer clear of the top-right WeChat capsule', 
   assert.ok(ui.bgm);
   assert.ok(ui.bgm.y > v.height * 0.55, 'music must leave the WeChat capsule band');
   assert.ok(ui.bgm.x + ui.bgm.w < capsule.x || ui.bgm.y > capsule.y + capsule.h);
+  assert.ok(ui.bgm.w >= 44 && ui.bgm.h >= 44, 'music hit target >= 44px');
   assert.strictEqual(hud.hitTest(ui, ui.bgm.x + 8, ui.bgm.y + 8, 'Aim'), 'bgm');
 });
 
@@ -814,6 +815,24 @@ check('versus HUD names fall back to 我/对方 and never 房主/好友 or P1/P2
   s.mySeat = 0;
   s.names = ['房主', '好友'];
   s.displayName = '';
+  s.myOpenId = '';
+  if (s.room) {
+    s.room.hostOpenId = '';
+    s.room.guestOpenId = '';
+    s.room.openIds = ['', ''];
+  }
+  assert.strictEqual(hud.nameOf(s, 0), '我');
+  assert.strictEqual(hud.nameOf(s, 1), '对方');
+  s.myOpenId = 'wxopenidABCDEF';
+  s.room = s.room || {};
+  s.room.hostOpenId = 'wxopenidABCDEF';
+  s.room.guestOpenId = 'guest9876';
+  assert.strictEqual(hud.nameOf(s, 0), 'CDEF');
+  assert.strictEqual(hud.nameOf(s, 1), '9876');
+  s.myOpenId = '';
+  s.room.hostOpenId = '';
+  s.room.guestOpenId = '';
+  s.room.openIds = ['', ''];
   assert.strictEqual(hud.nameOf(s, 0), '我');
   assert.strictEqual(hud.nameOf(s, 1), '对方');
   assert.ok(hud.chipLabel(s, 0).indexOf('你') !== -1);
@@ -1415,7 +1434,7 @@ check('2P spectator interpolates aim and locally replays the shot', function () 
   assert.strictEqual(guest.phase, fsm.PHASE.Shot);
   assert.ok(Math.hypot(balls.cueBall(guest.balls).vx, balls.cueBall(guest.balls).vy) > 1);
   assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - oneX) < 0.01, 'object balls stay until contact');
-  assert.ok(hud.turnLabel(guest).indexOf('出杆') !== -1);
+  assert.ok(hud.turnLabel(guest).indexOf('对方击球中') !== -1);
 
   sessionMod.update(guest, config.fixedDt);
   sessionMod.update(guest, config.fixedDt);

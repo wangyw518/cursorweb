@@ -272,6 +272,44 @@ check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
   assert.ok(Math.abs(fire.state.impulse.power - 0.9) < 1e-6);
 });
 
+check('POST /room/shot rolling stores angle/power/spin and settle reuses shotSeq', function () {
+  var store = storeMod.createStore();
+  var made = store.create();
+  store.join(made.roomId);
+  var roll = store.shot(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    shotSeq: 1,
+    angle: 0.55,
+    power: 0.8,
+    spin: 0.1,
+    phase: 'rolling',
+    reason: 'rolling',
+    events: []
+  });
+  assert.strictEqual(roll.ok, true);
+  assert.strictEqual(roll.state.phase, 'rolling');
+  assert.strictEqual(roll.state.shotSeq, 1);
+  assert.strictEqual(roll.state.turn, 0);
+  assert.ok(Math.abs(roll.state.angle - 0.55) < 1e-6);
+  assert.ok(Math.abs(roll.state.power - 0.8) < 1e-6);
+  assert.ok(roll.state.impulse && roll.state.impulse.kind === 'firing');
+  var settle = store.shot(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    shotSeq: 1,
+    angle: 0.55,
+    power: 0.8,
+    reason: 'miss',
+    events: [{ type: 'miss' }],
+    ballsSnapshot: [{ id: 'cue', n: 0, nx: 0.4, ny: 0.6, pocketed: false }]
+  });
+  assert.strictEqual(settle.ok, true);
+  assert.strictEqual(settle.state.shotSeq, 1);
+  assert.strictEqual(settle.state.turn, 1);
+  assert.strictEqual(settle.state.phase, 'Aim');
+});
+
 check('aim kind=name updates nicknames without requiring the turn', function () {
   var store = storeMod.createStore();
   var made = store.create({ nick: '房主甲', openId: 'h-1' });

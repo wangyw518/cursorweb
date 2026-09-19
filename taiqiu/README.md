@@ -60,8 +60,8 @@ Rewards are virtual **星币** only.
 ## 真机验收（PR #14 体验四条）
 
 1. **顶栏身份** — 双方开房后顶栏应是昵称，自己一侧有「你」或高亮，对方是对方昵称。把 `js/config.json` → `room.displayName` 设成超过 6 字的名字可在开发者工具确认截断。禁止只看到「房主 / 好友」。
-2. **对端观战** — A 拉杆时 B 的虚线应连续跟上（不要一跳一跳）。A 出杆后 B 必须看到击球反馈和滚球，不能只有最终静帧。Aim 期间 B 的非白球坐标不被同步改写；停球后整桌与权威结果对齐。可短暂显示「对方出杆中」。
-3. **音乐** — 底栏左侧「音乐 / 音乐关」，避开微信右上角胶囊，真机可点。
+2. **对端观战** — A 拉杆时 B 的虚线应连续跟上（`/aim` ≤100ms + 本地插值）。A 出杆后 `POST /room/shot {shotSeq, angle, power, spin?}` 进入 `phase=rolling`，B 用同一 impulse 本地 `Cue.strike` 看完整滚球，HUD「对方击球中」；停稳后软对齐权威桌，不能只有最终静帧。
+3. **音乐** — 底栏左侧「音乐 / 音乐关」，命中区域 ≥44px，避开微信右上角胶囊，开屏和局内都可点。
 4. **瞄准3D** — 按钮已隐藏。不要再出现可点但无效的「瞄准3D」。
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.

@@ -313,13 +313,24 @@
       ay = Math.sin(ang);
     }
     var power = raw.power;
-    if (!(power > 0.03) || ax == null || ay == null) return null;
+    if (!(power > 0.03) || ax == null || ay == null) {
+      if ((src.phase === 'rolling' || src.phase === 'Shot') && src.power > 0.03) {
+        raw = src;
+        ang = src.angle != null ? src.angle : src.aimAngle;
+        power = src.power;
+        ax = src.ax != null ? src.ax : (ang != null ? Math.cos(ang) : null);
+        ay = src.ay != null ? src.ay : (ang != null ? Math.sin(ang) : null);
+      }
+      if (!(power > 0.03) || ax == null || ay == null) return null;
+    }
     return {
       angle: ang != null ? ang : Math.atan2(ay, ax),
       ax: ax,
       ay: ay,
       power: power,
-      fromSeat: raw.fromSeat != null ? raw.fromSeat : src.fromSeat
+      spin: raw.spin || src.spin || 0,
+      fromSeat: raw.fromSeat != null ? raw.fromSeat : src.fromSeat,
+      shotSeq: raw.shotSeq != null ? raw.shotSeq : src.shotSeq
     };
   }
 
@@ -725,10 +736,13 @@
     var snap = roomApi.snapshotBalls(session.balls, felt);
     var seat = fromSeat != null ? fromSeat : session.mySeat;
     var last = session.lastShotInput || {};
-    var shotSeq = ((session.room && (session.room.lastSeq || 0)) || 0) + 1;
+    var shotSeq = session.pendingShotSeq != null
+      ? session.pendingShotSeq
+      : (((session.room && (session.room.lastSeq || 0)) || 0) + 1);
     return {
       roomId: session.room ? session.room.roomId : null,
       shotSeq: shotSeq,
+      angle: last.aimAngle,
       aimAngle: last.aimAngle,
       power: last.power,
       ax: last.ax,
@@ -959,6 +973,7 @@
   function pushRoom(session, reason, fromSeat) {
     if (!shouldSubmitShot(session, fromSeat)) return null;
     return roomApi.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
+      session.pendingShotSeq = null;
       if (res && res.ok && res.state) ingestState(session, res);
     });
   }
@@ -2171,11 +2186,39 @@
     pushAim(session, {
       kind: 'firing',
       aimAngle: struck.angle,
+      angle: struck.angle,
       power: struck.power,
+      spin: shot.spin || 0,
       ax: struck.ax,
       ay: struck.ay,
       preview: null
     });
+    if (!opts.skipPush && opts.kind !== 'spectate' && session.room && session.room.roomId && !isLocalAi(session)) {
+      var rollSeq = ((session.room.lastSeq || 0) + 1);
+      session.pendingShotSeq = rollSeq;
+      roomApi.shot(session.room.roomId, {
+        roomId: session.room.roomId,
+        shotSeq: rollSeq,
+        angle: struck.angle,
+        aimAngle: struck.angle,
+        power: struck.power,
+        spin: shot.spin || 0,
+        ax: struck.ax,
+        ay: struck.ay,
+        phase: 'rolling',
+        reason: 'rolling',
+        fromSeat: session.mySeat,
+        role: session.mySeat === 1 ? 'guest' : 'host',
+        token: session.room.token,
+        openId: session.myOpenId || '',
+        events: []
+      }, function (res) {
+        if (res && res.ok && res.state && res.state.shotSeq != null && session.room) {
+          session.room.lastSeq = res.state.shotSeq;
+          session.pendingShotSeq = res.state.shotSeq;
+        }
+      });
+    }
     if (sfx && sfx.cue) sfx.cue();
     if (opts.kind === 'ai' && !isLocalAi(session)) {
       session.toast = { text: '弱AI试杆', life: 1.0 };
