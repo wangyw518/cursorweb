@@ -560,11 +560,14 @@ check('in-game 返回大厅 clears AI/practice and splash 好友对局 can invit
   assert.strictEqual(s.mode, '');
   assert.strictEqual(s.localAi, false);
   assert.strictEqual(s.room, null);
+  assert.ok(s.names[1].indexOf('AI') === -1);
 
   var made = sessionMod.handlePointerDown(s, s.ui.roomSplash.x + 8, s.ui.roomSplash.y + 8);
   assert.ok(made.kind === 'room' || made.kind === 'room-pending');
   assert.ok(s.room && s.room.roomId);
   assert.strictEqual(s.mode, 'room');
+  assert.ok(s.names[1].indexOf('AI') === -1);
+  assert.ok(s.names[1].indexOf('好友') !== -1 || s.names[1] === '好友');
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.strictEqual(invite.payload.query, 'roomId=' + s.room.roomId);

@@ -1338,6 +1338,10 @@
       }
     }
     session.nicknames = session.nicknames || { host: session.names[0], guest: session.names[1] };
+    if (session.names && session.names[1] === aiLabel(session)) {
+      session.names[1] = seatFallback(1);
+      session.nicknames.guest = seatFallback(1);
+    }
     applyLocalName(session, session.displayName || session.names[0]);
     session.roomPanel = {
       roomId: made.roomId,
@@ -1364,6 +1368,11 @@
       return { kind: 'room', roomId: session.room.roomId, existing: true };
     }
     var felt = session.table && session.table.felt;
+    if (session.names && session.names[1] === aiLabel(session)) {
+      session.names[1] = seatFallback(1);
+      session.nicknames = session.nicknames || {};
+      session.nicknames.guest = seatFallback(1);
+    }
     fetchNick(session);
     var made = roomApi.create({
       balls: roomApi.snapshotBalls(session.balls, felt),
@@ -1623,6 +1632,12 @@
     session._joinInFlight = '';
     session.banner = null;
     session.pressed = null;
+    session.names = [
+      session.displayName || seatFallback(0),
+      seatFallback(1)
+    ];
+    session.nicknames = { host: session.names[0], guest: session.names[1] };
+    resetMatchScores(session);
     session.phase = fsm.PHASE.Splash;
     session.toast = { text: '已回大厅', life: 1.2 };
     return { kind: kind || 'lobby' };
