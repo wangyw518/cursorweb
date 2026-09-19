@@ -46,9 +46,16 @@ function run(port, closeFn) {
       throw new Error('create did not return roomId: ' + JSON.stringify(created));
     }
     var shareQuery = created.share && created.share.query;
+    var sharePath = created.share && created.share.path;
+    if (!shareQuery || shareQuery !== 'roomId=' + created.roomId) {
+      throw new Error('create.share.query must be roomId=' + created.roomId + ' got ' + shareQuery);
+    }
+    if (sharePath !== '?roomId=' + created.roomId) {
+      throw new Error('create.share.path must be ?roomId=' + created.roomId + ' got ' + sharePath);
+    }
     console.log('CREATE ok roomId=' + created.roomId);
     console.log('  share.query=' + shareQuery);
-    console.log('  share.path=' + (created.share && created.share.path));
+    console.log('  share.path=' + sharePath);
     console.log('  preview: ?roomId=' + created.roomId + '&api=http://127.0.0.1:' + port);
     httpJson(port, 'POST', '/room/join', {
       roomId: created.roomId,

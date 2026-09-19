@@ -281,6 +281,13 @@
       var fromSeat = payload.fromSeat;
       if (fromSeat !== 0 && fromSeat !== 1) fromSeat = seatOfRole(payload.role, null);
       if (fromSeat !== 0 && fromSeat !== 1) {
+        var shotOpenId = payload.openId || payload.openid || '';
+        if (shotOpenId && state.hostOpenId && shotOpenId === state.hostOpenId) fromSeat = 0;
+        else if (shotOpenId && state.guestOpenId && shotOpenId === state.guestOpenId) fromSeat = 1;
+        else if (shotOpenId && state.openIds && shotOpenId === state.openIds[0]) fromSeat = 0;
+        else if (shotOpenId && state.openIds && shotOpenId === state.openIds[1]) fromSeat = 1;
+      }
+      if (fromSeat !== 0 && fromSeat !== 1) {
         return { ok: false, action: 'shot', reason: 'bad-seat', roomId: roomId };
       }
       var reason = reasonFromEvents(payload.events, payload.reason);
@@ -374,6 +381,13 @@
       if (!state) return { ok: false, action: 'aim', reason: 'missing', roomId: roomId };
       var fromSeat = payload.fromSeat;
       if (fromSeat !== 0 && fromSeat !== 1) fromSeat = seatOfRole(payload.role, null);
+      if (fromSeat !== 0 && fromSeat !== 1) {
+        var aimOpenId = payload.openId || payload.openid || '';
+        if (aimOpenId && state.hostOpenId && aimOpenId === state.hostOpenId) fromSeat = 0;
+        else if (aimOpenId && state.guestOpenId && aimOpenId === state.guestOpenId) fromSeat = 1;
+        else if (aimOpenId && state.openIds && aimOpenId === state.openIds[0]) fromSeat = 0;
+        else if (aimOpenId && state.openIds && aimOpenId === state.openIds[1]) fromSeat = 1;
+      }
       if (fromSeat !== 0 && fromSeat !== 1) {
         return { ok: false, action: 'aim', reason: 'bad-seat', roomId: roomId };
       }
