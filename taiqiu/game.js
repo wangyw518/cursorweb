@@ -36,6 +36,16 @@
     return g.TaiqiuRoomApi || g.TaiqiuNet;
   }
 
+  function loadShare() {
+    if (typeof require === 'function') {
+      try {
+        return require('./js/share');
+      } catch (err) {}
+    }
+    var g = typeof globalThis !== 'undefined' ? globalThis : window;
+    return g.TaiqiuShare;
+  }
+
   function getViewport() {
     var info = wx.getSystemInfoSync();
     var safe = info.safeArea || {};
@@ -66,8 +76,16 @@
     var config = loadConfig();
     var sessionMod = loadSession();
     var roomApi = loadRoomApi();
+    var share = loadShare();
     if (roomApi && config.room) {
       roomApi.configure(config.room);
+    }
+    if (typeof wx !== 'undefined' && wx.cloud && wx.cloud.init) {
+      try {
+        var env = config.room && config.room.cloudEnv;
+        if (env) wx.cloud.init({ env: env, traceUser: true });
+        else wx.cloud.init({ traceUser: true });
+      } catch (err) {}
     }
     var canvas = wx.createCanvas();
     var ctx = canvas.getContext('2d');
@@ -133,35 +151,54 @@
       });
     }
 
-    function parseQuery(raw) {
-      if (!raw) return {};
-      if (typeof raw === 'object') return raw;
-      var out = {};
-      String(raw).split('&').forEach(function (part) {
-        var kv = part.split('=');
-        if (!kv[0]) return;
-        var key = decodeURIComponent(kv[0]);
-        var val = decodeURIComponent(kv[1] || '');
-        out[key] = val;
-      });
-      return out;
+    function roomIdFromOpts(opts) {
+      if (share && share.roomIdFromLaunch) return share.roomIdFromLaunch(opts);
+      if (!opts) return '';
+      var q = opts.query != null ? opts.query : opts;
+      if (typeof q === 'string') {
+        var match = /(?:^|[?&])roomId=([^&]+)/i.exec(q);
+        return match ? decodeURIComponent(match[1]) : '';
+      }
+      return (q && (q.roomId || q.roomid)) || '';
     }
 
     function maybeJoin(opts) {
-      var q = parseQuery(opts && (opts.query != null ? opts.query : opts));
-      if (!q.roomId) return;
-      if (session.room && session.room.roomId === q.roomId) {
+      var id = roomIdFromOpts(opts);
+      if (!id) return;
+      if (session.room && session.room.roomId &&
+          String(session.room.roomId).toUpperCase() === String(id).toUpperCase()) {
         sessionMod.pullRoom(session);
         return;
       }
-      sessionMod.joinRoom(session, q.roomId);
+      if (session.joiningRoomId &&
+          String(session.joiningRoomId).toUpperCase() === String(id).toUpperCase()) {
+        return;
+      }
+      sessionMod.joinRoom(session, id);
     }
 
+    if (typeof wx.onLaunch === 'function') {
+      wx.onLaunch(maybeJoin);
+    }
     if (typeof wx.getLaunchOptionsSync === 'function') {
       try { maybeJoin(wx.getLaunchOptionsSync()); } catch (err) {}
     }
+    if (typeof wx.getEnterOptionsSync === 'function') {
+      try { maybeJoin(wx.getEnterOptionsSync()); } catch (err) {}
+    }
     if (typeof wx.onShow === 'function') {
       wx.onShow(maybeJoin);
+    }
+    if (typeof wx.showShareMenu === 'function') {
+      try { wx.showShareMenu({ withShareTicket: true, menus: ['shareAppMessage'] }); } catch (err) {}
+    }
+    if (typeof wx.onShareAppMessage === 'function') {
+      wx.onShareAppMessage(function () {
+        var roomId = session.room && session.room.roomId;
+        if (roomId && share && share.composeRoom) return share.composeRoom(roomId);
+        if (share && share.compose) return share.compose(session.settle, session.best);
+        return { title: '星券台球', query: roomId ? ('roomId=' + roomId) : '' };
+      });
     }
 
     var g = typeof globalThis !== 'undefined' ? globalThis : window;

@@ -426,19 +426,26 @@ function runHttp(cb) {
                       started.server.close();
                       return cb(err8);
                     }
-                    runP0Http(started, function (err9, p0) {
-                      started.server.close();
-                      if (err9) return cb(err9);
-                      cb(null, {
-                        created: created,
-                        joined: joined,
-                        shot: shot,
-                        state: state,
-                        created2: created2,
-                        joined2: joined2,
-                        shot2: shot2,
-                        state2: state2,
-                        p0: p0
+                    httpJson(port, 'POST', '/room/join', { roomId: 'NOPE12' }, function (errMissing, missingJoin) {
+                      if (errMissing) {
+                        started.server.close();
+                        return cb(errMissing);
+                      }
+                      runP0Http(started, function (err9, p0) {
+                        started.server.close();
+                        if (err9) return cb(err9);
+                        cb(null, {
+                          created: created,
+                          joined: joined,
+                          shot: shot,
+                          state: state,
+                          created2: created2,
+                          joined2: joined2,
+                          shot2: shot2,
+                          state2: state2,
+                          missingJoin: missingJoin,
+                          p0: p0
+                        });
                       });
                     });
                   });
@@ -464,10 +471,15 @@ runHttp(function (err, result) {
     assert.strictEqual(result.state.state.turn, 1);
     console.log('ok  HTTP create / join / shot / state poll');
     assert.strictEqual(result.created2.role, 'host');
+    assert.ok(result.created2.share);
+    assert.strictEqual(result.created2.share.query, 'roomId=' + result.created2.roomId);
+    assert.strictEqual(result.created2.share.path, '?roomId=' + result.created2.roomId);
     assert.strictEqual(result.joined2.role, 'guest');
     assert.strictEqual(result.shot2.state.turn, 1);
     assert.strictEqual(result.shot2.state.ballsSnapshot[0].nx, 0.22);
     assert.strictEqual(result.state2.state.turn, 1);
+    assert.strictEqual(result.missingJoin.ok, false);
+    assert.strictEqual(result.missingJoin.reason, 'missing');
     console.log('ok  HTTP POST /room/create|/join|/shot and GET /room/state');
     var p0 = result.p0;
     assert.ok(p0.created.deadlineAt);
