@@ -489,17 +489,29 @@ check('firing enters Shot then returns to Aim without reracking', function () {
     Math.hypot(cueBall.x - s.table.felt.cx, cueBall.y - s.table.kitchenY) > 2);
 });
 
-check('splash shows disclaimer then default tap starts local AI', function () {
+check('splash shows three mode entries and blank tap stays on splash', function () {
   storage.resetMemory();
   var s = sessionMod.create(viewport(), config);
   assert.strictEqual(s.phase, fsm.PHASE.Splash);
   assert.strictEqual(s.ui.aiSplash.label, '人机对战');
   assert.strictEqual(s.ui.practice.label, '练习模式');
+  assert.strictEqual(s.ui.roomSplash.label, '好友对局');
   assert.ok(s.ui.aiSplash.x + s.ui.aiSplash.w <= s.ui.practice.x, '人机对战 and 练习模式 sit side by side');
   assert.strictEqual(s.ui.aiSplash.y, s.ui.practice.y);
+  assert.ok(s.ui.roomSplash.y >= s.ui.aiSplash.y + s.ui.aiSplash.h, '好友对局 sits immediately below');
+  assert.ok(s.ui.roomSplash.w >= s.ui.aiSplash.w, '好友对局 is at least as wide as 人机对战');
+  assert.ok(s.ui.roomSplash.h >= s.ui.aiSplash.h, '好友对局 is at least as tall as 人机对战');
   assert.strictEqual(hud.hitTest(s.ui, s.ui.aiSplash.x + 8, s.ui.aiSplash.y + 8, 'Splash', s), 'start-ai');
   assert.strictEqual(hud.hitTest(s.ui, s.ui.practice.x + 8, s.ui.practice.y + 8, 'Splash', s), 'practice');
-  var res = sessionMod.handlePointerDown(s, 180, 320);
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.roomSplash.x + 8, s.ui.roomSplash.y + 8, 'Splash', s), 'room');
+  var gapX = s.ui.aiSplash.x + s.ui.aiSplash.w + 4;
+  var gapY = s.ui.aiSplash.y + 8;
+  assert.strictEqual(hud.hitTest(s.ui, gapX, gapY, 'Splash', s), null);
+  var idle = sessionMod.handlePointerDown(s, 20, 20);
+  assert.strictEqual(idle.kind, 'splash-idle');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.notStrictEqual(s.mode, 'ai');
+  var res = sessionMod.handlePointerDown(s, s.ui.aiSplash.x + 8, s.ui.aiSplash.y + 8);
   assert.strictEqual(res.kind, 'start-ai');
   assert.strictEqual(s.phase, fsm.PHASE.Aim);
   assert.strictEqual(s.mode, 'ai');
@@ -518,9 +530,66 @@ check('share stub is score-only and has no cash copy', function () {
   });
 });
 
+check('in-game 返回大厅 clears AI/practice and splash 好友对局 can invite', function () {
+  storage.resetMemory();
+  net.resetMemory();
+  var s = sessionMod.create(viewport(), config);
+  var splash = mockCtx();
+  hud.drawSplash(splash, s);
+  var splashBlob = splash._log.texts.join('|');
+  assert.ok(splashBlob.indexOf('人机对战') !== -1);
+  assert.ok(splashBlob.indexOf('练习模式') !== -1);
+  assert.ok(splashBlob.indexOf('好友对局') !== -1);
+
+  sessionMod.handlePointerDown(s, s.ui.aiSplash.x + 8, s.ui.aiSplash.y + 8);
+  assert.strictEqual(s.mode, 'ai');
+  assert.strictEqual(hud.showsRoomChrome(s), false);
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.room.x + 8, s.ui.room.y + 8, 'Aim', s), 'room-blocked');
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, s);
+  var chromeBlob = chrome._log.texts.join('|');
+  assert.ok(chromeBlob.indexOf('返回大厅') !== -1);
+  assert.ok(chromeBlob.indexOf('邀请好友') === -1);
+  var skipped = sessionMod.handlePointerDown(s, s.ui.room.x + 8, s.ui.room.y + 8);
+  assert.strictEqual(skipped.kind, 'room-skip');
+  assert.ok(s.toast && s.toast.text.indexOf('请回大厅选好友对局') !== -1);
+
+  var lobby = sessionMod.handlePointerDown(s, s.ui.lobby.x + 8, s.ui.lobby.y + 8);
+  assert.strictEqual(lobby.kind, 'lobby');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.strictEqual(s.mode, '');
+  assert.strictEqual(s.localAi, false);
+  assert.strictEqual(s.room, null);
+
+  var made = sessionMod.handlePointerDown(s, s.ui.roomSplash.x + 8, s.ui.roomSplash.y + 8);
+  assert.ok(made.kind === 'room' || made.kind === 'room-pending');
+  assert.ok(s.room && s.room.roomId);
+  assert.strictEqual(s.mode, 'room');
+  var invite = sessionMod.inviteRoom(s);
+  assert.strictEqual(invite.kind, 'invite');
+  assert.strictEqual(invite.payload.query, 'roomId=' + s.room.roomId);
+
+  var roomChrome = mockCtx();
+  hud.drawChrome(roomChrome, s);
+  var roomBlob = roomChrome._log.texts.join('|');
+  assert.ok(roomBlob.indexOf('邀请好友') !== -1);
+  assert.ok(roomBlob.indexOf('返回大厅') !== -1);
+
+  sessionMod.backToLobby(s);
+  sessionMod.handlePointerDown(s, s.ui.practice.x + 8, s.ui.practice.y + 8);
+  assert.strictEqual(s.mode, 'practice');
+  var practiceChrome = mockCtx();
+  hud.drawChrome(practiceChrome, s);
+  assert.ok(practiceChrome._log.texts.join('|').indexOf('返回大厅') !== -1);
+  var fromPractice = sessionMod.handlePointerDown(s, s.ui.lobby.x + 8, s.ui.lobby.y + 8);
+  assert.strictEqual(fromPractice.kind, 'lobby');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.strictEqual(s.mode, '');
+});
+
 check('好友对局 creates a room and shareAppMessage carries roomId', function () {
   var s = fresh();
-  assert.strictEqual(s.ui.room.label, '好友对局');
+  assert.strictEqual(s.ui.room.label, '邀请好友');
   assert.strictEqual(s.ui.roomSplash.label, '好友对局');
   var made = sessionMod.createRoom(s);
   assert.ok(made.roomId);
@@ -867,10 +936,12 @@ check('local AI settle is 你赢了/你输了 with both 星币 and no room', fun
   assert.ok(chromeBlob.indexOf('轮到你') !== -1);
   assert.ok(chromeBlob.indexOf('好友') === -1);
   assert.ok(chromeBlob.indexOf('练习') === -1);
+  assert.ok(chromeBlob.indexOf('返回大厅') !== -1);
   assert.ok(hud.remainSec(s) >= 15);
-  assert.strictEqual(hud.hitTest(s.ui, s.ui.room.x + 8, s.ui.room.y + 8, 'Aim', s), null);
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.room.x + 8, s.ui.room.y + 8, 'Aim', s), 'room-blocked');
   var skipped = sessionMod.createRoom(s);
   assert.strictEqual(skipped.kind, 'room-skip');
+  assert.ok(s.toast && s.toast.text.indexOf('请回大厅选好友对局') !== -1);
   assert.strictEqual(s.room, null);
 
   var win = sessionMod.debugForceStop(s, { pocketNine: true, firstContact: true });
@@ -903,6 +974,8 @@ check('local AI settle is 你赢了/你输了 with both 星币 and no room', fun
   var back = sessionMod.handlePointerDown(s, s.ui.back.x + 8, s.ui.back.y + 8);
   assert.strictEqual(back.kind, 'back');
   assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.strictEqual(s.mode, '');
+  assert.strictEqual(s.localAi, false);
 });
 
 check('practice mode has no clock, no turn switch, and no win headline', function () {
@@ -921,8 +994,10 @@ check('practice mode has no clock, no turn switch, and no win headline', functio
   assert.ok(chromeBlob.indexOf('星币') !== -1);
   assert.ok(chromeBlob.indexOf('简单AI') === -1);
   assert.ok(chromeBlob.indexOf('好友') === -1);
-  assert.strictEqual(hud.hitTest(s.ui, s.ui.room.x + 8, s.ui.room.y + 8, 'Aim', s), null);
+  assert.ok(chromeBlob.indexOf('返回大厅') !== -1);
+  assert.strictEqual(hud.hitTest(s.ui, s.ui.room.x + 8, s.ui.room.y + 8, 'Aim', s), 'ai');
   assert.strictEqual(sessionMod.createRoom(s).kind, 'room-skip');
+  assert.ok(s.toast && s.toast.text.indexOf('请回大厅选好友对局') !== -1);
   assert.strictEqual(s.room, null);
   sessionMod.debugForceStop(s, { pocketTarget: false, firstContact: true });
   assert.strictEqual(s.turn, 0);

@@ -1350,7 +1350,7 @@
 
   function createRoom(session) {
     if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
-      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      session.toast = { text: '请回大厅选好友对局', life: 1.6 };
       return { kind: 'room-skip', mode: session.mode || 'ai' };
     }
     if (session.room && session.room.roomId) {
@@ -1569,7 +1569,7 @@
 
   function inviteRoom(session) {
     if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
-      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      session.toast = { text: '请回大厅选好友对局', life: 1.6 };
       return { kind: 'room-skip', mode: session.mode || 'ai' };
     }
     if (!session.room || !session.room.roomId) {
@@ -1591,11 +1591,41 @@
 
   function handleRoomTap(session) {
     if (isLocalAi(session) || session.mode === 'practice' || session.mode === 'ai') {
-      session.toast = { text: '人机/练习不联网开房', life: 1.2 };
+      session.toast = { text: '请回大厅选好友对局', life: 1.6 };
       return { kind: 'room-skip', mode: session.mode || 'ai' };
     }
     if (session.room && session.room.roomId) return inviteRoom(session);
     return createRoom(session);
+  }
+
+  function backToLobby(session, kind) {
+    session.mode = '';
+    session.versus = false;
+    session.localAi = false;
+    session.hotseat = true;
+    session.mySeat = 0;
+    session.turn = 0;
+    session.room = null;
+    session.roomPanel = null;
+    session.pendingRoomId = '';
+    session.joinError = null;
+    session.inviteAfterCreate = false;
+    session.matchOver = false;
+    session.winner = null;
+    session.settle = null;
+    session.award = null;
+    session.aiThink = 0;
+    session.aiPlan = null;
+    session.remoteAim = null;
+    session.remoteBusy = null;
+    session.aimDeadlineAt = 0;
+    session.turnOpenId = '';
+    session._joinInFlight = '';
+    session.banner = null;
+    session.pressed = null;
+    session.phase = fsm.PHASE.Splash;
+    session.toast = { text: '已回大厅', life: 1.2 };
+    return { kind: kind || 'lobby' };
   }
 
   function handlePointerDown(session, x, y) {
@@ -1609,7 +1639,7 @@
       newGame(session);
       return { kind: 'rerack' };
     }
-    if (session.roomPanel && hit !== 'room-close' && hit !== 'room') {
+    if (session.roomPanel && hit !== 'room-close' && hit !== 'room' && hit !== 'lobby') {
       return { kind: 'room-block' };
     }
     if (hit === 'bgm') {
@@ -1618,14 +1648,16 @@
       persist(session);
       return { kind: 'bgm', bgm: session.bgm };
     }
-    if (hit === 'room') return handleRoomTap(session);
+    if (hit === 'lobby' || hit === 'back') return backToLobby(session, hit);
+    if (hit === 'room' || hit === 'room-blocked') return handleRoomTap(session);
     if (hit === 'join-retry' && session.pendingRoomId) {
       return joinRoom(session, session.pendingRoomId);
     }
     if (session.phase === fsm.PHASE.Splash) {
       if (session.pendingRoomId) return joinRoom(session, session.pendingRoomId);
       if (hit === 'practice') return startPractice(session);
-      return startAi(session);
+      if (hit === 'start-ai' || hit === 'start') return startAi(session);
+      return { kind: 'splash-idle' };
     }
     if (hit === 'aim3d') {
       toggleAim3d(session);
@@ -1956,6 +1988,7 @@
     fireAi: fireAi,
     startAi: startAi,
     startPractice: startPractice,
+    backToLobby: backToLobby,
     applyStrike: applyStrike,
     scheduleAi: scheduleAi,
     needsShotClock: needsShotClock,

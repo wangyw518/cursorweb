@@ -20,38 +20,30 @@
     var playBottom = viewport.height - bottomSafe - footerH - 10;
     var cx = viewport.width * 0.5;
     var cy = viewport.height * 0.46;
+    var footerY = playBottom + 6;
+    var footerGap = 6;
+    var footerN = 4;
+    var footerInner = Math.max(240, viewport.width - pad * 2);
+    var footerW = Math.floor((footerInner - footerGap * (footerN - 1)) / footerN);
+    var footerLeft = pad;
+    var slot = function (i, label) {
+      return {
+        x: footerLeft + i * (footerW + footerGap),
+        y: footerY,
+        w: footerW,
+        h: 28,
+        label: label
+      };
+    };
     return {
       title: { x: pad, y: top + 16 },
       target: { x: pad, y: top + 36 },
       best: { x: pad, y: top + 52 },
-      mode: {
-        x: pad,
-        y: playBottom + 6,
-        w: 70,
-        h: 26,
-        label: '瞄准3D'
-      },
-      ai: {
-        x: pad + 76,
-        y: playBottom + 6,
-        w: 70,
-        h: 26,
-        label: '弱AI试杆'
-      },
-      room: {
-        x: pad + 152,
-        y: playBottom + 6,
-        w: 78,
-        h: 26,
-        label: '好友对局'
-      },
-      rerack: {
-        x: pad + 236,
-        y: playBottom + 6,
-        w: 78,
-        h: 26,
-        label: '新开一局'
-      },
+      mode: slot(0, '瞄准3D'),
+      lobby: slot(1, '返回大厅'),
+      ai: slot(2, '弱AI试杆'),
+      room: slot(2, '邀请好友'),
+      rerack: slot(3, '新开一局'),
       bgm: {
         x: viewport.width - pad - 46,
         y: top,
@@ -75,11 +67,11 @@
       back: { x: cx - 72, y: cy + 76, w: 144, h: 34, label: '返回' },
       share: { x: cx - 72, y: cy + 116, w: 144, h: 32, label: '分享成绩' },
       count: { x: cx, y: top + 78 },
-      splashCard: { x: cx - 132, y: cy - 148, w: 264, h: 300 },
-      aiSplash: { x: cx - 124, y: cy + 12, w: 116, h: 42, label: '人机对战' },
-      start: { x: cx - 124, y: cy + 12, w: 116, h: 42, label: '人机对战' },
-      practice: { x: cx + 8, y: cy + 12, w: 116, h: 42, label: '练习模式' },
-      roomSplash: { x: cx - 72, y: cy + 64, w: 144, h: 36, label: '好友对局' },
+      splashCard: { x: cx - 140, y: cy - 168, w: 280, h: 348 },
+      aiSplash: { x: cx - 132, y: cy + 8, w: 128, h: 44, label: '人机对战' },
+      start: { x: cx - 132, y: cy + 8, w: 128, h: 44, label: '人机对战' },
+      practice: { x: cx + 4, y: cy + 8, w: 128, h: 44, label: '练习模式' },
+      roomSplash: { x: cx - 132, y: cy + 62, w: 264, h: 46, label: '好友对局' },
       joinRetry: { x: cx - 72, y: cy + 20, w: 144, h: 42, label: '重新加入' },
       roomPanel: { x: cx - 132, y: cy - 110, w: 264, h: 220 },
       roomInvite: { x: cx - 72, y: cy + 8, w: 144, h: 34, label: '邀请好友' },
@@ -95,6 +87,7 @@
 
   function hitTest(ui, x, y, phase, session) {
     if (phase === 'Settle') {
+      if (ui.lobby && inRect(ui.lobby, x, y)) return 'lobby';
       if (inRect(ui.replay, x, y)) return 'replay';
       if (session && (session.mode === 'practice' || (session.settle && session.settle.practice))) {
         if (inRect(ui.settleCard, x, y)) return 'settle-block';
@@ -119,12 +112,14 @@
       if (ui.practice && inRect(ui.practice, x, y)) return 'practice';
       if (ui.aiSplash && inRect(ui.aiSplash, x, y)) return 'start-ai';
       if (ui.start && inRect(ui.start, x, y)) return 'start-ai';
-      return 'start-ai';
+      return null;
     }
     if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
+    if (ui.lobby && inRect(ui.lobby, x, y)) return 'lobby';
     if (inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && (!session || (!session.versus && session.mode !== 'ai')) && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && showsRoomChrome(session) && inRect(ui.room, x, y)) return 'room';
+    if (ui.room && inRect(ui.room, x, y)) return 'room-blocked';
     if (ui.rerack && inRect(ui.rerack, x, y)) return 'rerack';
     return null;
   }
@@ -349,33 +344,38 @@
       }
     }
 
-    drawButton(ctx, {
-      x: ui.mode.x,
-      y: ui.mode.y,
-      w: ui.mode.w,
-      h: ui.mode.h,
-      label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
-    }, colors, session.pressed === 'aim3d' || session.aim3d);
-    if (ui.ai && !session.versus && session.mode !== 'ai') {
+    if (session.phase !== 'Splash') {
       drawButton(ctx, {
-        x: ui.ai.x,
-        y: ui.ai.y,
-        w: ui.ai.w,
-        h: ui.ai.h,
-        label: ui.ai.label
-      }, colors, session.pressed === 'ai');
-    }
-    if (ui.room && showsRoomChrome(session)) {
-      drawButton(ctx, {
-        x: ui.room.x,
-        y: ui.room.y,
-        w: ui.room.w,
-        h: ui.room.h,
-        label: session.room ? '房间码' : ui.room.label
-      }, colors, session.pressed === 'room');
-    }
-    if (ui.rerack && session.phase !== 'Splash') {
-      drawButton(ctx, ui.rerack, colors, session.pressed === 'rerack');
+        x: ui.mode.x,
+        y: ui.mode.y,
+        w: ui.mode.w,
+        h: ui.mode.h,
+        label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
+      }, colors, session.pressed === 'aim3d' || session.aim3d);
+      if (ui.lobby) {
+        drawButton(ctx, ui.lobby, colors, session.pressed === 'lobby' || session.pressed === 'back');
+      }
+      if (ui.ai && !session.versus && session.mode !== 'ai') {
+        drawButton(ctx, {
+          x: ui.ai.x,
+          y: ui.ai.y,
+          w: ui.ai.w,
+          h: ui.ai.h,
+          label: ui.ai.label
+        }, colors, session.pressed === 'ai');
+      }
+      if (ui.room && showsRoomChrome(session)) {
+        drawButton(ctx, {
+          x: ui.room.x,
+          y: ui.room.y,
+          w: ui.room.w,
+          h: ui.room.h,
+          label: ui.room.label || '邀请好友'
+        }, colors, session.pressed === 'room');
+      }
+      if (ui.rerack) {
+        drawButton(ctx, ui.rerack, colors, session.pressed === 'rerack');
+      }
     }
     if (ui.bgm) {
       drawButton(ctx, {
@@ -593,13 +593,7 @@
       return;
     }
     if (ui.aiSplash) {
-      drawButton(ctx, ui.aiSplash, colors, true);
-      ctx.save();
-      roundRect(ctx, ui.aiSplash.x - 2, ui.aiSplash.y - 2, ui.aiSplash.w + 4, ui.aiSplash.h + 4, 12);
-      ctx.strokeStyle = '#F5D76E';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
+      drawButton(ctx, ui.aiSplash, colors, session.pressed === 'start-ai');
     } else {
       drawButton(ctx, ui.start, colors, session.pressed === 'start' || session.pressed === 'start-ai');
     }
@@ -608,6 +602,20 @@
     }
     if (ui.roomSplash) {
       drawButton(ctx, ui.roomSplash, colors, session.pressed === 'room');
+      ctx.save();
+      roundRect(ctx, ui.roomSplash.x - 2, ui.roomSplash.y - 2, ui.roomSplash.w + 4, ui.roomSplash.h + 4, 12);
+      ctx.strokeStyle = '#F5D76E';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = colors.hudDim;
+      ctx.font = '11px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        '创建房间并邀请',
+        ui.roomSplash.x + ui.roomSplash.w * 0.5,
+        ui.roomSplash.y + ui.roomSplash.h + 18
+      );
     }
     ctx.restore();
   }
