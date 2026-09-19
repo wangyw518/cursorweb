@@ -106,7 +106,9 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ deadlineAt, state }` |
 | state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole` / `turnOpenId`, `shotSeq`, `deadlineAt`, `aim`, `nicknames`, `stars`, `foulCode`, `foulHint`, `winnerOpenId`, `matchOver`, `winner`) |
 
-`events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots / non-consecutive `shotSeq` return `{ ok: false, reason: "not-your-turn"|"stale-seq", state }`.
+`events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots / non-consecutive `shotSeq` return `{ ok: false, reason: "not-your-turn"|"stale-seq", state }`. Crediting the waiting seat's `stars` / `scores` returns `{ ok: false, reason: "not-your-score", state }`.
+
+Shot scoring is attributed on the server: this-shot `pocketScore` + `zoneBonus` (or the same fields on `events[]`) are added only to the current `turnOpenId` → `stars.host` or `stars.guest`. Client `stars` are never applied wholesale. The server does **not** invent a constant (especially 32); miss / foul is 0 this shot. `shot` / `state` responses echo `pocketScore`, `zoneBonus`, and cumulative `stars:{host,guest}`. Each client HUD reads only its own key (`host` or `guest`).
 
 P0 extras (same store for HTTP and `cloudfunctions/taiqiuRoom`): default `shotClockSec=20`; create / join / shot / timeout handover issue `deadlineAt = now + shotClockSec`. If the clock expires before `shot`, the server sets `foulCode=shotClock`, switches turn, increments `shotSeq`, does **not** rack, and issues a new deadline. Aim is accepted only for the current `turnOpenId` while `phase` is Aim/Pull; it writes `aim: { angle, power, aimLine, updatedAt }` and must not touch object-ball coordinates. Timeout is settled on `state` poll (client is not the clock authority).
 
@@ -143,6 +145,28 @@ http://127.0.0.1:8767/dev/preview.html?roomId=XXXXXX&api=http://127.0.0.1:8788
 4. `POST /room/join` `{ "roomId":"NOPE12" }` → `{ ok:false, reason:"missing" }`。满员 `full`、已结束 `ended`，并尽量带权威 `state`。
 5. 一键脚本：`node taiqiu/dev/invite-join-check.js` 或 `node taiqiu/dev/invite-join-check.js 8788`。
 6. 微信：房主点 **邀请好友**；分享卡片 query 为 `roomId=XXXXXX`。好友冷启动 / 热启动都会 `join`；失败 toast。真机跨设备请部署 `taiqiuRoom` 或两台都指向同一台 `http://<局域网IP>:8788`（不要填 `127.0.0.1`）。
+
+### 复测：好友对局计分（P0）
+
+双机各进一球，双方分数分别增加，且不为锁死 32。左上角各读自己的 `stars` key（房主 `host`，客座 `guest`）。
+
+```bash
+node taiqiu/dev/room-server.js 8788
+# A 进球（nova = 24+8）
+curl -s -X POST http://127.0.0.1:8788/room/shot \
+  -H 'content-type: application/json' \
+  -d '{"roomId":"<id>","openId":"host-a","shotSeq":1,"reason":"legal","pocketScore":24,"zoneBonus":8}'
+# 期望：pocketScore=24 zoneBonus=8 stars={host:32,guest:0}
+
+# A 未进换手后再由 B 进球（meteor = 24+16）
+curl -s -X POST http://127.0.0.1:8788/room/shot \
+  -H 'content-type: application/json' \
+  -d '{"roomId":"<id>","openId":"guest-b","shotSeq":3,"reason":"legal","pocketScore":24,"zoneBonus":16}'
+# 期望：stars={host:32,guest:40}，guest 不是 32
+
+node taiqiu/dev/friend-score-check.js
+node taiqiu/test/room-score.test.js
+```
 
 ### Docker / 局域网房间服
 

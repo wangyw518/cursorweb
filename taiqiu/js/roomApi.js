@@ -210,12 +210,19 @@
       if (res.state) res.state = decorateState(res.state);
       return res;
     }
+    var state = decorateState(res.state);
     return {
       ok: true,
       action: 'shot',
       roomId: res.roomId,
       deadlineAt: res.deadlineAt,
-      state: decorateState(res.state)
+      winnerOpenId: res.winnerOpenId != null ? res.winnerOpenId : state.winnerOpenId,
+      foulCode: res.foulCode != null ? res.foulCode : state.foulCode,
+      foulHint: res.foulHint != null ? res.foulHint : state.foulHint,
+      pocketScore: res.pocketScore != null ? res.pocketScore : state.pocketScore,
+      zoneBonus: res.zoneBonus != null ? res.zoneBonus : state.zoneBonus,
+      stars: clone(res.stars || state.stars || { host: 0, guest: 0 }),
+      state: state
     };
   }
 

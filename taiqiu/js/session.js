@@ -148,9 +148,21 @@
         });
       }
     }
-    if (reason === 'nine' || res.win) events.push({ type: 'nine', legal: true });
-    else if (reason === 'legal') events.push({ type: 'legal' });
-    else if (reason === 'scratch' || shot.scratch) events.push({ type: 'scratch' });
+    if (reason === 'nine' || res.win) {
+      var nineEv = { type: 'nine', legal: true };
+      if (session.award) {
+        nineEv.pocketScore = session.award.pocketBonus || 0;
+        nineEv.zoneBonus = session.award.landingBonus || 0;
+      }
+      events.push(nineEv);
+    } else if (reason === 'legal') {
+      var legalEv = { type: 'legal' };
+      if (session.award) {
+        legalEv.pocketScore = session.award.pocketBonus || 0;
+        legalEv.zoneBonus = session.award.landingBonus || 0;
+      }
+      events.push(legalEv);
+    } else if (reason === 'scratch' || shot.scratch) events.push({ type: 'scratch' });
     else if (res.foul) events.push({ type: 'foul', reason: res.reason || reason });
     else if (reason === 'new-game') events.push({ type: 'new-game' });
     else events.push({ type: 'miss' });
@@ -174,9 +186,15 @@
       fromSeat: seat,
       role: seat === 1 ? 'guest' : 'host',
       token: session.room ? session.room.token : null,
+      openId: session.openId || undefined,
       reason: reason || 'miss',
       balls: snap,
       scores: session.scores.slice(),
+      stars: session.stars
+        ? { host: session.stars.host || 0, guest: session.stars.guest || 0 }
+        : { host: (session.scores[0] || 0), guest: (session.scores[1] || 0) },
+      pocketScore: session.award && session.award.pocketBonus != null ? session.award.pocketBonus : 0,
+      zoneBonus: session.award && session.award.landingBonus != null ? session.award.landingBonus : 0,
       phase: session.phase,
       targetN: session.target ? session.target.n : 0,
       matchOver: !!session.matchOver,
@@ -197,7 +215,20 @@
       roomApi.applyBalls(session.balls, snap, felt);
       lockObjectBalls(session);
     }
-    if (state.scores) session.scores = state.scores.slice();
+    if (state.stars) {
+      session.stars = {
+        host: state.stars.host || 0,
+        guest: state.stars.guest || 0
+      };
+      session.scores = [session.stars.host, session.stars.guest];
+    } else if (state.scores) {
+      session.scores = state.scores.slice();
+      session.stars = session.stars || { host: 0, guest: 0 };
+      if (state.scores[0] != null) session.stars.host = state.scores[0];
+      if (state.scores[1] != null) session.stars.guest = state.scores[1];
+    }
+    if (state.pocketScore !== undefined) session.pocketScore = state.pocketScore;
+    if (state.zoneBonus !== undefined) session.zoneBonus = state.zoneBonus;
     if (state.turnRole === 'guest') session.turn = 1;
     else if (state.turnRole === 'host') session.turn = 0;
     else if (state.turn != null) session.turn = state.turn;
@@ -257,7 +288,7 @@
   function pushRoom(session, reason, fromSeat) {
     if (!shouldSubmitShot(session, fromSeat)) return null;
     return roomApi.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
-      if (res && res.ok && res.state) ingestState(session, res);
+      if (res && res.state) ingestState(session, res);
     });
   }
 
@@ -303,6 +334,9 @@
 
   function newGame(session) {
     session.scores = [0, 0];
+    session.stars = { host: 0, guest: 0 };
+    session.pocketScore = null;
+    session.zoneBonus = null;
     session.turn = 0;
     session.matchOver = false;
     session.winner = null;
@@ -345,6 +379,9 @@
       nicknames: { host: '', guest: '' },
       joiningRoomId: null,
       scores: [0, 0],
+      stars: { host: 0, guest: 0 },
+      pocketScore: null,
+      zoneBonus: null,
       matchOver: false,
       winner: null,
       syncAcc: 0,
@@ -458,9 +495,7 @@
     if (applyStar && cueBall && !cueBall.pocketed) {
       landed = tiles.pickAt(session.tiles, cueBall.x, cueBall.y);
     }
-    var zone = applyStar && cueBall && !cueBall.pocketed
-      ? (landed || tiles.defaultZone())
-      : null;
+    var zone = applyStar && cueBall && !cueBall.pocketed ? landed : null;
     var award = score.settle({
       pocketedLowest: session.shot.pocketedLowest,
       scratch: session.shot.scratch,
@@ -476,7 +511,13 @@
     var gap = score.gapToBest(award.coins, session.best);
     if (gap.isNew) session.best = award.coins;
     persist(session);
-    session.scores[session.turn] = (session.scores[session.turn] || 0) + award.coins;
+    session.stars = session.stars || { host: 0, guest: 0 };
+    var shooterRole = shooter === 1 ? 'guest' : 'host';
+    session.stars[shooterRole] = (session.stars[shooterRole] || 0) + award.coins;
+    session.scores[0] = session.stars.host || 0;
+    session.scores[1] = session.stars.guest || 0;
+    session.pocketScore = award.pocketBonus || 0;
+    session.zoneBonus = award.landingBonus || 0;
 
     var burstX = cueBall ? cueBall.x : session.table.felt.cx;
     var burstY = cueBall ? cueBall.y : session.table.felt.cy;
@@ -670,6 +711,7 @@
     session.mySeat = 0;
     session.turn = 0;
     session.scores = [0, 0];
+    session.stars = { host: 0, guest: 0 };
     session.role = 'host';
     session.room = {
       roomId: made.roomId,
@@ -951,6 +993,11 @@
       roomId: session.room ? session.room.roomId : null,
       winner: session.winner,
       scores: session.scores.slice(),
+      stars: session.stars
+        ? { host: session.stars.host || 0, guest: session.stars.guest || 0 }
+        : { host: 0, guest: 0 },
+      pocketScore: session.pocketScore,
+      zoneBonus: session.zoneBonus,
       landFlash: session.landFlash
         ? { tileId: session.landFlash.tileId, frames: session.landFlash.frames }
         : null

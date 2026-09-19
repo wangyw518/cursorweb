@@ -11,6 +11,34 @@
     return x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
   }
 
+  function ownStarKey(session) {
+    return session && session.mySeat === 1 ? 'guest' : 'host';
+  }
+
+  function otherStarKey(session) {
+    return ownStarKey(session) === 'guest' ? 'host' : 'guest';
+  }
+
+  function starsOf(session) {
+    if (session && session.stars) {
+      return {
+        host: session.stars.host || 0,
+        guest: session.stars.guest || 0
+      };
+    }
+    var scores = (session && session.scores) || [0, 0];
+    return { host: scores[0] || 0, guest: scores[1] || 0 };
+  }
+
+  function ownStars(session) {
+    return starsOf(session)[ownStarKey(session)] || 0;
+  }
+
+  function versusScoreText(session) {
+    var stars = starsOf(session);
+    return '你 ' + (stars[ownStarKey(session)] || 0) + ' · 对方 ' + (stars[otherStarKey(session)] || 0);
+  }
+
   function layout(viewport) {
     var pad = 14;
     var top = (viewport.safeTop || 20) + 6;
@@ -150,7 +178,7 @@
     ctx.fillStyle = colors.hud;
     ctx.font = '12px ' + FONT;
     var bestText = session.versus
-      ? ('P1 ' + ((session.scores && session.scores[0]) || 0) + ' · P2 ' + ((session.scores && session.scores[1]) || 0))
+      ? versusScoreText(session)
       : ('最佳 ' + (session.best || 0) + ' 星币');
     ctx.fillText(bestText, ui.best.x, ui.best.y);
 
@@ -365,6 +393,11 @@
     drawChrome: drawChrome,
     drawSettle: drawSettle,
     drawSplash: drawSplash,
-    drawRoomPanel: drawRoomPanel
+    drawRoomPanel: drawRoomPanel,
+    ownStarKey: ownStarKey,
+    otherStarKey: otherStarKey,
+    starsOf: starsOf,
+    ownStars: ownStars,
+    versusScoreText: versusScoreText
   };
 });

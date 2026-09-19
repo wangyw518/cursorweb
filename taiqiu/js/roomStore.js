@@ -12,6 +12,14 @@
  *
  * Aim writes only `aim` (dirty, droppable). It never writes balls[].
  * Shot clock is server-authoritative (default 20s); state/aim/shot settle expiry.
+ *
+ * Shot scoring (server-authoritative attribution):
+ *   Trust this-shot `pocketScore` + `zoneBonus` (or the same fields on events).
+ *   Always add that total to the current turn seat — `turnOpenId` →
+ *   `stars.host` or `stars.guest`. Never apply client `stars` wholesale.
+ *   Reject if the payload increments the waiting seat (`not-your-score`).
+ *   Do not invent a constant (especially 32). Miss / foul → 0 this shot.
+ *   shot / state responses echo `pocketScore`, `zoneBonus`, `stars:{host,guest}`.
  */
 (function (root, factory) {
   var api = factory();
@@ -236,10 +244,78 @@
     }
   }
 
-  function applyStars(state, payload) {
-    if (!payload || !payload.stars) return;
-    if (payload.stars.host != null) state.stars.host = payload.stars.host;
-    if (payload.stars.guest != null) state.stars.guest = payload.stars.guest;
+  function asNum(value, fallback) {
+    if (value == null || value === '') return fallback;
+    var n = Number(value);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function amountsFromEvents(events) {
+    var pocket = null;
+    var zone = null;
+    var i;
+    events = events || [];
+    for (i = 0; i < events.length; i++) {
+      var e = events[i] || {};
+      if (e.pocketScore != null) pocket = asNum(e.pocketScore, 0);
+      if (e.pocketBonus != null && pocket == null) pocket = asNum(e.pocketBonus, 0);
+      if (e.zoneBonus != null) zone = asNum(e.zoneBonus, 0);
+      if (e.landingBonus != null && zone == null) zone = asNum(e.landingBonus, 0);
+    }
+    return { pocketScore: pocket, zoneBonus: zone };
+  }
+
+  function thisShotAmounts(state, payload, fromSeat, reason) {
+    payload = payload || {};
+    if (reason !== 'legal' && reason !== 'nine') {
+      return { pocketScore: 0, zoneBonus: 0 };
+    }
+    var role = roleOfSeat(fromSeat);
+    var pocket = payload.pocketScore != null ? asNum(payload.pocketScore, 0) : null;
+    var zone = payload.zoneBonus != null ? asNum(payload.zoneBonus, 0) : null;
+    if (pocket == null || zone == null) {
+      var ev = amountsFromEvents(payload.events);
+      if (pocket == null) pocket = ev.pocketScore;
+      if (zone == null) zone = ev.zoneBonus;
+    }
+    if (pocket == null && zone == null) {
+      var delta = 0;
+      if (payload.stars && payload.stars[role] != null) {
+        delta = asNum(payload.stars[role], 0) - asNum(state.stars[role], 0);
+      } else if (payload.scores && payload.scores[fromSeat] != null) {
+        delta = asNum(payload.scores[fromSeat], 0) - asNum(state.scores[fromSeat], 0);
+      }
+      if (delta < 0) delta = 0;
+      return { pocketScore: delta, zoneBonus: 0 };
+    }
+    return {
+      pocketScore: pocket == null ? 0 : pocket,
+      zoneBonus: zone == null ? 0 : zone
+    };
+  }
+
+  function incrementsOtherSide(state, payload, fromSeat) {
+    payload = payload || {};
+    var otherRole = fromSeat === 1 ? 'host' : 'guest';
+    var otherSeat = fromSeat === 1 ? 0 : 1;
+    if (payload.stars && payload.stars[otherRole] != null) {
+      if (asNum(payload.stars[otherRole], 0) > asNum(state.stars[otherRole], 0)) return true;
+    }
+    if (payload.scores && payload.scores[otherSeat] != null) {
+      if (asNum(payload.scores[otherSeat], 0) > asNum(state.scores[otherSeat], 0)) return true;
+    }
+    return false;
+  }
+
+  function creditTurnStars(state, payload, fromSeat, reason) {
+    var role = roleOfSeat(fromSeat);
+    var amt = thisShotAmounts(state, payload, fromSeat, reason);
+    state.pocketScore = amt.pocketScore;
+    state.zoneBonus = amt.zoneBonus;
+    state.stars[role] = asNum(state.stars[role], 0) + amt.pocketScore + amt.zoneBonus;
+    state.scores[0] = asNum(state.stars.host, 0);
+    state.scores[1] = asNum(state.stars.guest, 0);
+    return amt;
   }
 
   function resolveActor(payload, state) {
@@ -331,13 +407,15 @@
         state.balls = clone(opening);
         state.ballsSnapshot = clone(opening);
       }
-      if (payload.scores) state.scores = payload.scores.slice();
       if (payload.targetN != null) state.targetN = payload.targetN;
       var hostOpen = openIdOf(payload) || payload.hostOpenId;
       if (hostOpen) state.hostOpenId = String(hostOpen);
       state.turnOpenId = state.hostOpenId;
       applyNicknames(state, payload, 0);
-      applyStars(state, payload);
+      state.stars = { host: 0, guest: 0 };
+      state.scores = [0, 0];
+      state.pocketScore = null;
+      state.zoneBonus = null;
       write(roomId, state);
       return ok('create', roomId, {
         role: 'host',
@@ -386,7 +464,6 @@
       if (incoming) state.guestOpenId = incoming;
       else if (!state.guestOpenId) state.guestOpenId = 'guest:' + roomId;
       applyNicknames(state, payload, 1);
-      applyStars(state, payload);
       if (firstGuest) {
         state.seq += 1;
         refreshDeadline(state, now());
@@ -446,8 +523,13 @@
       if (actor.error) return fail('shot', actor.error, roomId, state);
       var fromSeat = actor.fromSeat;
       var reason = reasonFromEvents(payload.events, payload.reason);
-      if (reason !== 'new-game' && !state.matchOver && state.turn !== fromSeat) {
-        return fail('shot', 'not-your-turn', roomId, state);
+      if (reason !== 'new-game' && !state.matchOver) {
+        if (state.turn !== fromSeat || (state.turnOpenId && actor.openId && state.turnOpenId !== actor.openId)) {
+          return fail('shot', 'not-your-turn', roomId, state);
+        }
+        if (incrementsOtherSide(state, payload, fromSeat)) {
+          return fail('shot', 'not-your-score', roomId, state);
+        }
       }
       if (payload.shotSeq != null && reason !== 'new-game') {
         var expected = (state.shotSeq == null ? 0 : state.shotSeq) + 1;
@@ -460,14 +542,16 @@
         state.balls = clone(snap);
         state.ballsSnapshot = clone(snap);
       }
-      if (payload.scores) state.scores = payload.scores.slice();
       if (payload.phase) state.phase = payload.phase;
       if (payload.targetN != null) state.targetN = payload.targetN;
-      applyStars(state, payload);
-      if (payload.pocketScore != null) state.pocketScore = payload.pocketScore;
-      else if (reason === 'new-game') state.pocketScore = null;
-      if (payload.zoneBonus != null) state.zoneBonus = payload.zoneBonus;
-      else if (reason === 'new-game') state.zoneBonus = null;
+      if (reason === 'new-game') {
+        state.stars = { host: 0, guest: 0 };
+        state.scores = [0, 0];
+        state.pocketScore = null;
+        state.zoneBonus = null;
+      } else {
+        creditTurnStars(state, payload, fromSeat, reason);
+      }
       if (payload.foulCode != null) {
         state.foulCode = payload.foulCode;
         state.foulHint = payload.foulHint != null ? payload.foulHint : hintFor(payload.foulCode);
@@ -490,16 +574,16 @@
       if (reason === 'new-game') {
         state.matchOver = false;
         state.winner = null;
-        state.scores = payload.scores ? payload.scores.slice() : [0, 0];
-        if (!payload.stars) state.stars = { host: 0, guest: 0 };
+        state.scores = [0, 0];
+        state.stars = { host: 0, guest: 0 };
         state.phase = 'Aim';
         state.targetN = payload.targetN != null ? payload.targetN : 1;
         state.shotSeq = 0;
         state.turn = 0;
         state.foulCode = null;
         state.foulHint = null;
-        state.pocketScore = payload.pocketScore != null ? payload.pocketScore : null;
-        state.zoneBonus = payload.zoneBonus != null ? payload.zoneBonus : null;
+        state.pocketScore = null;
+        state.zoneBonus = null;
         syncTurnIdentity(state);
       }
       if (reason === 'nine') state.phase = payload.phase || 'Settle';
@@ -526,7 +610,10 @@
       return ok('shot', roomId, {
         winnerOpenId: state.winnerOpenId,
         foulCode: state.foulCode,
-        foulHint: state.foulHint
+        foulHint: state.foulHint,
+        pocketScore: state.pocketScore,
+        zoneBonus: state.zoneBonus,
+        stars: clone(state.stars)
       }, state);
     }
 
@@ -610,6 +697,8 @@
     reasonFromEvents: reasonFromEvents,
     normalizeRoomId: normalizeRoomId,
     shareFor: shareFor,
+    thisShotAmounts: thisShotAmounts,
+    creditTurnStars: creditTurnStars,
     DEFAULT_SHOT_CLOCK_SEC: DEFAULT_SHOT_CLOCK_SEC,
     FOUL_SHOT_CLOCK: FOUL_SHOT_CLOCK
   };
