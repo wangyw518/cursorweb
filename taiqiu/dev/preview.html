@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN" translate="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="google" content="notranslate" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>星券台球 Taiqiu · 浏览器预览</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #120E0A;
+      color: #C4B49A;
+      font-family: "WenQuanYi Micro Hei", "PingFang SC", sans-serif;
+      min-height: 100%;
+    }
+    #meta {
+      text-align: center;
+      padding: 10px 12px 0;
+      font-size: 13px;
+    }
+    #wrap {
+      width: 375px;
+      height: 667px;
+      margin: 8px auto 16px;
+      position: relative;
+      box-shadow: 0 0 0 1px #3D2A18, 0 18px 40px rgba(0, 0, 0, 0.45);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #screen {
+      display: block;
+      width: 375px;
+      height: 667px;
+      touch-action: none;
+    }
+    @media (max-width: 420px) {
+      #wrap, #screen { width: 100vw; height: calc(100vw * 667 / 375); }
+    }
+  </style>
+</head>
+<body>
+  <div id="meta">星券台球浏览器预览 · 拖动球杆瞄准 · 375×667 · 虚拟道具不可兑换现金</div>
+  <div id="wrap"><canvas id="screen"></canvas></div>
+  <script>
+    (function () {
+      var canvas = document.getElementById('screen');
+      var W = 375;
+      var H = 667;
+      function point(e) {
+        var r = canvas.getBoundingClientRect();
+        var t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
+        return {
+          clientX: (t.clientX - r.left) * (W / r.width),
+          clientY: (t.clientY - r.top) * (H / r.height)
+        };
+      }
+      function bind(name, type) {
+        var listeners = [];
+        canvas.addEventListener(type, function (e) {
+          e.preventDefault();
+          var p = point(e);
+          var ev = { touches: [p], changedTouches: [p] };
+          for (var i = 0; i < listeners.length; i++) listeners[i](ev);
+        }, { passive: false });
+        window.wx[name] = function (cb) { listeners.push(cb); };
+      }
+      window.wx = {
+        createCanvas: function () { return canvas; },
+        getSystemInfoSync: function () {
+          return {
+            windowWidth: W,
+            windowHeight: H,
+            pixelRatio: window.devicePixelRatio || 1,
+            statusBarHeight: 20,
+            safeArea: { top: 20, bottom: H, left: 0, right: W }
+          };
+        },
+        onWindowResize: function () {},
+        shareAppMessage: function () {},
+        showShareMenu: function () {},
+        onShareAppMessage: function (cb) { window.wx._onShare = cb; },
+        getLaunchOptionsSync: function () {
+          var q = {};
+          try {
+            var sp = new URLSearchParams(location.search);
+            sp.forEach(function (v, k) { q[k] = v; });
+          } catch (e) {}
+          return { query: q, scene: 1007, referrerInfo: {} };
+        },
+        getEnterOptionsSync: function () {
+          return window.wx.getLaunchOptionsSync();
+        },
+        onLaunch: function (cb) {
+          if (typeof cb === 'function') {
+            try { cb(window.wx.getLaunchOptionsSync()); } catch (err) {}
+          }
+        },
+        onShow: function (cb) {
+          if (typeof cb === 'function') {
+            try { cb(window.wx.getLaunchOptionsSync()); } catch (err) {}
+          }
+        },
+        request: function (opts) {
+          opts = opts || {};
+          var method = opts.method || 'GET';
+          fetch(opts.url, {
+            method: method,
+            headers: opts.header || { 'content-type': 'application/json' },
+            body: method === 'GET' ? undefined : JSON.stringify(opts.data || {})
+          }).then(function (res) { return res.json().then(function (data) { return { data: data }; }); })
+            .then(function (pack) { if (opts.success) opts.success(pack); })
+            .catch(function (err) { if (opts.fail) opts.fail(err); });
+        },
+        setStorageSync: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+        getStorageSync: function (k) {
+          try {
+            var raw = localStorage.getItem(k);
+            return raw ? JSON.parse(raw) : '';
+          } catch (e) { return ''; }
+        },
+        removeStorageSync: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+      };
+      bind('onTouchStart', 'pointerdown');
+      window.addEventListener('pointermove', function (e) {
+        if (!e.buttons) return;
+        var p = point(e);
+        var ev = { touches: [p], changedTouches: [p] };
+        if (window.wx._move) window.wx._move(ev);
+      }, { passive: false });
+      window.addEventListener('pointerup', function (e) {
+        var p = point(e);
+        var ev = { touches: [p], changedTouches: [p] };
+        if (window.wx._up) window.wx._up(ev);
+      });
+      window.wx.onTouchMove = function (cb) { window.wx._move = cb; };
+      window.wx.onTouchEnd = function (cb) { window.wx._up = cb; };
+      window.wx.onTouchCancel = function (cb) { window.wx._cancel = cb; };
+    })();
+  </script>
+  <script>
+    (function () {
+      var files = [
+        '../js/physics.js',
+        '../js/table.js',
+        '../js/fsm.js',
+        '../js/tiles.js',
+        '../js/balls.js',
+        '../js/cue.js',
+        '../js/stopDetect.js',
+        '../js/score.js',
+        '../js/storage.js',
+        '../js/fx.js',
+        '../js/share.js',
+        '../js/sfx.js',
+        '../js/ai.js',
+        '../js/roomStore.js',
+        '../js/roomApi.js',
+        '../js/net.js',
+        '../js/hud.js',
+        '../js/render.js',
+        '../js/session.js',
+        '../game.js'
+      ];
+      function addScript(src) {
+        return new Promise(function (resolve, reject) {
+          var el = document.createElement('script');
+          el.src = src;
+          el.onload = resolve;
+          el.onerror = function () { reject(new Error('failed ' + src)); };
+          document.body.appendChild(el);
+        });
+      }
+      fetch('../js/config.json')
+        .then(function (res) { return res.json(); })
+        .then(function (cfg) {
+          var api = '';
+          var nick = '';
+          try {
+            var sp = new URLSearchParams(location.search);
+            api = sp.get('api') || '';
+            nick = sp.get('displayName') || sp.get('name') || '';
+          } catch (err) {}
+          if (api) {
+            cfg.room = cfg.room || {};
+            cfg.room.roomApiBase = api;
+            cfg.room.httpUrl = api;
+          }
+          if (nick) {
+            cfg.room = cfg.room || {};
+            cfg.room.displayName = nick;
+            cfg.room.guestDisplayName = nick;
+          }
+          window.TaiqiuConfig = cfg;
+          var chain = Promise.resolve();
+          files.forEach(function (src) {
+            chain = chain.then(function () { return addScript(src); });
+          });
+          return chain;
+        })
+        .catch(function (err) {
+          document.getElementById('meta').textContent = String(err);
+        });
+    })();
+  </script>
+</body>
+</html>
