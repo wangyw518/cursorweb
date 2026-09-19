@@ -25,7 +25,7 @@
 - [ ] 冷启动带 `roomId`（分享卡片 / `onLaunch`）直接进房，不先落人机
 - [ ] 顶栏是真昵称（微信 nick / 可配置 `displayName`），自己一侧标 **你** 或高亮；禁止只显示「房主 / 好友」
 - [ ] Aim：对端虚线连续（插值，同步 ≤100ms），不要一跳一跳
-- [ ] Shot：对端能看到击球反馈和 **rolling 滚球**，禁止只跳最终静帧
+- [ ] Shot：`POST /room/shot {shotSeq, angle, power, spin?}` → `phase=rolling`；对端本地 impulse + 物理滚球，HUD「对方击球中」；停稳后软对齐权威桌，禁止只跳最终静帧
 - [ ] 双方星币分列（主机 / 客机各记各的）
 - [ ] join 失败有可见 toast（房间无效 / 已满 / 已结束 / 服务器连不上）+ **重新加入**
 

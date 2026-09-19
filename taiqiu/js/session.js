@@ -300,6 +300,7 @@
       : null;
     var raw = aim || src.impulse || null;
     if (!raw && src.lastShot && (src.lastShot.kind === 'firing' || src.lastShot.power > 0.03) &&
+        (src.phase === 'rolling' || src.phase === 'Shot') &&
         src.lastReason !== 'timeout' && src.lastReason !== 'new-game') {
       raw = src.lastShot;
     }
@@ -332,6 +333,55 @@
       fromSeat: raw.fromSeat != null ? raw.fromSeat : src.fromSeat,
       shotSeq: raw.shotSeq != null ? raw.shotSeq : src.shotSeq
     };
+  }
+
+  function ballWorldPos(row, felt) {
+    if (felt && felt.w && row && row.nx != null && row.ny != null) {
+      return { x: felt.x + row.nx * felt.w, y: felt.y + row.ny * felt.h };
+    }
+    return { x: row && row.x, y: row && row.y };
+  }
+
+  function maxBallDrift(list, snap, felt) {
+    if (!list || !snap) return 0;
+    var map = {};
+    var i;
+    for (i = 0; i < snap.length; i++) map[snap[i].id] = snap[i];
+    var max = 0;
+    for (i = 0; i < list.length; i++) {
+      var s = map[list[i].id];
+      if (!s) continue;
+      var p = ballWorldPos(s, felt);
+      if (p.x == null || p.y == null) continue;
+      var d = Math.hypot(list[i].x - p.x, list[i].y - p.y);
+      if (d > max) max = d;
+    }
+    return max;
+  }
+
+  function softCorrectBalls(session, snap, felt) {
+    if (!snap || !session.balls) return 0;
+    var drift = maxBallDrift(session.balls, snap, felt);
+    if (drift > 18) {
+      roomApi.applyBalls(session.balls, snap, felt);
+    } else {
+      var map = {};
+      var i;
+      for (i = 0; i < snap.length; i++) map[snap[i].id] = snap[i];
+      for (i = 0; i < session.balls.length; i++) {
+        var s = map[session.balls[i].id];
+        if (!s) continue;
+        var p = ballWorldPos(s, felt);
+        if (p.x == null || p.y == null) continue;
+        session.balls[i].x += (p.x - session.balls[i].x) * 0.45;
+        session.balls[i].y += (p.y - session.balls[i].y) * 0.45;
+        session.balls[i].vx = 0;
+        session.balls[i].vy = 0;
+        session.balls[i].pocketed = !!s.pocketed;
+      }
+    }
+    lockObjectBalls(session);
+    return drift;
   }
 
   function isFullBallSnap(snap) {
@@ -439,7 +489,8 @@
     balls.haltBalls(session.balls);
     if (pending) {
       applyRoomState(session, pending, {
-        forceBalls: isFullBallSnap(pending.ballsSnapshot || pending.balls)
+        forceBalls: isFullBallSnap(pending.ballsSnapshot || pending.balls),
+        softCorrect: isFullBallSnap(pending.ballsSnapshot || pending.balls)
       });
     } else if (session.phase === fsm.PHASE.Shot) {
       session.phase = fsm.PHASE.Aim;
@@ -470,8 +521,16 @@
     if (session.phase !== fsm.PHASE.Aim && session.phase !== 'Pull') return false;
     if (!session.versus || session.turn === session.mySeat) return false;
     if (state.lastReason === 'timeout' || state.lastReason === 'new-game') return false;
+    var incoming = incomingShotSeq(state);
+    var last = session.room && session.room.lastSeq != null ? session.room.lastSeq : -1;
+    var live = state.phase === 'rolling' || state.phase === fsm.PHASE.Shot;
+    if (!live && incoming != null && incoming <= last) return false;
     var impulse = firingImpulse(state);
-    return !!(impulse && impulse.fromSeat !== session.mySeat);
+    if (!impulse || impulse.fromSeat === session.mySeat) return false;
+    if (live) return true;
+    if (state.impulse && state.impulse.kind === 'firing') return true;
+    if (state.aim && state.aim.kind === 'firing') return true;
+    return false;
   }
 
   function queuePendingSettle(session, state) {
@@ -824,7 +883,8 @@
     );
     if (state.foulCode === 'shotClock') applyBallsNow = false;
     if (applyBallsNow) {
-      roomApi.applyBalls(session.balls, snap, felt);
+      if (opts.softCorrect) softCorrectBalls(session, snap, felt);
+      else roomApi.applyBalls(session.balls, snap, felt);
       lockObjectBalls(session);
       if (!opts.join && state.lastSeat != null && state.lastSeat !== session.mySeat &&
           (state.pocketScore || state.zoneBonus)) {
@@ -903,7 +963,7 @@
     } else if (state.impulse && state.impulse.fromSeat !== session.mySeat) {
       queueRemoteAim(session, state.impulse);
       session.remoteBusy = 'firing';
-    } else if (state.phase === fsm.PHASE.Shot && session.turn !== session.mySeat) {
+    } else if ((state.phase === fsm.PHASE.Shot || state.phase === 'rolling') && session.turn !== session.mySeat) {
       session.remoteBusy = 'firing';
     } else if (state.aim == null && session.turn === session.mySeat) {
       session.remoteAim = null;
@@ -978,9 +1038,11 @@
     });
   }
 
-  function pullRoom(session) {
+  function pullRoom(session, opts) {
     if (!session.room || !session.room.roomId) return null;
+    opts = opts || {};
     var sinceSeq = session.room.lastSeq != null ? session.room.lastSeq : 0;
+    if (opts.full || (session.remoteReplay && session.remoteReplay.stopped)) sinceSeq = 0;
     return roomApi.state({ roomId: session.room.roomId, sinceSeq: sinceSeq }, function (res) {
       ingestState(session, res);
     });
@@ -1659,6 +1721,7 @@
       if (session.stop.stopped || !physics.anyMoving(session.balls, session.config.stopSpeed)) {
         session.remoteReplay.stopped = true;
         balls.haltBalls(session.balls);
+        if (!session.pendingRoomState) pullRoom(session, { full: true });
       }
       tickRoomSync(session, dt);
       maybeFinishRemoteReplay(session);
@@ -1834,7 +1897,10 @@
     session._joinInFlight = '';
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     fetchNick(session);
-    if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
+    if (joined.state) {
+      applyRoomState(session, joined.state, { join: true, forceBalls: true });
+      if (shouldStartRemoteReplay(session, joined.state)) beginRemoteReplay(session, joined.state);
+    }
     session.nicknames = session.nicknames || {
       host: (session.names && session.names[0]) || seatFallback(0),
       guest: (session.names && session.names[1]) || seatFallback(1)
@@ -2454,6 +2520,10 @@
     applyStrike: applyStrike,
     beginRemoteReplay: beginRemoteReplay,
     finishRemoteReplay: finishRemoteReplay,
+    softCorrectBalls: softCorrectBalls,
+    maxBallDrift: maxBallDrift,
+    ballWorldPos: ballWorldPos,
+    firingImpulse: firingImpulse,
     stepRemoteAim: stepRemoteAim,
     queueRemoteAim: queueRemoteAim,
     pushNames: pushNames,

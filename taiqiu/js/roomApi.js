@@ -8,7 +8,8 @@
  * Draft endpoints (same names for mock and real):
  *   POST /room/create → { roomId, role: 'host', state }
  *   POST /room/join   { roomId } → { role: 'guest', state }
- *   POST /room/shot   { roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }
+ *   POST /room/shot   { roomId, shotSeq, angle, power, spin? } → state same fields + phase=rolling
+ *                     settle reuses shotSeq + events[] + ballsSnapshot
  *   POST /room/aim    { roomId, shotSeq, angle, power, aimLine? } (Aim|Pull only; no balls[])
  *   GET  /room/state?roomId=&sinceSeq= → snapshot; Aim/Pull + sinceSeq>=shotSeq strips object balls
  *
@@ -163,6 +164,14 @@
     if (next.turnOpenId == null) next.turnOpenId = '';
     if (next.aim && next.aim.angle == null && next.aim.aimAngle != null) next.aim.angle = next.aim.aimAngle;
     if (next.aim && next.aim.aimAngle == null && next.aim.angle != null) next.aim.aimAngle = next.aim.angle;
+    var src = next.impulse || next.aim || next.lastShot || {};
+    var ang = next.angle != null ? next.angle : (next.aimAngle != null ? next.aimAngle : (src.angle != null ? src.angle : src.aimAngle));
+    if (ang != null) {
+      next.angle = ang;
+      if (next.aimAngle == null) next.aimAngle = src.aimAngle != null ? src.aimAngle : ang;
+    }
+    if (next.power == null && src.power != null) next.power = src.power;
+    if (next.spin == null && src.spin != null) next.spin = src.spin;
     if (next.phase === 'Pull') next.phase = 'Aim';
     return next;
   }
@@ -246,7 +255,14 @@
       foulHint: state.foulHint,
       turnOpenId: state.turnOpenId,
       pocketScore: state.pocketScore,
-      zoneBonus: state.zoneBonus
+      zoneBonus: state.zoneBonus,
+      phase: state.phase,
+      angle: state.angle,
+      aimAngle: state.aimAngle,
+      power: state.power,
+      spin: state.spin,
+      impulse: state.impulse,
+      lastShot: state.lastShot
     };
   }
 
@@ -261,7 +277,8 @@
       role: payload.role || (fromSeat === 1 ? 'guest' : 'host'),
       token: payload.token,
       shotSeq: payload.shotSeq,
-      aimAngle: payload.aimAngle,
+      angle: payload.angle != null ? payload.angle : payload.aimAngle,
+      aimAngle: payload.aimAngle != null ? payload.aimAngle : payload.angle,
       power: payload.power,
       ax: payload.ax,
       ay: payload.ay,

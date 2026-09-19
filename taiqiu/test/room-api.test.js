@@ -308,6 +308,38 @@ check('POST /room/shot rolling stores angle/power/spin and settle reuses shotSeq
   assert.strictEqual(settle.state.shotSeq, 1);
   assert.strictEqual(settle.state.turn, 1);
   assert.strictEqual(settle.state.phase, 'Aim');
+  assert.ok(settle.state.lastShot);
+  assert.ok(Math.abs(settle.state.lastShot.angle - 0.55) < 1e-6);
+});
+
+check('roomApi POST /room/shot rolling echoes angle/power/spin on GET', function () {
+  roomApi.resetMemory();
+  var made = roomApi.create();
+  roomApi.join(made.roomId);
+  var roll = roomApi.shot(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    shotSeq: 1,
+    angle: 0.55,
+    power: 0.8,
+    spin: 0.1,
+    phase: 'rolling',
+    reason: 'rolling',
+    events: []
+  });
+  assert.strictEqual(roll.ok, true);
+  assert.strictEqual(roll.state.phase, 'rolling');
+  assert.ok(Math.abs(roll.state.angle - 0.55) < 1e-6);
+  assert.ok(Math.abs(roll.state.power - 0.8) < 1e-6);
+  assert.ok(Math.abs(roll.state.spin - 0.1) < 1e-6);
+  assert.ok(roll.state.impulse && roll.state.impulse.kind === 'firing');
+  var got = roomApi.state(made.roomId);
+  assert.strictEqual(got.state.phase, 'rolling');
+  assert.ok(Math.abs(got.state.angle - 0.55) < 1e-6);
+  assert.ok(Math.abs(got.state.power - 0.8) < 1e-6);
+  assert.ok(Math.abs(got.angle - 0.55) < 1e-6);
+  assert.ok(Math.abs(got.power - 0.8) < 1e-6);
+  assert.strictEqual(got.phase, 'rolling');
 });
 
 check('aim kind=name updates nicknames without requiring the turn', function () {

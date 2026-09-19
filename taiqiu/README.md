@@ -117,7 +117,7 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | --- | --- | --- | --- |
 | create | `POST /room/create` | optional `{ balls, scores, targetN, openId, nick }` | `{ roomId, role: "host", share: { query: "roomId=XXXXXX", path: "?roomId=XXXXXX" }, state }` |
 | join | `POST /room/join` | `{ roomId }` (`room` / `id` aliases) | `{ role: "guest", state }` or `{ ok:false, reason:"missing"|"full"|"ended" }` |
-| shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
+| shot | `POST /room/shot` | fire `{ roomId, shotSeq, angle, power, spin? }` → `state` same fields + `phase=rolling`. Settle reuses `shotSeq` + `events[]` + `ballsSnapshot` | `{ state }` |
 | aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine? }` — only when `turnOpenId===me` and phase Aim\|Pull. `kind=firing` stores `impulse` for spectator replay. `kind=name` updates that seat's nick without a turn check | `{ state }` dirty `aim{angle,power,aimLine,updatedAt}` or `impulse`; object-ball coords stripped; `shotSeq` unchanged |
 | state | `GET /room/state?roomId=&sinceSeq=` | — | `deadlineAt`, `nicknames{host,guest}`, `winnerOpenId?`, `stars{host,guest}`, `foulCode?`, `foulHint`, `pocketScore`, `zoneBonus`, `turnOpenId`. Aim/Pull + `sinceSeq>=shotSeq` omits non-cue ball coords |
 

@@ -1451,6 +1451,27 @@ check('2P spectator interpolates aim and locally replays the shot', function () 
   assert.strictEqual(guest.turn, 1);
 });
 
+check('settle soft-corrects small drift and snaps large drift', function () {
+  var s = fresh();
+  var felt = s.table.felt;
+  var cueBall = balls.cueBall(s.balls);
+  var snap = roomApi.snapshotBalls(s.balls, felt);
+  var auth = sessionMod.ballWorldPos(snap[0], felt);
+  cueBall.x = auth.x + 4;
+  cueBall.y = auth.y + 3;
+  var beforeX = cueBall.x;
+  var drift = sessionMod.softCorrectBalls(s, snap, felt);
+  assert.ok(drift > 4 && drift < 18, 'small drift ' + drift);
+  assert.ok(Math.abs(cueBall.x - (beforeX + (auth.x - beforeX) * 0.45)) < 1e-6);
+  assert.ok(Math.abs(cueBall.x - auth.x) > 1, 'must not full-snap a small error');
+
+  cueBall.x = auth.x + 40;
+  cueBall.y = auth.y;
+  var big = sessionMod.softCorrectBalls(s, snap, felt);
+  assert.ok(big > 18, 'large drift ' + big);
+  assert.ok(Math.abs(cueBall.x - auth.x) < 1e-6, 'large drift snaps to auth');
+});
+
 if (failures) {
   console.error(failures + ' failed');
   process.exit(1);

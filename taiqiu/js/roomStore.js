@@ -470,7 +470,8 @@
       state.lastRole = roleOfSeat(fromSeat);
       state.lastShot = {
         shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq + 1,
-        aimAngle: payload.aimAngle != null ? payload.aimAngle : (state.impulse && state.impulse.aimAngle),
+        angle: payload.angle != null ? payload.angle : (payload.aimAngle != null ? payload.aimAngle : (state.impulse && state.impulse.angle)),
+        aimAngle: payload.aimAngle != null ? payload.aimAngle : (payload.angle != null ? payload.angle : (state.impulse && state.impulse.aimAngle)),
         power: payload.power != null ? payload.power : (state.impulse && state.impulse.power),
         ax: payload.ax != null ? payload.ax : (state.impulse && state.impulse.ax),
         ay: payload.ay != null ? payload.ay : (state.impulse && state.impulse.ay),
