@@ -5,7 +5,7 @@
  *   POST /room/create
  *   POST /room/join
  *   POST /room/aim
- *   POST /room/shot
+ *   POST /room/shot   (impulse first → phase=rolling; later snapshot settle)
  *   GET  /room/state?roomId=
  *
  * Legacy aliases (same store):
@@ -186,7 +186,7 @@ if (require.main === module) {
     console.log('  POST /room/create  → { roomId, share.query="roomId=XXXXXX", share.path="?roomId=XXXXXX" }');
     console.log('  POST /room/join    { roomId }  (missing|full|ended → ok:false, reason, state?)');
     console.log('  POST /room/aim');
-    console.log('  POST /room/shot');
+    console.log('  POST /room/shot   { angle|aimAngle, power, spin? } → phase=rolling + impulse');
     console.log('  GET  /room/state?roomId=');
     console.log('  shareAppMessage query: roomId=<roomId>   preview: ?roomId=<roomId>&api=http://' + shown + ':' + addr.port);
   });

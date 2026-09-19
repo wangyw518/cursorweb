@@ -10,7 +10,7 @@
  *   POST /room/create → { roomId, role: 'host', state }
  *   POST /room/join   { roomId, nick?, openId? } → { role: 'guest', state }
  *   POST /room/aim    { roomId, shotSeq, angle, power, aimLine? }
- *   POST /room/shot   { roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }
+ *   POST /room/shot   { roomId, shotSeq, angle|aimAngle, power, spin?, events[], ballsSnapshot? }
  *   GET  /room/state?roomId= → full authoritative snapshot
  *
  * Turn rules (authoritative on the room):
@@ -222,6 +222,12 @@
       pocketScore: res.pocketScore != null ? res.pocketScore : state.pocketScore,
       zoneBonus: res.zoneBonus != null ? res.zoneBonus : state.zoneBonus,
       stars: clone(res.stars || state.stars || { host: 0, guest: 0 }),
+      angle: res.angle != null ? res.angle : state.angle,
+      power: res.power != null ? res.power : state.power,
+      spin: res.spin != null ? res.spin : state.spin,
+      shotSeq: res.shotSeq != null ? res.shotSeq : state.shotSeq,
+      phase: res.phase != null ? res.phase : state.phase,
+      impulse: res.impulse || state.impulse || null,
       state: state
     };
   }
@@ -266,7 +272,13 @@
       foulCode: state.foulCode,
       foulHint: state.foulHint,
       pocketScore: state.pocketScore,
-      zoneBonus: state.zoneBonus
+      zoneBonus: state.zoneBonus,
+      angle: state.angle,
+      power: state.power,
+      spin: state.spin,
+      phase: state.phase,
+      impulse: state.impulse || null,
+      ballsSeq: state.ballsSeq
     };
   }
 
@@ -281,7 +293,8 @@
       role: payload.role || (fromSeat === 1 ? 'guest' : 'host'),
       token: payload.token,
       shotSeq: payload.shotSeq,
-      aimAngle: payload.aimAngle,
+      angle: payload.angle != null ? payload.angle : payload.aimAngle,
+      aimAngle: payload.aimAngle != null ? payload.aimAngle : payload.angle,
       power: payload.power,
       spin: payload.spin,
       events: payload.events || [],

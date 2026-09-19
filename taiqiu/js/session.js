@@ -86,12 +86,113 @@
     return null;
   }
 
+  function isRollingPhase(phase) {
+    return phase === 'rolling' || phase === fsm.PHASE.Shot || phase === 'shot';
+  }
+
+  function isSettledPhase(phase) {
+    return phase === fsm.PHASE.Aim || phase === fsm.PHASE.Settle || phase === 'aim' || phase === 'settle';
+  }
+
+  function pickImpulse(state) {
+    if (!state) return null;
+    var src = state.impulse || state.lastShot || state;
+    var angle = src.angle;
+    if (angle == null) angle = src.aimAngle;
+    if (angle == null && state.angle != null) angle = state.angle;
+    var power = src.power;
+    if (power == null && state.power != null) power = state.power;
+    if (angle == null || power == null) return null;
+    return {
+      angle: angle,
+      power: power,
+      spin: src.spin != null ? src.spin : state.spin
+    };
+  }
+
   function isAuthoritativeBalls(session, state, opts) {
     opts = opts || {};
     if (opts.forceBalls || opts.join) return true;
+    if (isRollingPhase(state.phase)) return false;
+    if (state.ballsSeq != null) {
+      var lastBalls = session.room && session.room.lastBallsSeq != null ? session.room.lastBallsSeq : -1;
+      return state.ballsSeq > lastBalls;
+    }
     var incoming = incomingShotSeq(state);
     var last = session.room && session.room.lastSeq != null ? session.room.lastSeq : -1;
     return incoming != null && incoming > last;
+  }
+
+  function applyRemoteAim(session, aim) {
+    if (!aim || aim.angle == null) return session;
+    if (canAim(session) && session.cue.dragging) return session;
+    session.cue.angle = aim.angle;
+    session.cue.ax = Math.cos(aim.angle);
+    session.cue.ay = Math.sin(aim.angle);
+    session.cue.power = aim.power != null ? aim.power : 0;
+    session.watchAim = true;
+    refreshPreview(session);
+    return session;
+  }
+
+  function shouldStartRemoteReplay(session, state) {
+    if (!state || !session.room) return false;
+    if (!isRollingPhase(state.phase)) return false;
+    var incoming = incomingShotSeq(state);
+    if (incoming == null) return false;
+    if (session.room.replaySeq === incoming) return false;
+    if (session.room.firedSeq === incoming) return false;
+    return !!pickImpulse(state);
+  }
+
+  function startRemoteReplay(session, state) {
+    var impulse = pickImpulse(state);
+    if (!impulse) return false;
+    var felt = session.table && session.table.felt;
+    var snap = state.ballsSnapshot || state.balls;
+    if (snap) {
+      roomApi.applyBalls(session.balls, snap, felt);
+      lockObjectBalls(session);
+    }
+    var cueBall = findCue(session);
+    if (!cueBall || cueBall.pocketed) return false;
+    var spd = ((session.config && session.config.powerSpeed) || 1280) * impulse.power;
+    cueBall.vx = Math.cos(impulse.angle) * spd;
+    cueBall.vy = Math.sin(impulse.angle) * spd;
+    session.lastShotInput = {
+      aimAngle: impulse.angle,
+      power: impulse.power,
+      spin: impulse.spin || 0
+    };
+    session.phase = fsm.PHASE.Shot;
+    session.cue.dragging = false;
+    session.cue.power = 0;
+    session.watchAim = false;
+    session.pendingSnap = null;
+    stopDetect.reset(session.stop);
+    session.settleIn = 0;
+    session.shot = emptyShot();
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    refreshTarget(session);
+    if (session.target) session.shot.targetId = session.target.id;
+    if (session.room) {
+      if (state.shotSeq != null) session.room.lastSeq = state.shotSeq;
+      session.room.replaySeq = incomingShotSeq(state);
+    }
+    if (state.guestJoined && session.room) {
+      session.room.guestJoined = true;
+      session.hotseat = false;
+    }
+    if (sfx && sfx.cue) sfx.cue();
+    return true;
+  }
+
+  function applyPendingSnap(session) {
+    if (!session.pendingSnap) return false;
+    var pending = session.pendingSnap;
+    session.pendingSnap = null;
+    applyRoomState(session, pending, { forceBalls: true });
+    return true;
   }
 
   function findCue(session) {
@@ -117,7 +218,8 @@
 
   function refreshPreview(session) {
     var cueBall = findCue(session);
-    if (!session.cue.dragging || session.cue.power < 0.04 || !cueBall) {
+    var aiming = session.cue.dragging || session.watchAim;
+    if (!aiming || session.cue.power < 0.04 || !cueBall) {
       session.preview = { points: [], ghost: null, bounces: 0 };
       return session.preview;
     }
@@ -174,10 +276,14 @@
     var snap = roomApi.snapshotBalls(session.balls, felt);
     var seat = fromSeat != null ? fromSeat : session.mySeat;
     var last = session.lastShotInput || {};
-    var shotSeq = ((session.room && (session.room.lastSeq || 0)) || 0) + 1;
+    var lastSeq = session.room && session.room.lastSeq != null ? session.room.lastSeq : 0;
+    var shotSeq = session.room && session.room.impulseSent
+      ? lastSeq
+      : lastSeq + 1;
     return {
       roomId: session.room ? session.room.roomId : null,
       shotSeq: shotSeq,
+      angle: last.aimAngle,
       aimAngle: last.aimAngle,
       power: last.power,
       spin: last.spin,
@@ -196,6 +302,7 @@
       pocketScore: session.award && session.award.pocketBonus != null ? session.award.pocketBonus : 0,
       zoneBonus: session.award && session.award.landingBonus != null ? session.award.landingBonus : 0,
       phase: session.phase,
+      settled: true,
       targetN: session.target ? session.target.n : 0,
       matchOver: !!session.matchOver,
       winner: session.winner,
@@ -214,6 +321,7 @@
     if (applyBallsNow) {
       roomApi.applyBalls(session.balls, snap, felt);
       lockObjectBalls(session);
+      if (session.room && state.ballsSeq != null) session.room.lastBallsSeq = state.ballsSeq;
     }
     if (state.stars) {
       session.stars = {
@@ -250,27 +358,41 @@
     }
     if (state.phase === fsm.PHASE.Aim || state.phase === fsm.PHASE.Settle) {
       session.phase = state.phase;
+      session.watchAim = false;
+      if (session.room) session.room.replaySeq = null;
     }
     if (state.matchOver && state.phase === fsm.PHASE.Settle) {
       session.phase = fsm.PHASE.Settle;
     }
     refreshTarget(session);
     if (session.target) session.shot.targetId = session.target.id;
-    if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
+    if (session.phase === fsm.PHASE.Aim) {
+      guardObjectBalls(session);
+      if (state.aim && !canAim(session)) applyRemoteAim(session, state.aim);
+      else if (!state.aim && session.watchAim) session.watchAim = false;
+    }
     return session;
   }
 
   function ingestState(session, res, opts) {
     var state = res && res.state ? res.state : res;
     if (!state || !state.roomId) return null;
-    if (session.phase === fsm.PHASE.Shot ||
-        session.phase === fsm.PHASE.ResolvePocket ||
-        session.phase === fsm.PHASE.WaitCueStop ||
-        session.phase === fsm.PHASE.StarZone) {
-      if (state.guestJoined && session.room) {
-        session.room.guestJoined = true;
-        session.hotseat = false;
+    if (state.guestJoined && session.room) {
+      session.room.guestJoined = true;
+      session.hotseat = false;
+    }
+    var inFlight = session.phase === fsm.PHASE.Shot ||
+      session.phase === fsm.PHASE.ResolvePocket ||
+      session.phase === fsm.PHASE.WaitCueStop ||
+      session.phase === fsm.PHASE.StarZone;
+    if (inFlight) {
+      if (isSettledPhase(state.phase) && (state.ballsSnapshot || state.balls)) {
+        session.pendingSnap = state;
       }
+      return state;
+    }
+    if (shouldStartRemoteReplay(session, state)) {
+      startRemoteReplay(session, state);
       return state;
     }
     applyRoomState(session, state, opts);
@@ -288,7 +410,54 @@
   function pushRoom(session, reason, fromSeat) {
     if (!shouldSubmitShot(session, fromSeat)) return null;
     return roomApi.shot(session.room.roomId, shotPayload(session, reason, fromSeat), function (res) {
+      if (session.room) session.room.impulseSent = false;
       if (res && res.state) ingestState(session, res);
+    });
+  }
+
+  function pushImpulse(session) {
+    if (!shouldSubmitShot(session)) return null;
+    var last = session.lastShotInput || {};
+    var shotSeq = ((session.room && (session.room.lastSeq || 0)) || 0) + 1;
+    if (session.room) session.room.firedSeq = shotSeq;
+    var payload = {
+      roomId: session.room.roomId,
+      shotSeq: shotSeq,
+      angle: last.aimAngle,
+      aimAngle: last.aimAngle,
+      power: last.power,
+      spin: last.spin,
+      reason: 'rolling',
+      phase: 'rolling',
+      fromSeat: session.mySeat,
+      role: session.mySeat === 1 ? 'guest' : 'host',
+      token: session.room.token,
+      openId: session.openId || undefined
+    };
+    return roomApi.shot(session.room.roomId, payload, function (res) {
+      if (res && res.ok && res.state && session.room) {
+        if (res.state.shotSeq != null) session.room.lastSeq = res.state.shotSeq;
+        session.room.impulseSent = true;
+      }
+    });
+  }
+
+  function pushAim(session) {
+    if (!session.room || !session.room.roomId) return null;
+    if (!canAim(session) || !session.cue.dragging) return null;
+    var now = Date.now();
+    var min = (session.config.room && session.config.room.aimMinIntervalMs) || 180;
+    if (session.lastAimAt && now - session.lastAimAt < min) return null;
+    session.lastAimAt = now;
+    return roomApi.aim(session.room.roomId, {
+      roomId: session.room.roomId,
+      shotSeq: ((session.room.lastSeq || 0) || 0) + 1,
+      angle: session.cue.angle,
+      power: session.cue.power,
+      fromSeat: session.mySeat,
+      role: session.mySeat === 1 ? 'guest' : 'host',
+      token: session.room.token,
+      openId: session.openId || undefined
     });
   }
 
@@ -385,7 +554,10 @@
       matchOver: false,
       winner: null,
       syncAcc: 0,
-      roomPanel: null
+      roomPanel: null,
+      watchAim: false,
+      pendingSnap: null,
+      lastAimAt: 0
     };
     resetRound(session);
     if (!opts.skipSplash) session.phase = fsm.PHASE.Splash;
@@ -489,6 +661,17 @@
   }
 
   function concludeShot(session, applyStar) {
+    if (session.pendingSnap) {
+      var pending = session.pendingSnap;
+      session.pendingSnap = null;
+      applyRoomState(session, pending, { forceBalls: true });
+      return session.settle || session.award;
+    }
+    if (session.room && session.room.replaySeq != null &&
+        session.room.firedSeq !== session.room.replaySeq) {
+      beginNextAim(session);
+      return session.award;
+    }
     var shooter = session.turn;
     var cueBall = findCue(session);
     var landed = null;
@@ -641,19 +824,20 @@
       session.toast.life -= dt;
       if (session.toast.life <= 0) session.toast = null;
     }
+    if (session.room && session.phase !== fsm.PHASE.Splash) {
+      session.syncAcc += dt;
+      var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
+      if (session.syncAcc > pollSec) {
+        session.syncAcc = 0;
+        pullRoom(session);
+        if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
+      }
+    }
     if (session.phase === fsm.PHASE.Aim) {
       // P0-A: freeze the table while aiming / charging. Never step physics.
       balls.haltBalls(session.balls);
       guardObjectBalls(session);
-      if (session.room) {
-        session.syncAcc += dt;
-        var pollSec = ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
-        if (session.syncAcc > pollSec) {
-          session.syncAcc = 0;
-          pullRoom(session);
-          guardObjectBalls(session);
-        }
-      }
+      if (session.cue.dragging) pushAim(session);
       return;
     }
     if (session.phase === fsm.PHASE.Shot) {
@@ -718,13 +902,20 @@
       guestJoined: false,
       token: made.token,
       role: 'host',
-      lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0
+      lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0,
+      lastBallsSeq: made.state && made.state.ballsSeq != null ? made.state.ballsSeq : 0,
+      firedSeq: null,
+      replaySeq: null,
+      impulseSent: false
     };
     session.roomPanel = {
       roomId: made.roomId,
       hint: '分享给好友，加入后同步台面。第二页打开 ?roomId=' + made.roomId
     };
-    if (made.state) applyRoomState(session, made.state, { join: true });
+    if (made.state) {
+      applyRoomState(session, made.state, { join: true });
+      if (shouldStartRemoteReplay(session, made.state)) startRemoteReplay(session, made.state);
+    }
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
     session.joiningRoomId = null;
     session.toast = { text: '房间 ' + made.roomId, life: 1.8 };
@@ -780,10 +971,17 @@
       role: session.role,
       lastSeq: joined.state
         ? (joined.state.shotSeq != null ? joined.state.shotSeq : joined.state.seq)
-        : 0
+        : 0,
+      lastBallsSeq: joined.state && joined.state.ballsSeq != null ? joined.state.ballsSeq : 0,
+      firedSeq: null,
+      replaySeq: null,
+      impulseSent: false
     };
     if (session.phase === fsm.PHASE.Splash) session.phase = fsm.PHASE.Aim;
-    if (joined.state) applyRoomState(session, joined.state, { join: true, forceBalls: true });
+    if (joined.state) {
+      applyRoomState(session, joined.state, { join: true, forceBalls: true });
+      if (shouldStartRemoteReplay(session, joined.state)) startRemoteReplay(session, joined.state);
+    }
     session.joiningRoomId = null;
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
@@ -903,6 +1101,7 @@
     cue.moveDrag(session.cue, x, y, findCue(session), dragBounds(session));
     refreshPreview(session);
     guardObjectBalls(session);
+    pushAim(session);
     return { kind: 'aim' };
   }
 
@@ -926,6 +1125,7 @@
     stopDetect.reset(session.stop);
     session.settleIn = 0;
     if (sfx && sfx.cue) sfx.cue();
+    pushImpulse(session);
     return { kind: 'fire', power: shot.power, phase: session.phase };
   }
 
@@ -956,6 +1156,7 @@
     session.preview = { points: [], ghost: null, bounces: 0 };
     if (sfx && sfx.cue) sfx.cue();
     session.toast = { text: '弱AI试杆', life: 1.0 };
+    pushImpulse(session);
     return { kind: 'ai', power: plan.power, phase: session.phase };
   }
 
@@ -1064,6 +1265,10 @@
     inviteRoom: inviteRoom,
     pullRoom: pullRoom,
     pushRoom: pushRoom,
+    pushImpulse: pushImpulse,
+    pushAim: pushAim,
+    startRemoteReplay: startRemoteReplay,
+    pickImpulse: pickImpulse,
     canAim: canAim,
     ingestState: ingestState,
     applyRoomState: applyRoomState,

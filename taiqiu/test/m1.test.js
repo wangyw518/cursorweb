@@ -8,6 +8,7 @@ require('./tiles.test.js');
 require('./net.test.js');
 require('./room-p0.test.js');
 require('./room-score.test.js');
+require('./room-watch.test.js');
 require('./invite-join.test.js');
 require('./room-api.test.js');
 require('./session.test.js');

@@ -13,6 +13,12 @@
  * Aim writes only `aim` (dirty, droppable). It never writes balls[].
  * Shot clock is server-authoritative (default 20s); state/aim/shot settle expiry.
  *
+ * Spectate path (no frame sync):
+ *   aim dirty sync → POST /room/shot impulse (phase=rolling) →
+ *   opponent local replay → settle snapshot corrects balls.
+ *   Impulse-first must not wait on ballsSnapshot. A later shot with the
+ *   same stroke's snapshot still applies authoritative correction.
+ *
  * Shot scoring (server-authoritative attribution):
  *   Trust this-shot `pocketScore` + `zoneBonus` (or the same fields on events).
  *   Always add that total to the current turn seat — `turnOpenId` →
@@ -31,6 +37,8 @@
   var DEFAULT_SHOT_CLOCK_SEC = 20;
   var FOUL_SHOT_CLOCK = 'shotClock';
   var AIM_PHASES = { Aim: true, Pull: true, aim: true, pull: true };
+  var ROLLING_PHASES = { rolling: true, Shot: true, shot: true };
+  var IMPULSE_REASONS = { rolling: true, shot: true, fire: true };
 
   var FOUL_HINTS = {
     shotClock: '超时未击球',
@@ -111,6 +119,81 @@
     return !!AIM_PHASES[phase];
   }
 
+  function isRollingPhase(phase) {
+    return !!ROLLING_PHASES[phase];
+  }
+
+  function impulseOf(payload, prev) {
+    payload = payload || {};
+    prev = prev || {};
+    var angle = payload.angle;
+    if (angle == null) angle = payload.aimAngle;
+    if (angle == null) angle = prev.angle;
+    if (angle == null) angle = prev.aimAngle;
+    var power = payload.power;
+    if (power == null) power = prev.power;
+    var spin = payload.spin;
+    if (spin == null) spin = prev.spin;
+    return { angle: angle, power: power, spin: spin };
+  }
+
+  function isImpulseFirst(payload, reason) {
+    payload = payload || {};
+    if (payload.settled === true) return false;
+    if (payload.settled === false) return true;
+    var explicit = payload.reason || '';
+    var phase = payload.phase || '';
+    var ev = payload.events || [];
+    if (IMPULSE_REASONS[explicit] || IMPULSE_REASONS[reason]) return true;
+    if (isRollingPhase(phase) && (!explicit || IMPULSE_REASONS[explicit]) && !ev.length) {
+      return true;
+    }
+    var hasImpulse = (payload.angle != null || payload.aimAngle != null) && payload.power != null;
+    var hasSnap = !!(payload.ballsSnapshot || payload.balls);
+    if (hasImpulse && !explicit && !ev.length && !hasSnap) return true;
+    return false;
+  }
+
+  function writeImpulse(state, impulse, shotSeq, extra) {
+    extra = extra || {};
+    state.angle = impulse.angle;
+    state.power = impulse.power;
+    state.spin = impulse.spin;
+    state.impulse = {
+      angle: impulse.angle,
+      power: impulse.power,
+      spin: impulse.spin,
+      shotSeq: shotSeq
+    };
+    state.lastShot = {
+      shotSeq: shotSeq,
+      angle: impulse.angle,
+      aimAngle: impulse.angle,
+      power: impulse.power,
+      spin: impulse.spin,
+      reason: extra.reason || 'rolling',
+      events: extra.events ? clone(extra.events) : []
+    };
+    return state.impulse;
+  }
+
+  function shotEcho(state) {
+    return {
+      winnerOpenId: state.winnerOpenId,
+      foulCode: state.foulCode,
+      foulHint: state.foulHint,
+      pocketScore: state.pocketScore,
+      zoneBonus: state.zoneBonus,
+      stars: clone(state.stars),
+      angle: state.angle,
+      power: state.power,
+      spin: state.spin,
+      shotSeq: state.shotSeq,
+      phase: state.phase,
+      impulse: state.impulse ? clone(state.impulse) : null
+    };
+  }
+
   function emptyState(roomId, nowMs, clockSec) {
     var shotClockSec = clockSec != null ? clockSec : DEFAULT_SHOT_CLOCK_SEC;
     return {
@@ -130,6 +213,11 @@
       pocketScore: null,
       zoneBonus: null,
       aim: null,
+      angle: null,
+      power: null,
+      spin: null,
+      impulse: null,
+      ballsSeq: 0,
       shotClockSec: shotClockSec,
       deadlineAt: nowMs + shotClockSec * 1000,
       seq: 0,
@@ -167,6 +255,11 @@
     if (state.pocketScore === undefined) state.pocketScore = null;
     if (state.zoneBonus === undefined) state.zoneBonus = null;
     if (state.aim === undefined) state.aim = null;
+    if (state.angle === undefined) state.angle = null;
+    if (state.power === undefined) state.power = null;
+    if (state.spin === undefined) state.spin = null;
+    if (state.impulse === undefined) state.impulse = null;
+    if (state.ballsSeq == null) state.ballsSeq = 0;
     state.turnOpenId = state.turn === 1 ? state.guestOpenId : state.hostOpenId;
     return state;
   }
@@ -344,6 +437,7 @@
 
   function expireShotClock(state, nowMs) {
     if (!state || state.matchOver) return false;
+    if (isRollingPhase(state.phase)) return false;
     if (state.deadlineAt == null) return false;
     if (nowMs < state.deadlineAt) return false;
     var fromSeat = state.turn;
@@ -523,24 +617,48 @@
       if (actor.error) return fail('shot', actor.error, roomId, state);
       var fromSeat = actor.fromSeat;
       var reason = reasonFromEvents(payload.events, payload.reason);
+      var impulseFirst = isImpulseFirst(payload, reason);
       if (reason !== 'new-game' && !state.matchOver) {
         if (state.turn !== fromSeat || (state.turnOpenId && actor.openId && state.turnOpenId !== actor.openId)) {
           return fail('shot', 'not-your-turn', roomId, state);
         }
-        if (incrementsOtherSide(state, payload, fromSeat)) {
+        if (!impulseFirst && incrementsOtherSide(state, payload, fromSeat)) {
           return fail('shot', 'not-your-score', roomId, state);
         }
       }
       if (payload.shotSeq != null && reason !== 'new-game') {
-        var expected = (state.shotSeq == null ? 0 : state.shotSeq) + 1;
-        if (payload.shotSeq !== expected) {
+        var curSeq = state.shotSeq == null ? 0 : state.shotSeq;
+        var expected = curSeq + 1;
+        var sameStrokeSettle = isRollingPhase(state.phase) && !impulseFirst && payload.shotSeq === curSeq;
+        if (payload.shotSeq !== expected && !sameStrokeSettle) {
           return fail('shot', 'stale-seq', roomId, state);
         }
       }
+      var impulse = impulseOf(payload, state.impulse || state.lastShot);
+
+      if (impulseFirst && reason !== 'new-game') {
+        if (impulse.angle == null || impulse.power == null) {
+          return fail('shot', 'missing-impulse', roomId, state);
+        }
+        var fireSeq = payload.shotSeq != null ? payload.shotSeq : (state.shotSeq == null ? 0 : state.shotSeq) + 1;
+        state.phase = 'rolling';
+        state.shotSeq = fireSeq;
+        state.seq += 1;
+        writeImpulse(state, impulse, fireSeq, { reason: 'rolling' });
+        state.lastReason = 'rolling';
+        state.lastSeat = fromSeat;
+        state.lastRole = roleOfSeat(fromSeat);
+        state.aim = null;
+        state.guestJoined = !!(state.guestJoined || payload.guestJoined);
+        write(roomId, state);
+        return ok('shot', roomId, shotEcho(state), state);
+      }
+
       var snap = payload.ballsSnapshot || payload.balls;
       if (snap) {
         state.balls = clone(snap);
         state.ballsSnapshot = clone(snap);
+        state.ballsSeq = (state.ballsSeq == null ? 0 : state.ballsSeq) + 1;
       }
       if (payload.phase) state.phase = payload.phase;
       if (payload.targetN != null) state.targetN = payload.targetN;
@@ -584,37 +702,44 @@
         state.foulHint = null;
         state.pocketScore = null;
         state.zoneBonus = null;
+        state.angle = null;
+        state.power = null;
+        state.spin = null;
+        state.impulse = null;
+        state.ballsSeq = snap ? state.ballsSeq : 0;
         syncTurnIdentity(state);
       }
       if (reason === 'nine') state.phase = payload.phase || 'Settle';
-      else if (!payload.phase) state.phase = 'Aim';
+      else if (!payload.phase || isRollingPhase(payload.phase)) state.phase = 'Aim';
       state.lastReason = reason;
       state.lastSeat = fromSeat;
       state.lastRole = roleOfSeat(fromSeat);
-      state.lastShot = {
-        shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq + 1,
-        aimAngle: payload.aimAngle != null ? payload.aimAngle : payload.angle,
-        power: payload.power,
-        spin: payload.spin,
-        events: payload.events ? clone(payload.events) : []
-      };
+      var settleSeq = payload.shotSeq != null ? payload.shotSeq : (state.shotSeq == null ? 0 : state.shotSeq) + 1;
+      if (impulse.angle != null || impulse.power != null) {
+        writeImpulse(state, impulse, settleSeq, {
+          reason: reason,
+          events: payload.events
+        });
+      } else {
+        state.lastShot = {
+          shotSeq: settleSeq,
+          aimAngle: payload.aimAngle != null ? payload.aimAngle : payload.angle,
+          angle: payload.angle != null ? payload.angle : payload.aimAngle,
+          power: payload.power,
+          spin: payload.spin,
+          events: payload.events ? clone(payload.events) : []
+        };
+      }
       state.aim = null;
       state.guestJoined = !!(state.guestJoined || payload.guestJoined);
       state.seq += 1;
       if (reason !== 'new-game') {
-        state.shotSeq = payload.shotSeq != null ? payload.shotSeq : state.seq;
+        state.shotSeq = settleSeq;
       }
       if (!state.matchOver) refreshDeadline(state, now());
       else state.deadlineAt = null;
       write(roomId, state);
-      return ok('shot', roomId, {
-        winnerOpenId: state.winnerOpenId,
-        foulCode: state.foulCode,
-        foulHint: state.foulHint,
-        pocketScore: state.pocketScore,
-        zoneBonus: state.zoneBonus,
-        stars: clone(state.stars)
-      }, state);
+      return ok('shot', roomId, shotEcho(state), state);
     }
 
     function stateOf(roomId) {
@@ -638,7 +763,13 @@
         foulCode: state.foulCode,
         foulHint: state.foulHint,
         pocketScore: state.pocketScore,
-        zoneBonus: state.zoneBonus
+        zoneBonus: state.zoneBonus,
+        angle: state.angle,
+        power: state.power,
+        spin: state.spin,
+        phase: state.phase,
+        impulse: state.impulse ? clone(state.impulse) : null,
+        ballsSeq: state.ballsSeq
       }, state);
     }
 
@@ -699,6 +830,9 @@
     shareFor: shareFor,
     thisShotAmounts: thisShotAmounts,
     creditTurnStars: creditTurnStars,
+    impulseOf: impulseOf,
+    isImpulseFirst: isImpulseFirst,
+    isRollingPhase: isRollingPhase,
     DEFAULT_SHOT_CLOCK_SEC: DEFAULT_SHOT_CLOCK_SEC,
     FOUL_SHOT_CLOCK: FOUL_SHOT_CLOCK
   };
