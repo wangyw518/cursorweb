@@ -1375,6 +1375,7 @@
         attachGuestRoom(session, res, roomId);
         return;
       }
+      if (session.room && session.room.roomId === roomId) return;
       markJoinFail(session, roomId, res && res.reason);
     });
     if (joined && joined.ok && !joined.pending) {

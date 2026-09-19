@@ -6,6 +6,10 @@ var storeMod = require('../js/roomStore');
 var roomServer = require('../dev/room-server');
 var roomApi = require('../js/roomApi');
 var net = require('../js/net');
+var sessionMod = require('../js/session');
+var storage = require('../js/storage');
+var config = require('../js/config.json');
+var share = require('../js/share');
 
 var failures = 0;
 
@@ -481,7 +485,67 @@ function runAimHttp(cb) {
   });
 }
 
-var httpPending = 2;
+function viewport() {
+  return { width: 375, height: 667, pixelRatio: 2, statusBarHeight: 20, safeTop: 20, safeBottom: 0 };
+}
+
+function runInviteHttp(cb) {
+  var started = roomServer.listen({ port: 0, host: '127.0.0.1' }, function (addr) {
+    var port = addr.port;
+    var cfg = JSON.parse(JSON.stringify(config));
+    cfg.room = cfg.room || {};
+    cfg.room.roomApiBase = 'http://127.0.0.1:' + port;
+    cfg.room.httpUrl = cfg.room.roomApiBase;
+    storage.resetMemory();
+    roomApi.configure({ roomApiBase: cfg.room.roomApiBase });
+    var host = sessionMod.create(viewport(), cfg);
+    host.displayName = '房主甲';
+    var created = sessionMod.createRoom(host);
+    function afterHost() {
+      if (!host.room || !host.room.roomId) return cb(new Error('host create never attached'));
+      var guest = sessionMod.create(viewport(), cfg);
+      guest.displayName = '好友乙';
+      var pending = sessionMod.enterInvite(guest, {
+        query: 'roomId=' + host.room.roomId + '&from=invite'
+      });
+      var tries = 0;
+      function waitJoin() {
+        tries += 1;
+        if (guest.room && guest.room.roomId === host.room.roomId && guest.mySeat === 1) {
+          sessionMod.pullRoom(host);
+          setTimeout(function () {
+            started.server.close();
+            cb(null, { host: host, guest: guest, pending: pending, share: share.composeRoom(host.room.roomId) });
+          }, 40);
+          return;
+        }
+        if (guest.joinError) {
+          started.server.close();
+          return cb(new Error('guest joinError ' + guest.joinError));
+        }
+        if (tries > 80) {
+          started.server.close();
+          return cb(new Error('guest join timeout'));
+        }
+        setTimeout(waitJoin, 25);
+      }
+      waitJoin();
+    }
+    if (created && created.roomId) return afterHost();
+    var hostTries = 0;
+    (function waitHost() {
+      hostTries += 1;
+      if (host.room && host.room.roomId) return afterHost();
+      if (hostTries > 80) {
+        started.server.close();
+        return cb(new Error('host create timeout'));
+      }
+      setTimeout(waitHost, 25);
+    }());
+  });
+}
+
+var httpPending = 3;
 function finishHttp() {
   if (httpPending) return;
   if (failures) {
@@ -510,6 +574,30 @@ runHttp(function (err, result) {
   } catch (fail) {
     failures += 1;
     console.error('FAIL  HTTP room poll');
+    console.error('  ' + fail.message);
+  }
+  finishHttp();
+});
+
+runInviteHttp(function (err, result) {
+  httpPending -= 1;
+  try {
+    if (err) throw err;
+    assert.ok(result.share.ok);
+    assert.ok(result.share.query.indexOf('roomId=' + result.host.room.roomId) === 0);
+    assert.ok(result.share.query.indexOf('from=invite') !== -1);
+    assert.strictEqual(result.guest.mode, 'room');
+    assert.strictEqual(result.guest.phase, 'Aim');
+    assert.strictEqual(result.guest.mySeat, 1);
+    assert.strictEqual(result.guest.turn, 0);
+    assert.strictEqual(result.host.turn, 0);
+    assert.ok(result.host.room.guestJoined);
+    assert.ok(String(result.guest.names[0]).indexOf('房主') !== -1 || String(result.host.names[0]).indexOf('甲') !== -1);
+    assert.ok(String(result.guest.names[1]).indexOf('乙') !== -1 || String(result.host.names[1]).indexOf('乙') !== -1);
+    console.log('ok  HTTP enterInvite joins guest without solo splash');
+  } catch (fail) {
+    failures += 1;
+    console.error('FAIL  HTTP enterInvite');
     console.error('  ' + fail.message);
   }
   finishHttp();
