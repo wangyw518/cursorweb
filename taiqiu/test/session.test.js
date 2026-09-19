@@ -1109,6 +1109,35 @@ check('AI timeout is local, keeps object balls, and hands the table to 简单AI'
   assert.strictEqual(hud.turnLabel(s), 'AI出杆中');
 });
 
+check('continueShot after OOB relocks so Aim cannot resurrect the escaped ball', function () {
+  var s = fresh();
+  sessionMod.startPractice(s);
+  var n;
+  for (n = 1; n <= 8; n++) {
+    if (n === 5) continue;
+    balls.findByN(s.balls, n).pocketed = true;
+  }
+  sessionMod.lockObjectBalls(s);
+  var five = balls.findByN(s.balls, 5);
+  five.x = s.table.felt.x - 30;
+  five.y = s.table.felt.y - 22;
+  five.vx = -80;
+  five.vy = -40;
+  s.target = five;
+  s.shot.targetId = five.id;
+  s.phase = fsm.PHASE.Shot;
+  sessionMod.update(s, config.fixedDt);
+  assert.strictEqual(five.pocketed, true);
+  assert.strictEqual(five.outOfBounds, true);
+  sessionMod.continueShot(s);
+  var i;
+  for (i = 0; i < 8; i++) sessionMod.update(s, config.fixedDt);
+  assert.strictEqual(five.pocketed, true);
+  assert.strictEqual(s.target && s.target.n, 9);
+  assert.strictEqual(hud.liveTarget(s).n, 9);
+  assert.ok(!balls.onTable(s.balls).some(function (b) { return b.n === 5; }));
+});
+
 check('off-table 5-ball is removed and HUD target advances past 5', function () {
   var s = fresh();
   sessionMod.startPractice(s);
