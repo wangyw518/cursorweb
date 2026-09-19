@@ -590,6 +590,55 @@ check('in-game 返回大厅 clears AI/practice and splash 好友对局 can invit
   assert.strictEqual(s.mode, '');
 });
 
+check('返回大厅 is outline secondary beside 新开一局/邀请好友 and opens splash', function () {
+  var gap = 6;
+  var s = sessionMod.create(viewport(), config);
+  assert.strictEqual(s.ui.lobby.label, '返回大厅');
+  assert.strictEqual(s.ui.lobby.outline, true);
+  sessionMod.handlePointerDown(s, s.ui.aiSplash.x + 8, s.ui.aiSplash.y + 8);
+  assert.strictEqual(s.mode, 'ai');
+  assert.ok(
+    Math.abs((s.ui.lobby.x + s.ui.lobby.w + gap) - s.ui.rerack.x) < 1,
+    'AI/practice 返回大厅 sits beside 新开一局'
+  );
+  var aiChrome = mockCtx();
+  hud.drawChrome(aiChrome, s);
+  var aiBlob = aiChrome._log.texts.join('|');
+  assert.ok(aiBlob.indexOf('返回大厅') !== -1);
+  assert.ok(aiBlob.indexOf('邀请好友') === -1);
+  assert.ok(aiChrome._log.fills.some(function (fill) {
+    return String(fill).indexOf('rgba(24, 18, 12') !== -1;
+  }), '返回大厅 uses outline fill');
+  var left = sessionMod.handlePointerDown(s, s.ui.lobby.x + 4, s.ui.lobby.y + 4);
+  assert.strictEqual(left.kind, 'lobby');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.notStrictEqual(s.phase, fsm.PHASE.Settle);
+  assert.strictEqual(s.mode, '');
+  var splash = mockCtx();
+  hud.drawSplash(splash, s);
+  var splashBlob = splash._log.texts.join('|');
+  assert.ok(splashBlob.indexOf('人机对战') !== -1);
+  assert.ok(splashBlob.indexOf('练习模式') !== -1);
+  assert.ok(splashBlob.indexOf('好友对局') !== -1);
+
+  sessionMod.handlePointerDown(s, s.ui.practice.x + 8, s.ui.practice.y + 8);
+  assert.strictEqual(s.mode, 'practice');
+  assert.ok(Math.abs((s.ui.lobby.x + s.ui.lobby.w + gap) - s.ui.rerack.x) < 1);
+  sessionMod.backToLobby(s);
+
+  var friend = sessionMod.handlePointerDown(s, s.ui.roomSplash.x + 8, s.ui.roomSplash.y + 8);
+  assert.ok(friend.kind === 'room' || friend.kind === 'room-pending');
+  assert.strictEqual(s.mode, 'room');
+  assert.ok(
+    Math.abs((s.ui.room.x + s.ui.room.w + gap) - s.ui.lobby.x) < 1,
+    'friend 返回大厅 sits beside 邀请好友'
+  );
+  sessionMod.handlePointerDown(s, s.ui.lobby.x + 4, s.ui.lobby.y + 4);
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.strictEqual(s.mode, '');
+  assert.strictEqual(s.room, null);
+});
+
 check('好友对局 creates a room and shareAppMessage carries roomId', function () {
   var s = fresh();
   assert.strictEqual(s.ui.room.label, '邀请好友');

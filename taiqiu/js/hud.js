@@ -40,9 +40,9 @@
       target: { x: pad, y: top + 36 },
       best: { x: pad, y: top + 52 },
       mode: slot(0, '瞄准3D'),
-      lobby: slot(1, '返回大厅'),
-      ai: slot(2, '弱AI试杆'),
-      room: slot(2, '邀请好友'),
+      ai: slot(1, '弱AI试杆'),
+      room: slot(1, '邀请好友'),
+      lobby: Object.assign(slot(2, '返回大厅'), { outline: true }),
       rerack: slot(3, '新开一局'),
       bgm: {
         x: viewport.width - pad - 46,
@@ -279,14 +279,24 @@
   }
 
   function drawButton(ctx, btn, colors, pressed) {
+    var outline = !!(btn && btn.outline);
     ctx.save();
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 10);
-    ctx.fillStyle = pressed ? '#3D2A18' : (colors.button || '#2A1C12');
-    ctx.fill();
-    ctx.strokeStyle = colors.buttonBorder || '#D4B483';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    ctx.fillStyle = colors.buttonText || '#F4E8D4';
+    if (outline) {
+      ctx.fillStyle = pressed ? 'rgba(61, 42, 24, 0.4)' : 'rgba(24, 18, 12, 0.12)';
+      ctx.fill();
+      ctx.strokeStyle = colors.buttonBorder || '#D4B483';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = colors.hud || '#F4E8D4';
+    } else {
+      ctx.fillStyle = pressed ? '#3D2A18' : (colors.button || '#2A1C12');
+      ctx.fill();
+      ctx.strokeStyle = colors.buttonBorder || '#D4B483';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = colors.buttonText || '#F4E8D4';
+    }
     ctx.font = '15px ' + FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -353,7 +363,14 @@
         label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
       }, colors, session.pressed === 'aim3d' || session.aim3d);
       if (ui.lobby) {
-        drawButton(ctx, ui.lobby, colors, session.pressed === 'lobby' || session.pressed === 'back');
+        drawButton(ctx, {
+          x: ui.lobby.x,
+          y: ui.lobby.y,
+          w: ui.lobby.w,
+          h: ui.lobby.h,
+          label: '返回大厅',
+          outline: true
+        }, colors, session.pressed === 'lobby' || session.pressed === 'back');
       }
       if (ui.ai && !session.versus && session.mode !== 'ai') {
         drawButton(ctx, {
