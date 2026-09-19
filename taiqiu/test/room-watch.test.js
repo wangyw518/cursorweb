@@ -281,11 +281,8 @@ check('session host fire posts impulse; guest starts local replay then applies s
   sessionMod.joinRoom(guest, host.room.roomId);
   sessionMod.pullRoom(host);
 
-  var cueBall = balls.cueBall(host.balls);
-  sessionMod.handlePointerDown(host, cueBall.x, cueBall.y);
-  sessionMod.handlePointerMove(host, cueBall.x, cueBall.y + 90);
-  var fire = sessionMod.handlePointerUp(host);
-  assert.strictEqual(fire.kind, 'fire');
+  var fire = sessionMod.fireAi(host);
+  assert.strictEqual(fire.kind, 'ai');
   assert.strictEqual(host.phase, sessionMod.PHASE.Shot);
 
   var room = roomApi.state(host.room.roomId);
