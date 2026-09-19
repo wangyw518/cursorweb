@@ -87,8 +87,9 @@
     // Centers on/outside the cushion nose — never inset onto the cloth.
     var cornerOut = clampOutset(cornerR, ballR, 'corner', wr);
     var sideOut = clampOutset(sideR, ballR, 'side', wr);
-    // Wide mouth: jaws open more than a ball diameter so the ball can pass.
-    var gap = Math.max(cornerR * 1.08, ballR * 2.5, 2 * ballR + wr * 2 + 4);
+    // Jaws open just enough for a ball. A larger gap left an escape corridor
+    // between the cushion end and the pocket circle (ghost off-table balls).
+    var gap = Math.max(cornerR * 1.05, ballR * 2.2, 2 * ballR + wr);
 
     var pockets = [
       { id: 'tl', kind: 'corner', x: x1 - cornerOut, y: y1 - cornerOut, r: cornerR },

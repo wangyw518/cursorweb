@@ -358,6 +358,52 @@ check('new-game reracks via API and resets turn', function () {
   assert.strictEqual(fresh.state.targetN, 1);
 });
 
+check('guest pot accumulates guest stars independently and is not frozen at 32', function () {
+  var store = storeMod.createStore();
+  var made = store.create();
+  var joined = store.join({ roomId: made.roomId });
+  store.shot(made.roomId, {
+    fromSeat: 0,
+    token: made.token,
+    reason: 'miss',
+    pocketScore: 0,
+    zoneBonus: 0
+  });
+  var guestPot = store.shot(made.roomId, {
+    fromSeat: 1,
+    token: joined.token,
+    reason: 'legal',
+    pocketScore: 24,
+    zoneBonus: 36
+  });
+  assert.strictEqual(guestPot.ok, true);
+  assert.strictEqual(guestPot.state.stars.guest, 60);
+  assert.strictEqual(guestPot.state.stars.host, 0);
+  assert.strictEqual(guestPot.state.scores[1], 60);
+  assert.notStrictEqual(guestPot.state.stars.guest, 32);
+  var again = store.shot(made.roomId, {
+    fromSeat: 1,
+    token: joined.token,
+    reason: 'legal',
+    pocketScore: 24,
+    zoneBonus: 8,
+    shotSeq: guestPot.state.shotSeq + 1
+  });
+  assert.strictEqual(again.state.stars.guest, 92);
+  assert.strictEqual(again.state.stars.host, 0);
+  var reset = store.shot(made.roomId, {
+    fromSeat: 1,
+    token: joined.token,
+    reason: 'new-game',
+    scores: [99, 99],
+    stars: { host: 32, guest: 32 }
+  });
+  assert.strictEqual(reset.state.stars.host, 0);
+  assert.strictEqual(reset.state.stars.guest, 0);
+  assert.strictEqual(reset.state.scores[0], 0);
+  assert.strictEqual(reset.state.scores[1], 0);
+});
+
 check('felt-normalized snapshot survives apply on a different table', function () {
   net.resetMemory();
   var snap = net.snapshotBalls(

@@ -216,11 +216,40 @@
     return Math.max(0, Math.ceil((at - Date.now()) / 1000));
   }
 
+  function liveTarget(session) {
+    var list = session && session.balls;
+    var lowest = null;
+    var i;
+    if (list) {
+      for (i = 0; i < list.length; i++) {
+        var b = list[i];
+        if (!b || b.id === 'cue' || b.pocketed) continue;
+        if (!lowest || b.n < lowest.n) lowest = b;
+      }
+      return lowest;
+    }
+    var t = session && session.target;
+    return t && !t.pocketed ? t : null;
+  }
+
+  function starOf(session, seat) {
+    var fromScores = (session && session.scores && session.scores[seat]) || 0;
+    var stars = session && (session.stars || session.roomStars);
+    var fromStars = 0;
+    if (stars) {
+      var keyed = seat === 1
+        ? (stars.guest != null ? stars.guest : stars[1])
+        : (stars.host != null ? stars.host : stars[0]);
+      if (keyed != null && keyed !== '') fromStars = Number(keyed) || 0;
+    }
+    return Math.max(fromScores, fromStars);
+  }
+
   function drawNameChip(ctx, box, session, seat, colors) {
     if (!box) return;
     var active = session.versus && session.turn === seat &&
       !(session.hotseat && !(session.room && session.room.guestJoined) && seat === 1);
-    var label = nameOf(session, seat) + ' ' + ((session.scores && session.scores[seat]) || 0);
+    var label = nameOf(session, seat) + ' ' + starOf(session, seat);
     ctx.save();
     roundRect(ctx, box.x, box.y, box.w, box.h, 8);
     ctx.fillStyle = active ? 'rgba(61, 42, 24, 0.92)' : 'rgba(24, 18, 12, 0.55)';
@@ -255,7 +284,7 @@
   function drawChrome(ctx, session) {
     var ui = session.ui;
     var colors = session.config.colors;
-    var lowest = session.target;
+    var lowest = liveTarget(session);
     ctx.save();
     ctx.fillStyle = colors.hud;
     ctx.font = 'bold 17px ' + FONT;
@@ -269,7 +298,7 @@
     if (isPractice(session)) {
       ctx.fillStyle = colors.hud;
       ctx.font = 'bold 13px ' + FONT;
-      ctx.fillText('练习  ·  ' + ((session.scores && session.scores[0]) || 0) + ' 星币', ui.target.x, ui.target.y);
+      ctx.fillText('练习  ·  ' + starOf(session, 0) + ' 星币', ui.target.x, ui.target.y);
       ctx.fillStyle = colors.hudDim;
       ctx.font = '12px ' + FONT;
       ctx.fillText(lowest ? ('目标 ' + lowest.n + ' 号球') : '目标已完成', ui.best.x, ui.best.y);
@@ -446,8 +475,16 @@
     ctx.font = 'bold 32px ' + FONT;
     ctx.fillStyle = '#F5D76E';
     if (s.versus && (s.scores || s.stars)) {
-      var hostStar = (s.stars && (s.stars.host != null ? s.stars.host : s.stars[0])) || (s.scores && s.scores[0]) || 0;
-      var guestStar = (s.stars && (s.stars.guest != null ? s.stars.guest : s.stars[1])) || (s.scores && s.scores[1]) || 0;
+      var hostStar = starOf({
+        stars: s.stars,
+        roomStars: session.roomStars,
+        scores: s.scores || session.scores
+      }, 0);
+      var guestStar = starOf({
+        stars: s.stars,
+        roomStars: session.roomStars,
+        scores: s.scores || session.scores
+      }, 1);
       ctx.font = 'bold 18px ' + FONT;
       ctx.fillText(
         nameOf(session, 0) + ' ' + hostStar +
@@ -627,6 +664,8 @@
     isAiMode: isAiMode,
     isPractice: isPractice,
     showsRoomChrome: showsRoomChrome,
-    drawNameChip: drawNameChip
+    drawNameChip: drawNameChip,
+    liveTarget: liveTarget,
+    starOf: starOf
   };
 });

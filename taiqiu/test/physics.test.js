@@ -266,6 +266,38 @@ check('aim preview returns a dashed polyline and optional ghost', function () {
   assert.ok(prev.points.length >= 2);
 });
 
+check('ball center past the rail is pocketed in one step (ghost 5-ball)', function () {
+  var t = board();
+  var five = physics.createBody(t.felt.x - 6, t.felt.y + 48, config.ballRadius);
+  five.id = 'b5';
+  five.n = 5;
+  five.vx = -40;
+  var world = { balls: [five], walls: t.walls, pockets: t.pockets, felt: t.felt };
+  var ev = physics.step(world, config.fixedDt, config);
+  assert.strictEqual(five.pocketed, true, 'off-rail center must leave the on-table set');
+  assert.ok(ev.pockets.length >= 1);
+  assert.ok(physics.offTablePocket({ x: t.felt.x - 4, y: t.felt.y + 40, r: config.ballRadius }, t.pockets, t.felt));
+});
+
+check('a ball cannot slip the top-left jaw and stay onTable', function () {
+  var t = board();
+  var r = config.ballRadius;
+  var body = physics.createBody(t.felt.x + t.mouthGap + 2, t.felt.y + 0.4, r);
+  body.vx = -600;
+  body.vy = -80;
+  var world = { balls: [body], walls: t.walls, pockets: t.pockets, felt: t.felt };
+  var i;
+  var ghost = false;
+  for (i = 0; i < 80; i++) {
+    physics.step(world, config.fixedDt, config);
+    var inFelt = body.x >= t.felt.x && body.x <= t.felt.x + t.felt.w &&
+      body.y >= t.felt.y && body.y <= t.felt.y + t.felt.h;
+    if (!inFelt && !body.pocketed) ghost = true;
+  }
+  assert.strictEqual(ghost, false, 'center left the cloth while onTable stayed true');
+  assert.strictEqual(body.pocketed, true);
+});
+
 check('preview and frozen step never write object-ball positions', function () {
   var t = board();
   var list = balls.create(t, config);

@@ -72,6 +72,80 @@
     return null;
   }
 
+  function nearestPocket(body, pockets) {
+    var best = null;
+    var bestD = Infinity;
+    var i;
+    if (!pockets) return null;
+    for (i = 0; i < pockets.length; i++) {
+      var p = pockets[i];
+      var d = hypot(body.x - p.x, body.y - p.y);
+      if (d < bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return best;
+  }
+
+  function feltOf(world, walls) {
+    if (world && world.felt) return world.felt;
+    var list = walls || (world && world.walls) || [];
+    if (!list.length) return null;
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var w = list[i];
+      if (w.x1 < minX) minX = w.x1;
+      if (w.x2 < minX) minX = w.x2;
+      if (w.y1 < minY) minY = w.y1;
+      if (w.y2 < minY) minY = w.y2;
+      if (w.x1 > maxX) maxX = w.x1;
+      if (w.x2 > maxX) maxX = w.x2;
+      if (w.y1 > maxY) maxY = w.y1;
+      if (w.y2 > maxY) maxY = w.y2;
+    }
+    if (!(maxX > minX) || !(maxY > minY)) return null;
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  function centerInFelt(body, felt) {
+    if (!felt) return true;
+    return body.x >= felt.x && body.x <= felt.x + felt.w &&
+      body.y >= felt.y && body.y <= felt.y + felt.h;
+  }
+
+  /**
+   * 九球：球心越出有效台面（帮鼻以外、且不在袋口捕获圈）视为落袋 / 出界罚下。
+   * 1–8 留在袋中；9 号非法进袋由 session.applySpotRules 回点；白球按刮库回位。
+   * 合法与否仍走 fsm.classify（先碰到目标球才算 legal）。
+   */
+  function offTablePocket(body, pockets, felt) {
+    var hit = inPocket(body, pockets);
+    if (hit) return hit;
+    if (!felt || centerInFelt(body, felt)) return null;
+    var i;
+    if (pockets) {
+      for (i = 0; i < pockets.length; i++) {
+        var p = pockets[i];
+        if (hypot(body.x - p.x, body.y - p.y) <= p.r + body.r * 0.35) return p;
+      }
+    }
+    return nearestPocket(body, pockets) || { id: 'out', x: body.x, y: body.y, r: 0 };
+  }
+
+  function markPocketed(ball, pocket, events) {
+    ball.pocketed = true;
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.pocket = pocket;
+    events.pockets.push({ ball: ball, pocket: pocket });
+    return true;
+  }
+
   function resolveCircleCircleStatic(body, cx, cy, cr, restitution) {
     var nx = body.x - cx;
     var ny = body.y - cy;
@@ -159,7 +233,7 @@
     return !!(body && body.id === 'cue');
   }
 
-  function stepOnce(balls, walls, pockets, dt, config, lockObjects) {
+  function stepOnce(balls, walls, pockets, dt, config, lockObjects, felt) {
     var events = { cushions: 0, pockets: [], contacts: [], cueHitBall: false };
     var maxSpeed = config.maxSpeed || 920;
     var friction = config.friction == null ? 1.55 : config.friction;
@@ -186,21 +260,15 @@
     for (i = 0; i < balls.length; i++) {
       var ball = balls[i];
       if (ball.pocketed) continue;
-      var pocket = inPocket(ball, pockets);
-      if (pocket) {
-        ball.pocketed = true;
-        ball.vx = 0;
-        ball.vy = 0;
-        ball.pocket = pocket;
-        events.pockets.push({ ball: ball, pocket: pocket });
-      }
+      var pocket = offTablePocket(ball, pockets, felt);
+      if (pocket) markPocketed(ball, pocket, events);
     }
 
     for (i = 0; i < balls.length; i++) {
       var a = balls[i];
       if (a.pocketed) continue;
       if (locked && !isCueBody(a)) continue;
-      if (inPocketMouth(a, pockets)) continue;
+      if (inPocket(a, pockets)) continue;
       for (j = 0; j < walls.length; j++) {
         var cush = resolveCushion(a, walls[j], cushE);
         if (cush.bounced) {
@@ -227,14 +295,8 @@
 
     for (i = 0; i < balls.length; i++) {
       if (balls[i].pocketed) continue;
-      var late = inPocket(balls[i], pockets);
-      if (late) {
-        balls[i].pocketed = true;
-        balls[i].vx = 0;
-        balls[i].vy = 0;
-        balls[i].pocket = late;
-        events.pockets.push({ ball: balls[i], pocket: late });
-      }
+      var late = offTablePocket(balls[i], pockets, felt);
+      if (late) markPocketed(balls[i], late, events);
     }
 
     for (i = 0; i < balls.length; i++) {
@@ -261,9 +323,10 @@
     var sub = Math.max(1, Math.min(8, Math.ceil((speed * dt) / 4.2)));
     var slice = dt / sub;
     var lock = !!world.lockObjects;
+    var felt = feltOf(world, world.walls);
     var merged = { cushions: 0, pockets: [], contacts: [], substeps: sub, cueHitBall: false };
     for (i = 0; i < sub; i++) {
-      var ev = stepOnce(balls, world.walls || [], world.pockets || [], slice, config, lock);
+      var ev = stepOnce(balls, world.walls || [], world.pockets || [], slice, config, lock, felt);
       merged.cushions += ev.cushions;
       merged.pockets = merged.pockets.concat(ev.pockets);
       merged.contacts = merged.contacts.concat(ev.contacts);
@@ -384,6 +447,9 @@
     closestOnSeg: closestOnSeg,
     inPocket: inPocket,
     inPocketMouth: inPocketMouth,
+    nearestPocket: nearestPocket,
+    feltOf: feltOf,
+    offTablePocket: offTablePocket,
     resolveBallBall: resolveBallBall,
     resolveCushion: resolveCushion,
     firstHitBall: firstHitBall,

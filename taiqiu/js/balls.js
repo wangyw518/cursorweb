@@ -105,6 +105,16 @@
     return n;
   }
 
+  function onTable(list) {
+    var out = [];
+    var i;
+    if (!list) return out;
+    for (i = 0; i < list.length; i++) {
+      if (list[i] && !list[i].pocketed) out.push(list[i]);
+    }
+    return out;
+  }
+
   function findByN(list, n) {
     var i;
     for (i = 0; i < list.length; i++) {
@@ -248,6 +258,7 @@
     objectBalls: objectBalls,
     lowestNumbered: lowestNumbered,
     remainingCount: remainingCount,
+    onTable: onTable,
     findByN: findByN,
     findById: findById,
     hashObjectBalls: hashObjectBalls,

@@ -1042,6 +1042,77 @@ check('AI timeout is local, keeps object balls, and hands the table to 简单AI'
   assert.strictEqual(hud.turnLabel(s), 'AI出杆中');
 });
 
+check('off-table 5-ball is removed and HUD target advances past 5', function () {
+  var s = fresh();
+  sessionMod.startPractice(s);
+  var n;
+  for (n = 1; n <= 8; n++) {
+    if (n === 5) continue;
+    balls.findByN(s.balls, n).pocketed = true;
+  }
+  sessionMod.refreshTarget(s);
+  assert.strictEqual(s.target.n, 5);
+  var five = balls.findByN(s.balls, 5);
+  five.x = s.table.felt.x - 8;
+  five.y = s.table.felt.y + 36;
+  five.vx = -30;
+  five.vy = 0;
+  s.phase = fsm.PHASE.Shot;
+  sessionMod.update(s, config.fixedDt);
+  assert.strictEqual(five.pocketed, true);
+  var onTable = balls.onTable(s.balls);
+  assert.ok(!onTable.some(function (b) { return b.n === 5; }), '5 must leave the on-table list');
+  assert.notStrictEqual(balls.lowestNumbered(s.balls) && balls.lowestNumbered(s.balls).n, 5);
+  sessionMod.refreshTarget(s);
+  assert.ok(!s.target || s.target.n !== 5);
+  assert.strictEqual(s.target && s.target.n, 9);
+  var ctx = mockCtx();
+  hud.drawChrome(ctx, s);
+  var blob = ctx._log.texts.join('|');
+  assert.ok(blob.indexOf('目标 5') === -1, 'HUD must not keep 目标 5 号球');
+  assert.ok(blob.indexOf('目标 9') !== -1 || blob.indexOf('目标已完成') !== -1);
+  assert.strictEqual(hud.liveTarget(s).n, 9);
+});
+
+check('guest legal pot adds guest stars, not a frozen 32, and new-game resets both', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  sessionMod.debugForceStop(host, { pocketTarget: false, firstContact: true });
+  sessionMod.pullRoom(guest);
+  assert.strictEqual(guest.turn, 1);
+  var zone = guest.tiles.filter(function (t) { return t.kind === 'stellar'; })[0];
+  var award = sessionMod.debugForceStop(guest, {
+    pocketTarget: true,
+    firstContact: true,
+    x: zone.x,
+    y: zone.y
+  });
+  assert.ok(award.legal);
+  assert.ok(award.coins > 32, 'stellar pot must exceed the nova 24+8=32 constant');
+  assert.strictEqual(guest.scores[1], award.coins);
+  assert.strictEqual(guest.roomStars.guest, award.coins);
+  assert.strictEqual(guest.scores[0], 0);
+  sessionMod.pullRoom(host);
+  assert.strictEqual(host.scores[1], award.coins);
+  assert.strictEqual(host.roomStars.guest, award.coins);
+  assert.strictEqual(host.scores[0], 0);
+  var room = roomApi.state(host.room.roomId);
+  assert.strictEqual(room.state.stars.guest, award.coins);
+  assert.notStrictEqual(room.state.stars.guest, 32);
+  assert.strictEqual(room.state.stars.host, 0);
+  sessionMod.newGame(host);
+  sessionMod.pullRoom(guest);
+  assert.strictEqual(host.scores[0], 0);
+  assert.strictEqual(host.scores[1], 0);
+  assert.strictEqual(host.roomStars.host, 0);
+  assert.strictEqual(host.roomStars.guest, 0);
+  assert.strictEqual(guest.scores[1], 0);
+  assert.strictEqual(guest.roomStars.guest, 0);
+});
+
 if (failures) {
   console.error(failures + ' failed');
   process.exit(1);

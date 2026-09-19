@@ -163,6 +163,7 @@
       balls: session.balls,
       walls: session.table.walls,
       pockets: session.table.pockets,
+      felt: session.table && session.table.felt,
       frozen: session.phase === fsm.PHASE.Aim,
       lockObjects: session.phase === fsm.PHASE.Shot && !session.shot.firstContactId
     };
@@ -237,6 +238,21 @@
   function refreshTarget(session) {
     session.target = balls.lowestNumbered(session.balls);
     return session.target;
+  }
+
+  function syncRoomStars(session) {
+    var host = (session.scores && session.scores[0]) || 0;
+    var guest = (session.scores && session.scores[1]) || 0;
+    session.roomStars = { host: host, guest: guest };
+    return session.roomStars;
+  }
+
+  function resetMatchScores(session) {
+    session.scores = [0, 0];
+    session.roomStars = { host: 0, guest: 0 };
+    session.pocketScore = 0;
+    session.zoneBonus = 0;
+    return session;
   }
 
   function emptyShot() {
@@ -320,6 +336,10 @@
       reason: reason || 'miss',
       balls: snap,
       scores: session.scores.slice(),
+      stars: session.roomStars || {
+        host: (session.scores && session.scores[0]) || 0,
+        guest: (session.scores && session.scores[1]) || 0
+      },
       phase: session.phase,
       targetN: session.target ? session.target.n : 0,
       matchOver: !!session.matchOver,
@@ -401,6 +421,16 @@
       }
     }
     if (state.scores) session.scores = state.scores.slice();
+    if (state.stars) {
+      session.roomStars = {
+        host: state.stars.host != null ? state.stars.host : ((state.scores && state.scores[0]) || 0),
+        guest: state.stars.guest != null ? state.stars.guest : ((state.scores && state.scores[1]) || 0)
+      };
+      session.scores[0] = Math.max(session.scores[0] || 0, session.roomStars.host || 0);
+      session.scores[1] = Math.max(session.scores[1] || 0, session.roomStars.guest || 0);
+    } else {
+      syncRoomStars(session);
+    }
     if (state.turnRole === 'guest') session.turn = 1;
     else if (state.turnRole === 'host') session.turn = 0;
     else if (state.turn != null) session.turn = state.turn;
@@ -420,7 +450,6 @@
     if (state.deadlineAt != null) session.aimDeadlineAt = state.deadlineAt;
     else if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
     if (state.winnerOpenId) session.winnerOpenId = state.winnerOpenId;
-    if (state.stars) session.roomStars = state.stars;
     if (state.pocketScore != null) session.pocketScore = state.pocketScore;
     if (state.zoneBonus != null) session.zoneBonus = state.zoneBonus;
     if (state.foulCode || state.foulHint) {
@@ -563,7 +592,7 @@
   function newGame(session) {
     var mode = session.mode;
     var localAi = isLocalAi(session);
-    session.scores = [0, 0];
+    resetMatchScores(session);
     session.turn = 0;
     session.matchOver = false;
     session.winner = null;
@@ -627,6 +656,7 @@
       aiPlan: null,
       room: null,
       scores: [0, 0],
+      roomStars: { host: 0, guest: 0 },
       matchOver: false,
       winner: null,
       syncAcc: 0,
@@ -808,6 +838,10 @@
       ballsSnapshot: snap,
       balls: snap,
       scores: session.scores.slice(),
+      stars: session.roomStars || {
+        host: (session.scores && session.scores[0]) || 0,
+        guest: (session.scores && session.scores[1]) || 0
+      },
       phase: fsm.PHASE.Aim,
       targetN: session.target ? session.target.n : 0,
       matchOver: false,
@@ -980,7 +1014,8 @@
     var gap = score.gapToBest(award.coins, session.best);
     if (gap.isNew) session.best = award.coins;
     persist(session);
-    session.scores[session.turn] = (session.scores[session.turn] || 0) + award.coins;
+    session.scores[shooter] = (session.scores[shooter] || 0) + award.coins;
+    syncRoomStars(session);
 
     var burstX = cueBall ? cueBall.x : session.table.felt.cx;
     var burstY = cueBall ? cueBall.y : session.table.felt.cy;
@@ -1031,6 +1066,10 @@
         isNew: gap.isNew,
         best: session.best,
         scores: session.scores.slice(),
+        stars: session.roomStars || {
+          host: (session.scores && session.scores[0]) || 0,
+          guest: (session.scores && session.scores[1]) || 0
+        },
         names: session.names
           ? session.names.slice()
           : [
@@ -1097,6 +1136,7 @@
       ? session.shot.pocketed.indexOf(session.shot.targetId) !== -1
       : false;
     session.shot.pocketedNine = session.shot.pocketed.indexOf('b9') !== -1;
+    refreshTarget(session);
   }
 
   function resolvePocket(session) {
@@ -1215,7 +1255,7 @@
     session.aiPlan = null;
     session.mySeat = 0;
     session.turn = 0;
-    session.scores = [0, 0];
+    resetMatchScores(session);
     session.role = 'host';
     session.room = {
       roomId: made.roomId,
@@ -1659,7 +1699,7 @@
     session.pendingRoomId = '';
     session.joinError = null;
     session.inviteAfterCreate = false;
-    session.scores = [0, 0];
+    resetMatchScores(session);
     session.matchOver = false;
     session.winner = null;
     session.aiThink = 0;
@@ -1696,7 +1736,7 @@
     session.pendingRoomId = '';
     session.joinError = null;
     session.inviteAfterCreate = false;
-    session.scores = [0, 0];
+    resetMatchScores(session);
     session.matchOver = false;
     session.winner = null;
     session.aimDeadlineAt = 0;
@@ -1770,6 +1810,7 @@
       roomId: session.room ? session.room.roomId : null,
       winner: session.winner,
       scores: session.scores.slice(),
+      stars: session.roomStars || { host: (session.scores[0] || 0), guest: (session.scores[1] || 0) },
       landFlash: session.landFlash
         ? { tileId: session.landFlash.tileId, frames: session.landFlash.frames }
         : null,
@@ -1864,6 +1905,10 @@
     getDebugState: getDebugState,
     debugForceStop: debugForceStop,
     resetRound: resetRound,
+    refreshTarget: refreshTarget,
+    worldOf: worldOf,
+    syncRoomStars: syncRoomStars,
+    resetMatchScores: resetMatchScores,
     PHASE: fsm.PHASE
   };
 });

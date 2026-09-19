@@ -87,7 +87,7 @@
       deadlineAt: 0,
       shotClockSec: 20,
       winnerOpenId: null,
-      stars: null,
+      stars: { host: 0, guest: 0 },
       foulCode: null,
       foulHint: '',
       pocketScore: 0,
@@ -121,6 +121,59 @@
     var s = String(raw || '').replace(/^\s+|\s+$/g, '');
     if (s.length > 32) s = s.slice(0, 32);
     return s;
+  }
+
+  function numOr(value, fallback) {
+    if (value == null || value === '') return fallback || 0;
+    var n = Number(value);
+    return n === n ? n : (fallback || 0);
+  }
+
+  function ensureEconomy(state) {
+    if (!state.scores) state.scores = [0, 0];
+    if (!state.stars) state.stars = { host: 0, guest: 0 };
+    if (state.stars.host == null) state.stars.host = state.scores[0] || 0;
+    if (state.stars.guest == null) state.stars.guest = state.scores[1] || 0;
+    return state;
+  }
+
+  function syncEconomy(state) {
+    ensureEconomy(state);
+    state.stars.host = Math.max(state.stars.host || 0, state.scores[0] || 0);
+    state.stars.guest = Math.max(state.stars.guest || 0, state.scores[1] || 0);
+    state.scores[0] = state.stars.host;
+    state.scores[1] = state.stars.guest;
+    return state;
+  }
+
+  /**
+   * Host/guest 星币独立累计。legal/nine 把本杆 pocketScore+zoneBonus 加到击球方。
+   * 不整表覆盖对方分数。32 = 进袋 24 + 新星落点 8，只是单杆，不是局分常量。
+   */
+  function applyShotEconomy(state, payload, fromSeat, reason) {
+    payload = payload || {};
+    ensureEconomy(state);
+    if (reason === 'new-game') {
+      state.scores = [0, 0];
+      state.stars = { host: 0, guest: 0 };
+      state.pocketScore = 0;
+      state.zoneBonus = 0;
+      return state;
+    }
+    var pocket = payload.pocketScore != null ? numOr(payload.pocketScore, 0)
+      : numOr(payload.pocketBonus, 0);
+    var zone = payload.zoneBonus != null ? numOr(payload.zoneBonus, 0)
+      : numOr(payload.landingBonus, 0);
+    state.pocketScore = pocket;
+    state.zoneBonus = zone;
+    var delta = (reason === 'legal' || reason === 'nine') ? (pocket + zone) : 0;
+    if (delta > 0 && (fromSeat === 0 || fromSeat === 1)) {
+      state.scores[fromSeat] = (state.scores[fromSeat] || 0) + delta;
+    } else if (delta <= 0 && payload.scores && (fromSeat === 0 || fromSeat === 1)) {
+      var claimed = numOr(payload.scores[fromSeat], 0);
+      if (claimed > (state.scores[fromSeat] || 0)) state.scores[fromSeat] = claimed;
+    }
+    return syncEconomy(state);
   }
 
   function nextTurn(fromSeat, reason) {
@@ -316,9 +369,9 @@
         state.balls = clone(snap);
         state.ballsSnapshot = clone(snap);
       }
-      if (payload.scores) state.scores = payload.scores.slice();
       if (payload.phase) state.phase = payload.phase;
       if (payload.targetN != null) state.targetN = payload.targetN;
+      applyShotEconomy(state, payload, fromSeat, reason);
       state.turn = nextTurn(fromSeat, reason);
       stampTurn(state);
       state.matchOver = reason === 'nine';
@@ -326,7 +379,6 @@
       if (reason === 'new-game') {
         state.matchOver = false;
         state.winner = null;
-        state.scores = payload.scores ? payload.scores.slice() : [0, 0];
         state.phase = 'Aim';
         state.targetN = payload.targetN != null ? payload.targetN : 1;
         state.shotSeq = 0;
@@ -336,18 +388,11 @@
       if (reason === 'nine') {
         state.phase = payload.phase || 'Settle';
         state.winnerOpenId = (state.openIds && state.openIds[fromSeat]) || payload.winnerOpenId || null;
-        state.stars = {
-          host: state.scores[0] || 0,
-          guest: state.scores[1] || 0,
-          0: state.scores[0] || 0,
-          1: state.scores[1] || 0
-        };
+        syncEconomy(state);
       }
       state.aim = null;
       state.foulCode = reason === 'timeout' ? 'shotClock' : (reason === 'scratch' || reason === 'whiff' || reason === 'order' || reason === 'foul' ? reason : null);
       state.foulHint = reason === 'timeout' ? '犯规 · 超时' : (payload.foulHint || '');
-      state.pocketScore = payload.pocketScore != null ? payload.pocketScore : (payload.pocketBonus || 0);
-      state.zoneBonus = payload.zoneBonus != null ? payload.zoneBonus : (payload.landingBonus || 0);
       state.aimDeadlineAt = Date.now() + (state.shotClockSec || 20) * 1000;
       state.deadlineAt = state.aimDeadlineAt;
       if (reason === 'nine') {
@@ -526,7 +571,8 @@
       nextTurn: nextTurn,
       randomId: randomId,
       normalizeRoomId: normalizeRoomId,
-      shareFor: shareFor
+      shareFor: shareFor,
+      applyShotEconomy: applyShotEconomy
     };
   }
 
@@ -540,6 +586,7 @@
     seatOfRole: seatOfRole,
     reasonFromEvents: reasonFromEvents,
     normalizeRoomId: normalizeRoomId,
-    shareFor: shareFor
+    shareFor: shareFor,
+    applyShotEconomy: applyShotEconomy
   };
 });

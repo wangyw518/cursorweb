@@ -281,6 +281,7 @@
       winnerOpenId: payload.winnerOpenId,
       pocketScore: payload.pocketScore,
       zoneBonus: payload.zoneBonus,
+      stars: payload.stars,
       nextDeadlineAt: payload.nextDeadlineAt
     };
   }
