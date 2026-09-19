@@ -176,7 +176,7 @@
       var roomId = roomIdOrPayload;
       var guestName = null;
       if (roomIdOrPayload && typeof roomIdOrPayload === 'object') {
-        roomId = roomIdOrPayload.roomId;
+        roomId = roomIdOrPayload.roomId || roomIdOrPayload.room || roomIdOrPayload.id;
         guestName = roomIdOrPayload.name || roomIdOrPayload.guestName || null;
       }
       var state = rooms[roomId];

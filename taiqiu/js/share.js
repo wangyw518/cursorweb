@@ -33,7 +33,7 @@
 
   function roomIdOf(dict) {
     if (!dict) return '';
-    var id = dict.roomId || dict.roomid || dict.room_id || '';
+    var id = dict.roomId || dict.roomid || dict.room_id || dict.room || dict.id || '';
     return String(id || '').trim();
   }
 

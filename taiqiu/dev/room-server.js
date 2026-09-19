@@ -76,6 +76,7 @@ function createHandler(store) {
     if (req.method === 'POST' && url === '/room/join') {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
+        if (!body.roomId) body.roomId = body.room || body.id;
         send(res, 200, decorateJoin(store.dispatch('join', body)));
       });
     }

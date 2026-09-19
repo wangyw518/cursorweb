@@ -374,8 +374,21 @@
         method: method,
         data: method === 'GET' ? {} : (body || {}),
         header: { 'content-type': 'application/json' },
-        success: function (res) { done(parseBody(res.data), cb); },
-        fail: function () { done({ ok: false, reason: 'http-fail' }, cb); }
+        success: function (res) {
+          var bodyRes = parseBody(res && res.data);
+          if (res && res.statusCode >= 400 && (!bodyRes || bodyRes.ok == null)) {
+            done({ ok: false, reason: 'http-fail', status: res.statusCode }, cb);
+            return;
+          }
+          done(bodyRes, cb);
+        },
+        fail: function (err) {
+          done({
+            ok: false,
+            reason: 'http-fail',
+            detail: err && (err.errMsg || err.message) || 'wx.request fail'
+          }, cb);
+        }
       });
       return { ok: true, pending: true, action: path };
     }
@@ -390,8 +403,8 @@
         return res.text();
       }).then(function (text) {
         done(parseBody(text), cb);
-      }).catch(function () {
-        done({ ok: false, reason: 'http-fail' }, cb);
+      }).catch(function (err) {
+        done({ ok: false, reason: 'http-fail', detail: err && err.message }, cb);
       });
       return { ok: true, pending: true, action: path };
     }
@@ -417,7 +430,9 @@
           res.on('data', function (c) { chunks += c; });
           res.on('end', function () { done(parseBody(chunks), cb); });
         });
-        req.on('error', function () { done({ ok: false, reason: 'http-fail' }, cb); });
+        req.on('error', function (err) {
+          done({ ok: false, reason: 'http-fail', detail: err && err.message }, cb);
+        });
         if (data) req.write(data);
         req.end();
         return { ok: true, pending: true, action: path };
@@ -430,6 +445,42 @@
 
   function usingHttp() {
     return !!(cfg.roomApiBase && String(cfg.roomApiBase).trim());
+  }
+
+  var cloudReady = false;
+
+  function usingCloud() {
+    return !usingHttp() &&
+      !!(cfg.cloudEnv && String(cfg.cloudEnv).trim()) &&
+      typeof wx !== 'undefined' && wx.cloud && typeof wx.cloud.callFunction === 'function';
+  }
+
+  function ensureCloud() {
+    if (cloudReady) return true;
+    try {
+      wx.cloud.init({ env: cfg.cloudEnv, traceUser: true });
+      cloudReady = true;
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function cloudCall(action, payload, cb) {
+    if (!ensureCloud()) return done({ ok: false, reason: 'cloud-fail' }, cb);
+    wx.cloud.callFunction({
+      name: cfg.cloudFn || 'taiqiuRoom',
+      data: Object.assign({ action: action }, payload || {}),
+      success: function (res) { done(parseBody(res && res.result), cb); },
+      fail: function (err) {
+        done({
+          ok: false,
+          reason: 'cloud-fail',
+          detail: err && (err.errMsg || err.message)
+        }, cb);
+      }
+    });
+    return { ok: true, pending: true, action: action };
   }
 
   function configure(opts) {
@@ -447,6 +498,7 @@
     if (typeof payload === 'function') { cb = payload; payload = {}; }
     payload = payload || {};
     if (usingHttp()) return httpCall('POST', '/room/create', payload, cb);
+    if (usingCloud()) return cloudCall('create', payload, cb);
     return done(mock.create(payload), cb);
   }
 
@@ -454,7 +506,8 @@
     var payload = { roomId: roomId };
     if (roomId && typeof roomId === 'object') {
       payload = {
-        roomId: roomId.roomId,
+        roomId: roomId.roomId || roomId.room || roomId.id,
+        room: roomId.room || roomId.roomId || roomId.id,
         name: roomId.name || roomId.guestName || roomId.nick || roomId.displayName,
         nick: roomId.nick || roomId.displayName || roomId.name,
         displayName: roomId.displayName || roomId.nick || roomId.name,
@@ -462,6 +515,7 @@
       };
     }
     if (usingHttp()) return httpCall('POST', '/room/join', payload, cb);
+    if (usingCloud()) return cloudCall('join', payload, cb);
     return done(mock.join(payload), cb);
   }
 
@@ -475,6 +529,7 @@
     var body = payload || {};
     body.roomId = roomId || body.roomId;
     if (usingHttp()) return httpCall('POST', '/room/aim', body, cb);
+    if (usingCloud()) return cloudCall('aim', body, cb);
     return done(mock.aim(body.roomId, body), cb);
   }
 
@@ -487,6 +542,7 @@
     }
     var body = normalizeShotPayload(roomId, payload);
     if (usingHttp()) return httpCall('POST', '/room/shot', body, cb);
+    if (usingCloud()) return cloudCall('shot', body, cb);
     return done(mock.shot(body.roomId, body), cb);
   }
 
@@ -506,6 +562,7 @@
       if (sinceSeq != null && sinceSeq !== '') q += '&sinceSeq=' + encodeURIComponent(sinceSeq);
       return httpCall('GET', q, null, cb);
     }
+    if (usingCloud()) return cloudCall('state', { roomId: id, sinceSeq: sinceSeq }, cb);
     return done(mock.state(id, { sinceSeq: sinceSeq }), cb);
   }
 
@@ -534,6 +591,7 @@
     roleOfSeat: roleOfSeat,
     seatOfRole: seatOfRole,
     configOf: function () { return clone(cfg); },
-    usingHttp: usingHttp
+    usingHttp: usingHttp,
+    usingCloud: usingCloud
   };
 });

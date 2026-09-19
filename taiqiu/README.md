@@ -94,8 +94,9 @@ taiqiu/
 
 Client: `js/roomApi.js`. `js/config.json` → `room.roomApiBase`:
 
-- **empty** → `LocalMockRoom` (in-memory + `wx` / `localStorage`). Same client, no backend.
-- **set** (e.g. `http://127.0.0.1:8788`) → `fetch` / `wx.request` the real HTTP API.
+- **empty** → `LocalMockRoom` (in-memory + `wx` / `localStorage`). Same client, no backend. Two real phones **cannot** share this mock.
+- **set** (e.g. `http://192.168.x.x:8788`) → `fetch` / `wx.request` the real HTTP API.
+- **`room.cloudEnv` set** (and `roomApiBase` empty) → `wx.cloud.callFunction('taiqiuRoom')` so two WeChat clients share one room without a LAN server.
 
 Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul switches; first legal 9 wins. Host/guest only submit a shot on their own turn. Aim is disabled with **对方击球** when it is not your turn. Solo still uses `continueShot` and never reracks on a miss.
 
@@ -104,7 +105,7 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | action | HTTP | body | response |
 | --- | --- | --- | --- |
 | create | `POST /room/create` | optional `{ balls, scores, targetN }` | `{ roomId, role: "host", state }` |
-| join | `POST /room/join` | `{ roomId }` | `{ role: "guest", state }` |
+| join | `POST /room/join` | `{ roomId }` (`room` / `id` aliases) | `{ role: "guest", state }` or `{ ok:false, reason:"missing"|"full" }` |
 | shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
 | aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine? }` — only when `turnOpenId===me` and phase Aim\|Pull | `{ state }` dirty `aim{angle,power,aimLine,updatedAt}`; object-ball coords stripped; `shotSeq` unchanged |
 | state | `GET /room/state?roomId=&sinceSeq=` | — | `deadlineAt`, `nicknames{host,guest}`, `winnerOpenId?`, `stars{host,guest}`, `foulCode?`, `foulHint`, `pocketScore`, `zoneBonus`, `turnOpenId`. Aim/Pull + `sinceSeq>=shotSeq` omits non-cue ball coords |
@@ -132,7 +133,7 @@ docker run --rm -p 8788:8788 taiqiu-room
 # 或: docker compose up --build
 ```
 
-客户端把 `js/config.json` → `room.roomApiBase`（或预览 `?api=`）设为 `http://<电脑局域网IP>:8788`，不要填 `127.0.0.1`（手机访问的是自己）。微信开发者工具开发版请勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」。
+客户端把 `js/config.json` → `room.roomApiBase`（或预览 `?api=`）设为 `http://<电脑局域网IP>:8788`，不要填 `127.0.0.1`（手机访问的是自己）。微信开发者工具开发版请勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」。正式版必须把该 origin 配进 request 合法域名（https）。join 失败会 toast「网络或域名不可达」，不要只看开屏。
 
 **8788 + 双机复测邀请加入：**
 
@@ -140,7 +141,8 @@ docker run --rm -p 8788:8788 taiqiu-room
 2. 两台设备 / 两个模拟器都把 `room.roomApiBase` 指到 `http://<电脑局域网IP>:8788`（预览可用 `?api=`）。
 3. 主机：进游戏 → **好友对局**（先开房）→ **邀请好友**。分享卡片 query 必须是 `roomId=XXXXXX&from=invite`。开房失败时不要发出空邀请。
 4. 好友：从分享卡片打开（冷启动走 `onLaunch` / `getLaunchOptionsSync`，热启动走 `onShow`）。应直接 `mode=room` 并 `POST /room/join`，不能先落单机/菜单。
-5. 成功：双方同一 `roomId`、能看到对方昵称、主机先手。失败：可见 toast + **重新加入**，不是静默回菜单。
+5. 成功：双方同一 `roomId`、客座 guest、能看见同一桌面、主机先手或显示「等待对方 / 对方出杆」。失败：可见 toast（房间不存在或已过期 / 已满 / 网络或域名不可达）+ **重新加入**，不是静默回菜单或人机。
+6. 负例：B 不带 `roomId` 冷启动（普通打开）必须停在开屏。点人机才进人机。
 
 ### How to test mock 2P (two pages / two simulators)
 
@@ -154,7 +156,7 @@ python3 -m http.server 8767 --directory taiqiu
 2. Page B: http://127.0.0.1:8767/dev/preview.html?roomId=XXXXXX — launch query joins as guest.
 3. Same table: A shoots, B sees the balls after poll (~450ms). Miss / foul → B's turn. Legal 1–8 → A continues. Legal 9 → match over.
 
-Page A can also tap **邀请好友**. Share query is `roomId=XXXXXX&from=invite` — a share without `roomId` is a bug. The friend must join from `onLaunch` / `onShow` / `getEnterOptionsSync` (`query.roomId`, or `referrerInfo.extraData`). Join failure shows a toast (房间无效 / 已满 / 服务器连不上) and **重新加入**.
+Page A can also tap **邀请好友**. Share query is `roomId=XXXXXX&from=invite` — a share without `roomId` is a bug. The friend must join from `onLaunch` / `onShow` / `getEnterOptionsSync` (`query.roomId`, or `referrerInfo.extraData`). Join failure shows a toast (房间不存在或已过期 / 已满 / 网络或域名不可达) and **重新加入**. Launch without `roomId` stays on the splash.
 
 **Two WeChat simulators:** each simulator has its own `wx` storage, so the mock will **not** sync between them. Either:
 

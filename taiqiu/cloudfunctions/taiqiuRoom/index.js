@@ -178,7 +178,7 @@ async function join(roomIdOrPayload) {
   var roomId = roomIdOrPayload;
   var guestName = null;
   if (roomIdOrPayload && typeof roomIdOrPayload === 'object') {
-    roomId = roomIdOrPayload.roomId;
+    roomId = roomIdOrPayload.roomId || roomIdOrPayload.room || roomIdOrPayload.id;
     guestName = roomIdOrPayload.nick || roomIdOrPayload.displayName || roomIdOrPayload.name || roomIdOrPayload.guestName;
   }
   var state = await read(roomId);

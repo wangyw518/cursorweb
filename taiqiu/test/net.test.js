@@ -65,6 +65,8 @@ check('room invite query carries roomId for shareAppMessage', function () {
   assert.strictEqual(empty.query, '');
   assert.strictEqual(share.parseInvite({ query: { roomId: 'AB12CD', from: 'invite' } }).roomId, 'AB12CD');
   assert.strictEqual(share.parseInvite({ query: '?roomId=ZZ99&from=invite' }).roomId, 'ZZ99');
+  assert.strictEqual(share.parseInvite({ query: { room: 'ROOM01' } }).roomId, 'ROOM01');
+  assert.strictEqual(share.parseInvite({ query: {} }).roomId, '');
   assert.strictEqual(share.parseInvite({ referrerInfo: { extraData: { roomId: 'SCENE1' } } }).roomId, 'SCENE1');
 });
 

@@ -987,6 +987,29 @@ check('launch query joins as guest without starting solo AI/practice', function 
   assert.strictEqual(hud.hitTest(waiting.ui, waiting.ui.aiSplash.x + 8, waiting.ui.aiSplash.y + 8, 'Splash', waiting), 'join-retry');
 });
 
+check('cold start without roomId stays on splash', function () {
+  storage.resetMemory();
+  net.resetMemory();
+  var s = sessionMod.create(viewport(), config);
+  var none = sessionMod.enterInvite(s, { query: {} });
+  assert.strictEqual(none.kind, 'none');
+  assert.strictEqual(s.phase, fsm.PHASE.Splash);
+  assert.strictEqual(s.room, null);
+  assert.strictEqual(s.mode, '');
+});
+
+check('enterInvite accepts room= alias', function () {
+  storage.resetMemory();
+  net.resetMemory();
+  var host = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config);
+  var joined = sessionMod.enterInvite(guest, { query: 'room=' + host.room.roomId });
+  assert.strictEqual(joined.kind, 'join');
+  assert.strictEqual(guest.mySeat, 1);
+  assert.strictEqual(guest.mode, 'room');
+});
+
 check('join failure stays on the invite and can retry', function () {
   var guest = sessionMod.create(viewport(), config);
   var fail = sessionMod.joinRoom(guest, 'ZZZZZZ');
@@ -994,7 +1017,7 @@ check('join failure stays on the invite and can retry', function () {
   assert.strictEqual(guest.pendingRoomId, 'ZZZZZZ');
   assert.strictEqual(guest.mode, 'room');
   assert.strictEqual(guest.phase, fsm.PHASE.Splash);
-  assert.ok(guest.toast && guest.toast.text.indexOf('无效') !== -1);
+  assert.ok(guest.toast && guest.toast.text.indexOf('不存在') !== -1);
   assert.strictEqual(hud.hitTest(guest.ui, 180, 320, 'Splash', guest), 'join-retry');
   var retry = sessionMod.handlePointerDown(guest, guest.ui.joinRetry.x + 8, guest.ui.joinRetry.y + 8);
   assert.strictEqual(retry.kind, 'join-fail');

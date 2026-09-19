@@ -1314,14 +1314,18 @@
   }
 
   function joinFailHint(reason) {
-    if (reason === 'missing' || reason === 'bad-json') return '房间无效';
+    if (reason === 'missing' || reason === 'expired' || reason === 'bad-json') return '房间不存在或已过期';
     if (reason === 'full') return '房间已满';
-    if (reason === 'http-fail' || reason === 'no-room-api-base') return '服务器连不上';
+    if (reason === 'http-fail' || reason === 'network') return '加入失败：网络或域名不可达';
+    if (reason === 'cloud-fail') return '加入失败：云函数不可用';
+    if (reason === 'no-room-api-base') return '加入失败：未配置房间服';
     return '加入失败';
   }
 
   function createFailHint(reason) {
-    if (reason === 'http-fail' || reason === 'no-room-api-base') return '服务器连不上，无法开房';
+    if (reason === 'http-fail' || reason === 'network') return '开房间失败：网络或域名不可达';
+    if (reason === 'cloud-fail') return '开房间失败：云函数不可用';
+    if (reason === 'no-room-api-base') return '开房间失败：未配置房间服';
     return '开房间失败';
   }
 
@@ -1337,6 +1341,11 @@
       detail: session.pendingRoomId ? '点重新加入再试' : '',
       life: 3.4
     };
+    try {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[taiqiu] join fail', roomId, reason || '');
+      }
+    } catch (err) {}
     return { kind: 'join-fail', roomId: roomId, reason: reason || 'join-fail' };
   }
 
@@ -1590,6 +1599,10 @@
   }
 
   function startAi(session) {
+    if (session.pendingRoomId && !session.joinError) {
+      session.toast = { text: '正在加入房间…', life: 1.4 };
+      return { kind: 'join-pending', roomId: session.pendingRoomId };
+    }
     session.mode = 'ai';
     session.versus = true;
     session.localAi = true;
@@ -1623,6 +1636,10 @@
   }
 
   function startPractice(session) {
+    if (session.pendingRoomId && !session.joinError) {
+      session.toast = { text: '正在加入房间…', life: 1.4 };
+      return { kind: 'join-pending', roomId: session.pendingRoomId };
+    }
     session.mode = 'practice';
     session.versus = false;
     session.localAi = false;

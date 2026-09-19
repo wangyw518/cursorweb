@@ -224,7 +224,7 @@ check('shot from the waiting seat is rejected', function () {
 check('second distinct openId cannot join a full room', function () {
   var store = storeMod.createStore();
   var made = store.create({ names: ['房主', '好友'] });
-  var first = store.join({ roomId: made.roomId, nick: '甲', openId: 'g-1' });
+  var first = store.join({ room: made.roomId, nick: '甲', openId: 'g-1' });
   assert.strictEqual(first.ok, true);
   var second = store.join({ roomId: made.roomId, nick: '乙', openId: 'g-2' });
   assert.strictEqual(second.ok, false);
