@@ -26,12 +26,46 @@
     };
   }
 
+  function parseQueryString(raw) {
+    var out = {};
+    if (!raw) return out;
+    if (typeof raw === 'object') return raw;
+    String(raw).replace(/^\?/, '').split('&').forEach(function (part) {
+      if (!part) return;
+      var kv = part.split('=');
+      if (!kv[0]) return;
+      var key = decodeURIComponent(kv[0]);
+      var val = decodeURIComponent((kv[1] || '').replace(/\+/g, ' '));
+      out[key] = val;
+    });
+    return out;
+  }
+
+  function roomIdFromQuery(q) {
+    if (!q) return '';
+    if (typeof q === 'string') q = parseQueryString(q);
+    var id = q.roomId || q.roomid || q.room_id || '';
+    return String(id || '').trim();
+  }
+
+  function roomIdFromLaunch(opts) {
+    if (!opts) return '';
+    var fromQuery = roomIdFromQuery(opts.query != null ? opts.query : opts);
+    if (fromQuery) return fromQuery;
+    if (opts.referrerInfo && opts.referrerInfo.extraData) {
+      return roomIdFromQuery(opts.referrerInfo.extraData);
+    }
+    return '';
+  }
+
   function composeRoom(roomId) {
+    roomId = String(roomId || '').trim();
     return {
       title: '星券台球',
       kind: 'room',
       roomId: roomId,
       query: 'roomId=' + roomId,
+      path: '?roomId=' + roomId,
       text: '来一局星券台球',
       disclaimer: DISCLAIMER
     };
@@ -61,6 +95,9 @@
     compose: compose,
     composeRoom: composeRoom,
     share: share,
-    shareRoom: shareRoom
+    shareRoom: shareRoom,
+    parseQueryString: parseQueryString,
+    roomIdFromQuery: roomIdFromQuery,
+    roomIdFromLaunch: roomIdFromLaunch
   };
 });

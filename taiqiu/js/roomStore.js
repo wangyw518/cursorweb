@@ -44,6 +44,27 @@
     return id;
   }
 
+  function normalizeRoomId(id) {
+    if (id == null) return '';
+    return String(id).trim().toUpperCase();
+  }
+
+  function shareFor(roomId) {
+    var id = normalizeRoomId(roomId);
+    return {
+      query: 'roomId=' + id,
+      path: '?roomId=' + id
+    };
+  }
+
+  function roomIdOf(payload) {
+    if (payload == null) return '';
+    if (typeof payload === 'string' || typeof payload === 'number') {
+      return normalizeRoomId(payload);
+    }
+    return normalizeRoomId(payload.roomId || payload.roomid || payload.room_id);
+  }
+
   function tokenFor(roomId, seat) {
     return roomId + (seat === 0 ? ':h' : ':g');
   }
@@ -286,7 +307,13 @@
     }
 
     function load(roomId) {
-      var state = rooms[roomId];
+      var id = normalizeRoomId(roomId);
+      if (!id) return null;
+      var state = rooms[id];
+      if (!state) {
+        var raw = roomId != null ? String(roomId).trim() : '';
+        if (raw && rooms[raw]) state = rooms[raw];
+      }
       if (!state) return null;
       applyDefaults(state, now(), defaultClock);
       expireShotClock(state, now());
@@ -295,7 +322,7 @@
 
     function create(payload) {
       payload = payload || {};
-      var roomId = payload.roomId || randomId();
+      var roomId = roomIdOf(payload) || randomId();
       if (rooms[roomId]) roomId = randomId();
       var clockSec = payload.shotClockSec != null ? payload.shotClockSec : defaultClock;
       var state = emptyState(roomId, now(), clockSec);
@@ -315,7 +342,8 @@
       return ok('create', roomId, {
         role: 'host',
         seat: 0,
-        token: tokenFor(roomId, 0)
+        token: tokenFor(roomId, 0),
+        share: shareFor(roomId)
       }, state);
     }
 
@@ -326,30 +354,56 @@
         roomId = roomIdOrPayload;
       } else {
         payload = roomIdOrPayload || {};
-        roomId = payload.roomId;
+        roomId = payload.roomId || payload.roomid || payload.room_id;
       }
+      roomId = normalizeRoomId(roomId);
+      if (!roomId) return fail('join', 'missing', '', null);
       var state = load(roomId);
       if (!state) return fail('join', 'missing', roomId, null);
+      if (state.matchOver) return fail('join', 'ended', roomId, state);
+
+      var incoming = openIdOf(payload) || payload.guestOpenId || '';
+      if (incoming) incoming = String(incoming);
+
+      if (incoming && state.hostOpenId && incoming === state.hostOpenId) {
+        applyNicknames(state, payload, 0);
+        write(roomId, state);
+        return ok('join', roomId, {
+          role: 'host',
+          seat: 0,
+          token: tokenFor(roomId, 0),
+          share: shareFor(roomId)
+        }, state);
+      }
+
+      var firstGuest = !state.guestJoined;
+      if (state.guestJoined) {
+        var sameGuest = !incoming || !state.guestOpenId || incoming === state.guestOpenId;
+        if (!sameGuest) return fail('join', 'full', roomId, state);
+      }
+
       state.guestJoined = true;
-      var guestOpen = openIdOf(payload) || payload.guestOpenId;
-      if (guestOpen) state.guestOpenId = String(guestOpen);
+      if (incoming) state.guestOpenId = incoming;
       else if (!state.guestOpenId) state.guestOpenId = 'guest:' + roomId;
       applyNicknames(state, payload, 1);
       applyStars(state, payload);
-      state.seq += 1;
+      if (firstGuest) {
+        state.seq += 1;
+        refreshDeadline(state, now());
+      }
       syncTurnIdentity(state);
-      refreshDeadline(state, now());
       write(roomId, state);
       return ok('join', roomId, {
         role: 'guest',
         seat: 1,
-        token: tokenFor(roomId, 1)
+        token: tokenFor(roomId, 1),
+        share: shareFor(roomId)
       }, state);
     }
 
     function aim(roomId, payload) {
       payload = payload || {};
-      roomId = roomId || payload.roomId;
+      roomId = normalizeRoomId(roomId || payload.roomId || payload.roomid);
       var state = load(roomId);
       if (!state) return fail('aim', 'missing', roomId, null);
       var actor = resolveActor(payload, state);
@@ -385,7 +439,7 @@
 
     function shot(roomId, payload) {
       payload = payload || {};
-      roomId = roomId || payload.roomId;
+      roomId = normalizeRoomId(roomId || payload.roomId || payload.roomid);
       var state = load(roomId);
       if (!state) return fail('shot', 'missing', roomId, null);
       var actor = resolveActor(payload, state);
@@ -477,6 +531,7 @@
     }
 
     function stateOf(roomId) {
+      roomId = normalizeRoomId(roomId);
       var state = load(roomId);
       if (!state) return fail('state', 'missing', roomId, null);
       write(roomId, state);
@@ -504,9 +559,9 @@
       payload = payload || {};
       if (action === 'create') return create(payload);
       if (action === 'join') return join(payload);
-      if (action === 'aim') return aim(payload.roomId, payload);
-      if (action === 'shot') return shot(payload.roomId, payload);
-      if (action === 'state') return stateOf(payload.roomId);
+      if (action === 'aim') return aim(roomIdOf(payload), payload);
+      if (action === 'shot') return shot(roomIdOf(payload), payload);
+      if (action === 'state') return stateOf(roomIdOf(payload));
       return { ok: false, reason: 'unknown-action', action: action };
     }
 
@@ -538,7 +593,9 @@
       hydrate: hydrate,
       tokenFor: tokenFor,
       nextTurn: nextTurn,
-      randomId: randomId
+      randomId: randomId,
+      normalizeRoomId: normalizeRoomId,
+      shareFor: shareFor
     };
   }
 
@@ -551,6 +608,8 @@
     roleOfSeat: roleOfSeat,
     seatOfRole: seatOfRole,
     reasonFromEvents: reasonFromEvents,
+    normalizeRoomId: normalizeRoomId,
+    shareFor: shareFor,
     DEFAULT_SHOT_CLOCK_SEC: DEFAULT_SHOT_CLOCK_SEC,
     FOUL_SHOT_CLOCK: FOUL_SHOT_CLOCK
   };

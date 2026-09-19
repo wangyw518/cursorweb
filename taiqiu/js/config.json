@@ -34,7 +34,9 @@
     "roomApiBase": "",
     "cloudEnv": "",
     "cloudFn": "taiqiuRoom",
-    "httpUrl": ""
+    "httpUrl": "",
+    "shareQuery": "roomId=XXXXXX",
+    "sharePathExample": "?roomId=XXXXXX"
   },
   "colors": {
     "bg": "#14110C",

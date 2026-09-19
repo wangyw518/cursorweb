@@ -48,7 +48,7 @@ Rewards are virtual **星币** only.
 - Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
 - Tap **弱AI试杆** for an optional noisy practice shot at the object ball.
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` carries `query=roomId=XXXXXX`. The friend joins from the share card (`onShow` / launch). After each shot the client posts `shot` and both sides poll `state`. Legal 1–8 keeps the shooter; miss / foul switches; a miss never reracks.
+- Tap **好友对局** to create a room, then **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX`. Cold start (`onLaunch` / `getLaunchOptionsSync`) and hot start (`onShow`) both join that `roomId`; failure toasts 房间无效 / 房间已满 / 对局已结束. After each shot the client posts `shot` and both sides poll `state`. Legal 1–8 keeps the shooter; miss / foul switches; a miss never reracks.
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -100,8 +100,8 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 
 | action | HTTP | body | response |
 | --- | --- | --- | --- |
-| create | `POST /room/create` | optional `{ balls, scores, targetN, nick, openId, shotClockSec }` | `{ roomId, role: "host", deadlineAt, state }` |
-| join | `POST /room/join` | `{ roomId, nick?, openId? }` | `{ role: "guest", deadlineAt, state }` |
+| create | `POST /room/create` | optional `{ balls, scores, targetN, nick, openId, shotClockSec }` | `{ roomId, role: "host", deadlineAt, state, share: { query: "roomId=XXXXXX", path: "?roomId=XXXXXX" } }` |
+| join | `POST /room/join` | `{ roomId, nick?, openId? }` | `{ role: "guest", deadlineAt, state }` or `{ ok: false, reason: "missing"\|"full"\|"ended", state? }` |
 | aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine?, openId? }` | `{ state }` with dirty `aim` only (never writes `balls[]`) |
 | shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ deadlineAt, state }` |
 | state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole` / `turnOpenId`, `shotSeq`, `deadlineAt`, `aim`, `nicknames`, `stars`, `foulCode`, `foulHint`, `winnerOpenId`, `matchOver`, `winner`) |
@@ -119,7 +119,30 @@ P0 extras (same store for HTTP and `cloudfunctions/taiqiuRoom`): default `shotCl
 3. Implement the four paths above. The client already posts `shotSeq`, aim, power, optional spin, `events[]`, and `ballsSnapshot`.
 4. Optional local stand-in: `node taiqiu/dev/room-server.js 8788` then `?api=http://127.0.0.1:8788`. Bind host defaults to `0.0.0.0` (`HOST` / `TAIQIU_ROOM_HOST`, or argv `[port] [host]`); tests can still pass `{ host: '127.0.0.1' }`.
 
-Empty `roomApiBase` always uses the mock, even if a cloud env is listed.
+Empty `roomApiBase` uses `LocalMockRoom` in the browser / Node tests. On WeChat, if `wx.cloud.callFunction` exists, the client calls cloud function `taiqiuRoom` with the **same** `action` + payload as `dev/room-server.js` (`store.dispatch`). LAN `roomApiBase` (8788) always wins over cloud.
+
+`cloudfunctions/taiqiuRoom/index.js` unwraps `wx.callFunction` **or** HTTP-trigger `{ path, body }` and then `store.dispatch` — same create/join/aim/shot/state as `node taiqiu/dev/room-server.js 8788`. The cloud folder keeps a byte-identical `roomStore.js` copy for WeChat upload.
+
+### 复测：好友邀请进房（P0）
+
+分享 query **必须**长这样（小游戏没有 page path，只有 query）：
+
+```
+roomId=XXXXXX
+```
+
+浏览器第二页 / 预览：
+
+```
+http://127.0.0.1:8767/dev/preview.html?roomId=XXXXXX&api=http://127.0.0.1:8788
+```
+
+1. 起房服：`node taiqiu/dev/room-server.js 8788`（默认 `0.0.0.0:8788`）。
+2. 房主 A：`POST /room/create` `{ "openId":"host-a", "nick":"房主甲" }` → `ok`, 6 位 `roomId`, `share.query="roomId=<id>"`, `share.path="?roomId=<id>"`。
+3. 好友 B：`POST /room/join` `{ "roomId":"<id>", "openId":"guest-b", "nick":"好友乙" }` → `ok`，`state.nicknames` 双方可见，`turnOpenId=host-a`（房主先手）。
+4. `POST /room/join` `{ "roomId":"NOPE12" }` → `{ ok:false, reason:"missing" }`。满员 `full`、已结束 `ended`，并尽量带权威 `state`。
+5. 一键脚本：`node taiqiu/dev/invite-join-check.js` 或 `node taiqiu/dev/invite-join-check.js 8788`。
+6. 微信：房主点 **邀请好友**；分享卡片 query 为 `roomId=XXXXXX`。好友冷启动 / 热启动都会 `join`；失败 toast。真机跨设备请部署 `taiqiuRoom` 或两台都指向同一台 `http://<局域网IP>:8788`（不要填 `127.0.0.1`）。
 
 ### Docker / 局域网房间服
 
@@ -161,6 +184,8 @@ In DevTools: compile `taiqiu/`, tap **好友对局** on simulator A, share / cop
 ```bash
 node taiqiu/test/m0.test.js
 node taiqiu/test/m1.test.js
+node taiqiu/test/invite-join.test.js
+node taiqiu/dev/invite-join-check.js
 ```
 
 ## Browser smoke

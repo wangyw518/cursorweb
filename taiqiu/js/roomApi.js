@@ -2,8 +2,9 @@
  * Friend 2P room client.
  *
  * Config flag `room.roomApiBase`:
- *   empty → LocalMockRoom (in-memory + wx / localStorage)
- *   set   → fetch the real HTTP API below
+ *   set   → fetch the real HTTP API (LAN 8788)
+ *   empty + wx.cloud.callFunction → cloud function `taiqiuRoom` (same dispatch)
+ *   else  → LocalMockRoom (in-memory + wx / localStorage)
  *
  * Draft endpoints (same names for mock and real):
  *   POST /room/create → { roomId, role: 'host', state }
@@ -162,30 +163,43 @@
     return next;
   }
 
+  function shareOf(res) {
+    if (res && res.share && res.share.query) return res.share;
+    var id = res && res.roomId ? res.roomId : '';
+    return { query: 'roomId=' + id, path: '?roomId=' + id };
+  }
+
   function decorateCreate(res) {
     if (!res || !res.ok) return res;
     return {
       ok: true,
       action: 'create',
       roomId: res.roomId,
-      role: 'host',
-      seat: 0,
+      role: res.role || 'host',
+      seat: res.seat != null ? res.seat : 0,
       token: res.token,
       deadlineAt: res.deadlineAt,
+      share: shareOf(res),
       state: decorateState(res.state)
     };
   }
 
   function decorateJoin(res) {
-    if (!res || !res.ok) return res;
+    if (!res || !res.ok) {
+      if (res && res.state) res.state = decorateState(res.state);
+      return res;
+    }
+    var role = res.role || 'guest';
+    var seat = res.seat != null ? res.seat : (role === 'host' ? 0 : 1);
     return {
       ok: true,
       action: 'join',
       roomId: res.roomId,
-      role: 'guest',
-      seat: 1,
+      role: role,
+      seat: seat,
       token: res.token,
       deadlineAt: res.deadlineAt,
+      share: shareOf(res),
       state: decorateState(res.state)
     };
   }
@@ -458,6 +472,36 @@
     return !!(cfg.roomApiBase && String(cfg.roomApiBase).trim());
   }
 
+  function usingCloud() {
+    if (usingHttp()) return false;
+    if (!cfg.cloudFn) return false;
+    return typeof wx !== 'undefined' && wx.cloud && typeof wx.cloud.callFunction === 'function';
+  }
+
+  function cloudCall(action, payload, cb) {
+    try {
+      if (cfg.cloudEnv && wx.cloud.init) {
+        wx.cloud.init({ env: cfg.cloudEnv, traceUser: true });
+      }
+    } catch (err) {}
+    var data = {};
+    var src = payload || {};
+    var keys = Object.keys(src);
+    var i;
+    for (i = 0; i < keys.length; i++) data[keys[i]] = src[keys[i]];
+    data.action = action;
+    wx.cloud.callFunction({
+      name: cfg.cloudFn,
+      data: data,
+      success: function (res) {
+        var body = res && res.result != null ? res.result : res;
+        done(parseBody(body), cb);
+      },
+      fail: function () { done({ ok: false, reason: 'cloud-fail' }, cb); }
+    });
+    return { ok: true, pending: true, action: action };
+  }
+
   function configure(opts) {
     opts = opts || {};
     if (opts.roomApiBase != null) cfg.roomApiBase = String(opts.roomApiBase);
@@ -472,12 +516,14 @@
     if (typeof payload === 'function') { cb = payload; payload = {}; }
     payload = payload || {};
     if (usingHttp()) return httpCall('POST', '/room/create', payload, cb);
+    if (usingCloud()) return cloudCall('create', payload, cb);
     return done(mock.create(payload), cb);
   }
 
   function join(roomId, cb) {
     var payload = roomId && typeof roomId === 'object' ? roomId : { roomId: roomId };
     if (usingHttp()) return httpCall('POST', '/room/join', payload, cb);
+    if (usingCloud()) return cloudCall('join', payload, cb);
     return done(mock.join(payload), cb);
   }
 
@@ -490,6 +536,7 @@
     }
     var body = normalizeAimPayload(roomId, payload);
     if (usingHttp()) return httpCall('POST', '/room/aim', body, cb);
+    if (usingCloud()) return cloudCall('aim', body, cb);
     return done(mock.aim(body.roomId, body), cb);
   }
 
@@ -502,6 +549,7 @@
     }
     var body = normalizeShotPayload(roomId, payload);
     if (usingHttp()) return httpCall('POST', '/room/shot', body, cb);
+    if (usingCloud()) return cloudCall('shot', body, cb);
     return done(mock.shot(body.roomId, body), cb);
   }
 
@@ -511,6 +559,7 @@
     if (usingHttp()) {
       return httpCall('GET', '/room/state?roomId=' + encodeURIComponent(id), null, cb);
     }
+    if (usingCloud()) return cloudCall('state', { roomId: id }, cb);
     return done(mock.state(id), cb);
   }
 
@@ -539,6 +588,7 @@
     roleOfSeat: roleOfSeat,
     seatOfRole: seatOfRole,
     configOf: function () { return clone(cfg); },
-    usingHttp: usingHttp
+    usingHttp: usingHttp,
+    usingCloud: usingCloud
   };
 });

@@ -77,6 +77,8 @@
         },
         onWindowResize: function () {},
         shareAppMessage: function () {},
+        showShareMenu: function () {},
+        onShareAppMessage: function (cb) { window.wx._shareAppMessage = cb; },
         getLaunchOptionsSync: function () {
           var q = {};
           try {
@@ -84,6 +86,14 @@
             sp.forEach(function (v, k) { q[k] = v; });
           } catch (e) {}
           return { query: q };
+        },
+        getEnterOptionsSync: function () {
+          return window.wx.getLaunchOptionsSync();
+        },
+        onLaunch: function (cb) {
+          if (typeof cb === 'function') {
+            try { cb(window.wx.getLaunchOptionsSync()); } catch (err) {}
+          }
         },
         onShow: function (cb) {
           if (typeof cb === 'function') {

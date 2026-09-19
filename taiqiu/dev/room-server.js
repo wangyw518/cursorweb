@@ -50,13 +50,16 @@ function readBody(req, cb) {
 
 function decorateCreate(res) {
   if (!res || !res.ok) return res;
-  res.role = 'host';
+  res.role = res.role || 'host';
+  if (!res.share && res.roomId) {
+    res.share = { query: 'roomId=' + res.roomId, path: '?roomId=' + res.roomId };
+  }
   return res;
 }
 
 function decorateJoin(res) {
   if (!res || !res.ok) return res;
-  res.role = 'guest';
+  res.role = res.role || 'guest';
   return res;
 }
 
@@ -103,7 +106,7 @@ function createHandler(store) {
         send(res, 200, decorateCreate(store.dispatch('create', body)));
       });
     }
-    var join = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/join$/);
+    var join = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)\/join$/);
     if (req.method === 'POST' && join) {
       return readBody(req, function (body) {
         body = body || {};
@@ -111,7 +114,7 @@ function createHandler(store) {
         send(res, 200, decorateJoin(store.dispatch('join', body)));
       });
     }
-    var aim = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/aim$/);
+    var aim = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)\/aim$/);
     if (req.method === 'POST' && aim) {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
@@ -119,7 +122,7 @@ function createHandler(store) {
         send(res, 200, store.dispatch('aim', body));
       });
     }
-    var shot = url.match(/^\/api\/rooms\/([A-Z0-9]+)\/shot$/);
+    var shot = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)\/shot$/);
     if (req.method === 'POST' && shot) {
       return readBody(req, function (body) {
         if (!body) return send(res, 400, { ok: false, reason: 'bad-json' });
@@ -127,7 +130,7 @@ function createHandler(store) {
         send(res, 200, store.dispatch('shot', body));
       });
     }
-    var get = url.match(/^\/api\/rooms\/([A-Z0-9]+)$/);
+    var get = url.match(/^\/api\/rooms\/([A-Za-z0-9]+)$/);
     if (req.method === 'GET' && get) {
       return send(res, 200, store.dispatch('state', { roomId: get[1] }));
     }
@@ -180,11 +183,12 @@ if (require.main === module) {
   listen({ port: port, host: host }, function (addr) {
     var shown = addr.address === '::' ? '0.0.0.0' : (addr.address || host);
     console.log('[taiqiu] room API http://' + shown + ':' + addr.port);
-    console.log('  POST /room/create');
-    console.log('  POST /room/join');
+    console.log('  POST /room/create  → { roomId, share.query="roomId=XXXXXX", share.path="?roomId=XXXXXX" }');
+    console.log('  POST /room/join    { roomId }  (missing|full|ended → ok:false, reason, state?)');
     console.log('  POST /room/aim');
     console.log('  POST /room/shot');
     console.log('  GET  /room/state?roomId=');
+    console.log('  shareAppMessage query: roomId=<roomId>   preview: ?roomId=<roomId>&api=http://' + shown + ':' + addr.port);
   });
 }
 
