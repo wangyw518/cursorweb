@@ -211,7 +211,7 @@
       drawButton(ctx, ui.rerack, colors, session.pressed === 'rerack');
     }
 
-    if (session.phase === 'Aim' && session.cue.dragging) {
+    if (session.phase === 'Aim' && (session.cue.dragging || session.watchAim)) {
       var p = session.cue.power;
       ctx.fillStyle = '#2A1C12';
       roundRect(ctx, ui.power.x, ui.power.y, ui.power.w, ui.power.h, 3);

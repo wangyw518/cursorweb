@@ -103,7 +103,7 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | create | `POST /room/create` | optional `{ balls, scores, targetN, nick, openId, shotClockSec }` | `{ roomId, role: "host", deadlineAt, state, share: { query: "roomId=XXXXXX", path: "?roomId=XXXXXX" } }` |
 | join | `POST /room/join` | `{ roomId, nick?, openId? }` | `{ role: "guest", deadlineAt, state }` or `{ ok: false, reason: "missing"\|"full"\|"ended", state? }` |
 | aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine?, openId? }` | `{ state }` with dirty `aim` only (never writes `balls[]`) |
-| shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ deadlineAt, state }` |
+| shot | `POST /room/shot` | `{ roomId, shotSeq, angle\|aimAngle, power, spin?, events[]?, ballsSnapshot? }` | `{ deadlineAt, angle, power, spin?, shotSeq, phase, impulse, state }` |
 | state | `GET /room/state?roomId=` | — | full authoritative snapshot (`state` + `ballsSnapshot`, `turn` / `turnRole` / `turnOpenId`, `shotSeq`, `deadlineAt`, `aim`, `nicknames`, `stars`, `foulCode`, `foulHint`, `winnerOpenId`, `matchOver`, `winner`) |
 
 `events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots / non-consecutive `shotSeq` return `{ ok: false, reason: "not-your-turn"|"stale-seq", state }`. Crediting the waiting seat's `stars` / `scores` returns `{ ok: false, reason: "not-your-score", state }`.
@@ -111,6 +111,17 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 Shot scoring is attributed on the server: this-shot `pocketScore` + `zoneBonus` (or the same fields on `events[]`) are added only to the current `turnOpenId` → `stars.host` or `stars.guest`. Client `stars` are never applied wholesale. The server does **not** invent a constant (especially 32); miss / foul is 0 this shot. `shot` / `state` responses echo `pocketScore`, `zoneBonus`, and cumulative `stars:{host,guest}`. Each client HUD reads only its own key (`host` or `guest`).
 
 P0 extras (same store for HTTP and `cloudfunctions/taiqiuRoom`): default `shotClockSec=20`; create / join / shot / timeout handover issue `deadlineAt = now + shotClockSec`. If the clock expires before `shot`, the server sets `foulCode=shotClock`, switches turn, increments `shotSeq`, does **not** rack, and issues a new deadline. Aim is accepted only for the current `turnOpenId` while `phase` is Aim/Pull; it writes `aim: { angle, power, aimLine, updatedAt }` and must not touch object-ball coordinates. Timeout is settled on `state` poll (client is not the clock authority).
+
+### 观战路径（冲量先发，不上帧同步）
+
+对手看到的不是「断续瞄准 + 最终静帧」，而是：
+
+1. **Aim 脏同步** — 当前座 `POST /room/aim`（默认 ≥180ms 一次），只写 `aim`，不改 `balls[]`。
+2. **Shot 冲量** — 出杆当下 `POST /room/shot` 必带 `angle`/`aimAngle` + `power`（`spin` 可选）。成功后 `state.phase=rolling`，并回传本杆 `angle`/`power`/`spin`/`shotSeq`/`impulse`。此时还没有停稳快照。
+3. **本地回放** — 对手用同一冲量在本地开物理（不改穿库规则）。
+4. **权威纠偏** — 停稳后再 `POST /room/shot` 带 `events[]` + `ballsSnapshot`（可与冲量同 `shotSeq`）。现有计分 / 换手 / 停稳快照逻辑继续。
+
+旧客户端一次把 `reason` + `ballsSnapshot` + 冲量打过来仍然兼容：回包仍带 `angle`/`power`，并直接 settle。
 
 `state.turn` is `0` (host) / `1` (guest). `state.turnRole` is `"host"` / `"guest"`.
 
@@ -166,6 +177,26 @@ curl -s -X POST http://127.0.0.1:8788/room/shot \
 
 node taiqiu/dev/friend-score-check.js
 node taiqiu/test/room-score.test.js
+```
+
+### 复测：好友观战冲量先发（P0）
+
+```bash
+node taiqiu/dev/room-server.js 8788
+# 出杆当下（无 ballsSnapshot）
+curl -s -X POST http://127.0.0.1:8788/room/shot \
+  -H 'content-type: application/json' \
+  -d '{"roomId":"<id>","openId":"host-a","shotSeq":1,"angle":0.8,"power":0.65}'
+# 期望：phase=rolling，回包 angle=0.8 power=0.65，guest GET /room/state 立刻能读到冲量
+
+# 停稳纠偏
+curl -s -X POST http://127.0.0.1:8788/room/shot \
+  -H 'content-type: application/json' \
+  -d '{"roomId":"<id>","openId":"host-a","shotSeq":1,"reason":"miss","ballsSnapshot":[{"id":"cue","n":0,"nx":0.37,"ny":0.55,"pocketed":false}]}'
+# 期望：phase=Aim，guest 读到停稳 balls
+
+node taiqiu/dev/friend-watch-check.js
+node taiqiu/test/room-watch.test.js
 ```
 
 ### Docker / 局域网房间服

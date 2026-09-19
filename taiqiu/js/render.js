@@ -292,7 +292,8 @@
   }
 
   function drawAim(ctx, session) {
-    if (session.phase !== 'Aim' || !session.cue.dragging || session.cue.power < 0.04) return;
+    var showAim = session.cue.dragging || session.watchAim;
+    if (session.phase !== 'Aim' || !showAim || session.cue.power < 0.04) return;
     var colors = session.config.colors;
     var pts = session.preview && session.preview.points ? session.preview.points : [];
     ctx.save();
