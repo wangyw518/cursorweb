@@ -275,8 +275,11 @@ check('ball center past the rail is pocketed in one step (ghost 5-ball)', functi
   var world = { balls: [five], walls: t.walls, pockets: t.pockets, felt: t.felt };
   var ev = physics.step(world, config.fixedDt, config);
   assert.strictEqual(five.pocketed, true, 'off-rail center must leave the on-table set');
-  assert.ok(ev.pockets.length >= 1);
-  assert.ok(physics.offTablePocket({ x: t.felt.x - 4, y: t.felt.y + 40, r: config.ballRadius }, t.pockets, t.felt));
+  assert.ok(five.outOfBounds || ev.pockets.length >= 1 || ev.outOfBounds.length >= 1);
+  assert.ok(ev.outOfBounds.length >= 1 || ev.pockets.length >= 1);
+  var off = physics.offTablePocket({ x: t.felt.x - 4, y: t.felt.y + 40, r: config.ballRadius }, t.pockets, t.felt);
+  assert.ok(off);
+  assert.ok(off.outOfBounds || off.id === 'out' || off.id);
 });
 
 check('a ball cannot slip the top-left jaw and stay onTable', function () {
@@ -314,6 +317,54 @@ check('preview and frozen step never write object-ball positions', function () {
   }, config.fixedDt, config);
   assert.strictEqual(balls.hashObjectBalls(list), before);
   assert.strictEqual(list[1].x, balls.create(t, config)[1].x);
+});
+
+check('ball center outside felt is removed as outOfBounds, not left live', function () {
+  var t = board();
+  var body = physics.createBody(t.felt.x - 24, t.felt.y - 18, config.ballRadius);
+  body.id = 'b5';
+  body.n = 5;
+  var ev = physics.sweepOutOfBounds([body], t.felt, t.pockets);
+  assert.strictEqual(body.pocketed, true);
+  assert.strictEqual(body.outOfBounds, true);
+  assert.ok(ev.length >= 1);
+  assert.strictEqual(ev[0].outOfBounds, true);
+  assert.strictEqual(balls.lowestNumbered([body]), null);
+
+  var jaw = physics.createBody(t.felt.x - 6, t.felt.y + 28, config.ballRadius);
+  jaw.id = 'b6';
+  jaw.n = 6;
+  jaw.vx = -400;
+  var stepped = physics.step({
+    balls: [jaw],
+    walls: t.walls,
+    pockets: t.pockets,
+    felt: t.felt
+  }, config.fixedDt, config);
+  assert.ok(jaw.pocketed || physics.feltContains(t.felt, jaw.x, jaw.y));
+  if (jaw.outOfBounds) assert.ok(stepped.outOfBounds.length >= 1);
+});
+
+check('top-left rail tunnel is contained or pocketed, never a live ball off felt', function () {
+  var t = board();
+  var r = config.ballRadius;
+  var body = physics.createBody(t.felt.x + t.mouthGap * 0.35, t.felt.y + r + 1.2, r);
+  body.id = 'b5';
+  body.n = 5;
+  body.vx = -config.maxSpeed;
+  body.vy = -config.maxSpeed * 0.35;
+  var world = { balls: [body], walls: t.walls, pockets: t.pockets, felt: t.felt };
+  var i;
+  for (i = 0; i < 80; i++) {
+    physics.step(world, config.fixedDt, config);
+    if (!body.pocketed) {
+      assert.ok(
+        physics.feltContains(t.felt, body.x, body.y) || physics.nearPocket(body, t.pockets),
+        'live ball escaped felt at ' + body.x + ',' + body.y
+      );
+    }
+  }
+  assert.ok(body.pocketed || physics.feltContains(t.felt, body.x, body.y));
 });
 
 if (failures) {

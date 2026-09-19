@@ -240,10 +240,49 @@
     return session.target;
   }
 
-  function syncRoomStars(session) {
-    var host = (session.scores && session.scores[0]) || 0;
-    var guest = (session.scores && session.scores[1]) || 0;
-    session.roomStars = { host: host, guest: guest };
+  function toastOutOfBounds(session, ball) {
+    if (!ball || ball.id === 'cue') return;
+    var n = ball.n != null ? ball.n : '';
+    session.toast = { text: n + '号球出界', life: 1.8 };
+  }
+
+  function handleOutOfBounds(session, events) {
+    var list = (events && events.outOfBounds) || [];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      var row = list[i];
+      var ball = row && row.ball ? row.ball : row;
+      if (!ball) continue;
+      if (ball.id === 'cue') {
+        session.shot.scratch = true;
+        if (session.shot.pocketed.indexOf('cue') === -1) session.shot.pocketed.push('cue');
+      } else {
+        toastOutOfBounds(session, ball);
+      }
+    }
+    if (list.length) refreshTarget(session);
+    return session.target;
+  }
+
+  function creditSeat(session) {
+    if (session.room && session.turnOpenId) {
+      if (session.myOpenId && session.turnOpenId === session.myOpenId) {
+        return session.mySeat || 0;
+      }
+      if (session.room.hostOpenId && session.turnOpenId === session.room.hostOpenId) return 0;
+      if (session.room.guestOpenId && session.turnOpenId === session.room.guestOpenId) return 1;
+    }
+    return session.turn;
+  }
+
+  function syncRoomStars(session, host, guest) {
+    if (host != null || guest != null) {
+      session.scores = [host || 0, guest || 0];
+    }
+    session.roomStars = {
+      host: (session.scores && session.scores[0]) || 0,
+      guest: (session.scores && session.scores[1]) || 0
+    };
     return session.roomStars;
   }
 
@@ -420,16 +459,23 @@
         }, cueAt ? cueAt.x : 0, cueAt ? cueAt.y : 0);
       }
     }
-    if (state.scores) session.scores = state.scores.slice();
     if (state.stars) {
       session.roomStars = {
-        host: state.stars.host != null ? state.stars.host : ((state.scores && state.scores[0]) || 0),
-        guest: state.stars.guest != null ? state.stars.guest : ((state.scores && state.scores[1]) || 0)
+        host: state.stars.host != null ? state.stars.host : (state.stars[0] || 0),
+        guest: state.stars.guest != null ? state.stars.guest : (state.stars[1] || 0)
       };
-      session.scores[0] = Math.max(session.scores[0] || 0, session.roomStars.host || 0);
-      session.scores[1] = Math.max(session.scores[1] || 0, session.roomStars.guest || 0);
+      session.scores = [session.roomStars.host, session.roomStars.guest];
+    } else if (state.scores) {
+      session.scores = state.scores.slice();
+      syncRoomStars(session);
     } else {
       syncRoomStars(session);
+    }
+    if (state.hostOpenId && session.room) session.room.hostOpenId = state.hostOpenId;
+    if (state.guestOpenId && session.room) session.room.guestOpenId = state.guestOpenId;
+    if (state.openIds && session.room) {
+      if (state.openIds[0]) session.room.hostOpenId = session.room.hostOpenId || state.openIds[0];
+      if (state.openIds[1]) session.room.guestOpenId = session.room.guestOpenId || state.openIds[1];
     }
     if (state.turnRole === 'guest') session.turn = 1;
     else if (state.turnRole === 'host') session.turn = 0;
@@ -1014,8 +1060,11 @@
     var gap = score.gapToBest(award.coins, session.best);
     if (gap.isNew) session.best = award.coins;
     persist(session);
-    session.scores[shooter] = (session.scores[shooter] || 0) + award.coins;
+    var seat = creditSeat(session);
+    if (seat !== 0 && seat !== 1) seat = shooter;
+    session.scores[seat] = (session.scores[seat] || 0) + award.coins;
     syncRoomStars(session);
+    shooter = seat;
 
     var burstX = cueBall ? cueBall.x : session.table.felt.cx;
     var burstY = cueBall ? cueBall.y : session.table.felt.cy;
@@ -1216,6 +1265,7 @@
     if (session.phase === fsm.PHASE.Shot) {
       var shotEv = physics.step(worldOf(session), dt, session.config);
       noteContacts(session, shotEv);
+      handleOutOfBounds(session, shotEv);
       stopDetect.tick(
         session.stop,
         physics.anyMoving(session.balls, session.config.stopSpeed),
@@ -1228,6 +1278,7 @@
     if (session.phase === fsm.PHASE.WaitCueStop) {
       var waitEv = physics.step(worldOf(session), dt, session.config);
       noteContacts(session, waitEv);
+      handleOutOfBounds(session, waitEv);
       if (session.shot.scratch) {
         session.resolution = fsm.classify(session.shot);
         concludeShot(session, false);
@@ -1257,12 +1308,15 @@
     session.turn = 0;
     resetMatchScores(session);
     session.role = 'host';
+    session.roomStars = { host: 0, guest: 0 };
     session.room = {
       roomId: made.roomId,
       guestJoined: !!(made.state && made.state.guestJoined),
       token: made.token,
       role: 'host',
       share: made.share || null,
+      hostOpenId: (made.state && (made.state.hostOpenId || (made.state.openIds && made.state.openIds[0]))) || session.myOpenId || '',
+      guestOpenId: (made.state && (made.state.guestOpenId || (made.state.openIds && made.state.openIds[1]))) || '',
       lastSeq: made.state ? (made.state.shotSeq != null ? made.state.shotSeq : made.state.seq) : 0,
       aimSeq: made.state && made.state.aimSeq != null ? made.state.aimSeq : 0
     };
@@ -1357,6 +1411,8 @@
       guestJoined: true,
       token: joined.token,
       role: session.role,
+      hostOpenId: (joined.state && (joined.state.hostOpenId || (joined.state.openIds && joined.state.openIds[0]))) || '',
+      guestOpenId: (joined.state && (joined.state.guestOpenId || (joined.state.openIds && joined.state.openIds[1]))) || session.myOpenId || '',
       lastSeq: joined.state
         ? (joined.state.shotSeq != null ? joined.state.shotSeq : joined.state.seq)
         : 0,
@@ -1891,6 +1947,10 @@
     previewConfigOf: previewConfigOf,
     ingestState: ingestState,
     applyRoomState: applyRoomState,
+    refreshTarget: refreshTarget,
+    handleOutOfBounds: handleOutOfBounds,
+    creditSeat: creditSeat,
+    syncRoomStars: syncRoomStars,
     lockObjectBalls: lockObjectBalls,
     toggleAim3d: toggleAim3d,
     fireAi: fireAi,
@@ -1905,9 +1965,7 @@
     getDebugState: getDebugState,
     debugForceStop: debugForceStop,
     resetRound: resetRound,
-    refreshTarget: refreshTarget,
     worldOf: worldOf,
-    syncRoomStars: syncRoomStars,
     resetMatchScores: resetMatchScores,
     PHASE: fsm.PHASE
   };

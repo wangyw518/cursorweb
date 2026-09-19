@@ -949,6 +949,73 @@ check('practice mode has no clock, no turn switch, and no win headline', functio
   assert.strictEqual(balls.lowestNumbered(s.balls).n, 1);
 });
 
+check('out-of-bounds object ball is removed, HUD retargets, and does not award 32', function () {
+  var s = fresh();
+  sessionMod.startPractice(s);
+  assert.strictEqual(s.scores[0], 0);
+  assert.strictEqual(hud.starOf(s, 0), 0);
+  var five = balls.findByN(s.balls, 5);
+  var i;
+  for (i = 1; i <= 4; i++) balls.findByN(s.balls, i).pocketed = true;
+  for (i = 6; i <= 8; i++) balls.findByN(s.balls, i).pocketed = true;
+  five.x = s.table.felt.x - 30;
+  five.y = s.table.felt.y - 22;
+  five.vx = -80;
+  five.vy = -40;
+  s.target = five;
+  s.shot.targetId = five.id;
+  s.phase = fsm.PHASE.Shot;
+  sessionMod.update(s, config.fixedDt);
+  assert.strictEqual(five.pocketed, true);
+  assert.strictEqual(five.outOfBounds, true);
+  assert.ok(s.toast && s.toast.text.indexOf('5号球出界') !== -1);
+  assert.strictEqual(s.scores[0], 0);
+  assert.strictEqual(hud.liveTarget(s).n, 9);
+  assert.strictEqual(hud.liveTarget(s).id, 'b9');
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, s);
+  var blob = chrome._log.texts.join('|');
+  assert.ok(blob.indexOf('目标 9') !== -1, blob);
+  assert.strictEqual(blob.indexOf('目标 5'), -1);
+  assert.ok(blob.indexOf('32 星币') === -1);
+});
+
+check('2P top bar shows both room stars and credits turnOpenId only', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  host.myOpenId = 'host-a';
+  host.turnOpenId = 'guest-b';
+  host.room.hostOpenId = 'host-a';
+  host.room.guestOpenId = 'guest-b';
+  host.turn = 1;
+  host.mySeat = 0;
+  sessionMod.applyRoomState(host, {
+    stars: { host: 8, guest: 24 },
+    scores: [99, 99],
+    turn: 1,
+    turnRole: 'guest',
+    turnOpenId: 'guest-b',
+    hostOpenId: 'host-a',
+    guestOpenId: 'guest-b',
+    nicknames: { host: '房主甲', guest: '好友乙' }
+  });
+  assert.deepStrictEqual(host.scores, [8, 24]);
+  assert.strictEqual(hud.starOf(host, 0), 8);
+  assert.strictEqual(hud.starOf(host, 1), 24);
+  assert.strictEqual(sessionMod.creditSeat(host), 1);
+  host.award = { coins: 16, pocketBonus: 16, landingBonus: 0 };
+  host.turnOpenId = 'guest-b';
+  sessionMod.debugForceStop(host, { pocketTarget: true, firstContact: true });
+  assert.strictEqual(host.scores[0], 8);
+  assert.ok(host.scores[1] >= 24);
+  assert.strictEqual(host.roomStars.host, 8);
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, host);
+  var blob = chrome._log.texts.join('|');
+  assert.ok(blob.indexOf('房主') !== -1 || blob.indexOf('甲') !== -1);
+  assert.ok(blob.indexOf('好友') !== -1 || blob.indexOf('乙') !== -1);
+});
+
 check('invite share refuses an empty roomId and create-then-share keeps the code', function () {
   var empty = share.shareRoom('');
   assert.strictEqual(empty.ok, false);

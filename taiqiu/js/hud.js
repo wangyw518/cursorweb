@@ -232,7 +232,25 @@
     return t && !t.pocketed ? t : null;
   }
 
+  function starsOf(session) {
+    var room = session && (session.roomStars || session.stars);
+    if (session && session.room && room) {
+      return {
+        host: room.host != null ? room.host : (room[0] != null ? room[0] : 0),
+        guest: room.guest != null ? room.guest : (room[1] != null ? room[1] : 0)
+      };
+    }
+    return {
+      host: (session && session.scores && session.scores[0]) || 0,
+      guest: (session && session.scores && session.scores[1]) || 0
+    };
+  }
+
   function starOf(session, seat) {
+    if (session && session.room && (session.roomStars || session.stars)) {
+      var both = starsOf(session);
+      return seat === 1 ? both.guest : both.host;
+    }
     var fromScores = (session && session.scores && session.scores[seat]) || 0;
     var stars = session && (session.stars || session.roomStars);
     var fromStars = 0;
@@ -658,14 +676,15 @@
     turnLabel: turnLabel,
     settleOutcome: settleOutcome,
     nameOf: nameOf,
+    liveTarget: liveTarget,
+    starsOf: starsOf,
+    starOf: starOf,
     seatFallback: seatFallback,
     ownTurn: ownTurn,
     remainSec: remainSec,
     isAiMode: isAiMode,
     isPractice: isPractice,
     showsRoomChrome: showsRoomChrome,
-    drawNameChip: drawNameChip,
-    liveTarget: liveTarget,
-    starOf: starOf
+    drawNameChip: drawNameChip
   };
 });
