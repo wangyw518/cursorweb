@@ -177,9 +177,28 @@
   }
 
   function nextTurn(fromSeat, reason) {
-    if (reason === 'legal' || reason === 'nine' || reason === 'sync') return fromSeat;
+    if (reason === 'legal' || reason === 'nine' || reason === 'sync' || reason === 'rolling' || reason === 'fire') {
+      return fromSeat;
+    }
     if (reason === 'new-game') return 0;
     return fromSeat === 0 ? 1 : 0;
+  }
+
+  function isRollingStart(payload, reason) {
+    if (!payload) return false;
+    if (payload.phase === 'rolling' || payload.phase === 'Rolling') return true;
+    return reason === 'rolling' || reason === 'fire';
+  }
+
+  function impulseOf(payload) {
+    payload = payload || {};
+    var ang = payload.angle != null ? payload.angle : payload.aimAngle;
+    return {
+      angle: ang,
+      aimAngle: payload.aimAngle != null ? payload.aimAngle : ang,
+      power: payload.power,
+      spin: payload.spin || 0
+    };
   }
 
   function reasonFromEvents(events, fallback) {
@@ -361,8 +380,46 @@
           return { ok: false, action: 'shot', reason: 'not-your-turn', roomId: roomId, state: clone(state) };
         }
       }
-      if (payload.shotSeq != null && state.shotSeq != null && payload.shotSeq <= state.shotSeq && reason !== 'new-game') {
+      var sameRolling = (state.phase === 'rolling' || state.phase === 'Shot') &&
+        payload.shotSeq != null && payload.shotSeq === state.shotSeq;
+      if (payload.shotSeq != null && state.shotSeq != null && payload.shotSeq <= state.shotSeq &&
+          reason !== 'new-game' && !sameRolling) {
         return { ok: false, action: 'shot', reason: 'stale-seq', roomId: roomId, state: clone(state) };
+      }
+      if (isRollingStart(payload, reason) && !sameRolling) {
+        var rolling = impulseOf(payload);
+        var rollSeq = payload.shotSeq != null ? payload.shotSeq : (state.shotSeq || 0) + 1;
+        state.phase = 'rolling';
+        state.angle = rolling.angle;
+        state.aimAngle = rolling.aimAngle;
+        state.power = rolling.power;
+        state.spin = rolling.spin;
+        state.lastShot = {
+          shotSeq: rollSeq,
+          angle: rolling.angle,
+          aimAngle: rolling.aimAngle,
+          power: rolling.power,
+          spin: rolling.spin,
+          events: []
+        };
+        state.aim = {
+          kind: 'firing',
+          aimAngle: rolling.aimAngle,
+          angle: rolling.angle,
+          power: rolling.power || 0,
+          spin: rolling.spin,
+          fromSeat: fromSeat,
+          shotSeq: rollSeq,
+          aimSeq: state.aimSeq || 0,
+          updatedAt: Date.now()
+        };
+        state.lastReason = 'rolling';
+        state.lastSeat = fromSeat;
+        state.lastRole = roleOfSeat(fromSeat);
+        state.shotSeq = rollSeq;
+        state.seq += 1;
+        write(roomId, state);
+        return { ok: true, action: 'shot', roomId: roomId, state: clone(state) };
       }
       var snap = payload.ballsSnapshot || payload.balls;
       if (snap) {
@@ -389,6 +446,10 @@
         state.phase = payload.phase || 'Settle';
         state.winnerOpenId = (state.openIds && state.openIds[fromSeat]) || payload.winnerOpenId || null;
         syncEconomy(state);
+      } else if (reason !== 'new-game' && !isRollingStart(payload, reason)) {
+        if (!payload.phase || payload.phase === 'rolling' || payload.phase === 'Shot') {
+          state.phase = 'Aim';
+        }
       }
       state.aim = null;
       state.foulCode = reason === 'timeout' ? 'shotClock' : (reason === 'scratch' || reason === 'whiff' || reason === 'order' || reason === 'foul' ? reason : null);
@@ -403,11 +464,17 @@
       state.lastReason = reason;
       state.lastSeat = fromSeat;
       state.lastRole = roleOfSeat(fromSeat);
+      var settled = impulseOf(payload);
+      state.angle = settled.angle;
+      state.aimAngle = settled.aimAngle;
+      state.power = settled.power;
+      state.spin = settled.spin;
       state.lastShot = {
         shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq + 1,
-        aimAngle: payload.aimAngle,
-        power: payload.power,
-        spin: payload.spin,
+        angle: settled.angle,
+        aimAngle: settled.aimAngle,
+        power: settled.power,
+        spin: settled.spin,
         events: payload.events ? clone(payload.events) : []
       };
       state.guestJoined = !!(state.guestJoined || payload.guestJoined);

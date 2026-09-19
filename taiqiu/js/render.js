@@ -304,6 +304,7 @@
       ay: rem.ay != null ? rem.ay : Math.sin(ang),
       power: rem.power || 0,
       angle: ang,
+      aimLine: rem.aimLine || null,
       dragging: (rem.power || 0) > 0.03
     };
   }
@@ -314,7 +315,7 @@
     var rem = remoteStick(session);
     if (rem) {
       stick = rem;
-      preview = (session.remoteAim && (session.remoteAim.preview || session.remoteAim.aimLine)) || preview;
+      preview = (session.remoteAim && (session.remoteAim.aimLine || session.remoteAim.preview)) || preview;
       if (preview && preview.length && !preview.points) preview = { points: preview };
     }
     if (session.phase !== 'Aim' || !stick || stick.power < 0.04) return;

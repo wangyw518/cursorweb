@@ -32,7 +32,7 @@
   var cfg = {
     roomApiBase: '',
     pollMs: 450,
-    aimPollMs: 140,
+    aimPollMs: 100,
     cloudEnv: '',
     cloudFn: 'taiqiuRoom'
   };
@@ -163,6 +163,14 @@
     if (next.turnOpenId == null) next.turnOpenId = '';
     if (next.aim && next.aim.angle == null && next.aim.aimAngle != null) next.aim.angle = next.aim.aimAngle;
     if (next.aim && next.aim.aimAngle == null && next.aim.angle != null) next.aim.aimAngle = next.aim.angle;
+    if (next.lastShot) {
+      if (next.angle == null) next.angle = next.lastShot.angle != null ? next.lastShot.angle : next.lastShot.aimAngle;
+      if (next.aimAngle == null) next.aimAngle = next.lastShot.aimAngle != null ? next.lastShot.aimAngle : next.lastShot.angle;
+      if (next.power == null) next.power = next.lastShot.power;
+      if (next.spin == null) next.spin = next.lastShot.spin;
+    }
+    if (next.angle == null && next.aimAngle != null) next.angle = next.aimAngle;
+    if (next.aimAngle == null && next.angle != null) next.aimAngle = next.angle;
     if (next.phase === 'Pull') next.phase = 'Aim';
     return next;
   }
@@ -261,7 +269,8 @@
       role: payload.role || (fromSeat === 1 ? 'guest' : 'host'),
       token: payload.token,
       shotSeq: payload.shotSeq,
-      aimAngle: payload.aimAngle,
+      angle: payload.angle != null ? payload.angle : payload.aimAngle,
+      aimAngle: payload.aimAngle != null ? payload.aimAngle : payload.angle,
       power: payload.power,
       spin: payload.spin,
       events: payload.events || [],

@@ -45,7 +45,7 @@
   },
   "room": {
     "pollMs": 450,
-    "aimPollMs": 140,
+    "aimPollMs": 100,
     "roomApiBase": "",
     "cloudEnv": "",
     "cloudFn": "taiqiuRoom",

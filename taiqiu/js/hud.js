@@ -36,26 +36,27 @@
       };
     };
     return {
-      title: { x: pad, y: top + 16 },
-      target: { x: pad, y: top + 36 },
-      best: { x: pad, y: top + 52 },
-      mode: slot(0, '瞄准3D'),
+      title: { x: pad + 52, y: top + 16 },
+      target: { x: pad + 52, y: top + 36 },
+      best: { x: pad + 52, y: top + 52 },
+      mode: Object.assign(slot(0, '即将上线'), { disabled: true }),
       ai: slot(1, '弱AI试杆'),
       room: slot(1, '邀请好友'),
       lobby: Object.assign(slot(2, '返回大厅'), { outline: true }),
       rerack: slot(3, '新开一局'),
       bgm: {
-        x: viewport.width - pad - 46,
+        x: pad,
         y: top,
-        w: 46,
-        h: 22,
-        label: '音乐'
+        w: 44,
+        h: 44,
+        label: '音乐',
+        outline: true
       },
       hint: { x: viewport.width - pad, y: playTop + 10 },
       turn: { x: cx, y: top + 68 },
       clock: { x: viewport.width - pad, y: top + 36 },
-      name0: { x: pad, y: top + 36, w: 102, h: 22 },
-      name1: { x: pad + 110, y: top + 36, w: 102, h: 22 },
+      name0: { x: pad + 52, y: top + 36, w: 108, h: 22 },
+      name1: { x: pad + 164, y: top + 36, w: 108, h: 22 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 34, w: Math.max(80, viewport.width - pad * 2 - 52), h: 10 },
       powerLabel: { x: viewport.width - pad, y: playBottom + 43 },
@@ -116,7 +117,7 @@
     }
     if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (ui.lobby && inRect(ui.lobby, x, y)) return 'lobby';
-    if (inRect(ui.mode, x, y)) return 'aim3d';
+    if (inRect(ui.mode, x, y)) return aim3dUsable(session) ? 'aim3d' : 'aim3d-soon';
     if (ui.ai && (!session || (!session.versus && session.mode !== 'ai')) && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && showsRoomChrome(session) && inRect(ui.room, x, y)) return 'room';
     if (ui.room && inRect(ui.room, x, y)) return 'room-blocked';
@@ -156,6 +157,10 @@
     return !!(session && session.mode === 'practice' && !session.versus);
   }
 
+  function aim3dUsable(session) {
+    return !!(session && session.aim3dReady && session.viewMode === '3d');
+  }
+
   function showsRoomChrome(session) {
     return !isAiMode(session) && !isPractice(session);
   }
@@ -165,8 +170,11 @@
     var mine = ownTurn(session);
     if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
     var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
+    if (session.spectateShot && session.spectateShot.active) return '对方击球中';
+    if ((session.phase === 'Shot' || session.phase === 'rolling' || session.remoteBusy === 'firing') && !mine) {
+      return '对方击球中';
+    }
     if (rem) return '对方瞄准中';
-    if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
     return mine ? '轮到你出杆' : '对方出杆';
   }
 
@@ -189,15 +197,47 @@
     return seat === 1 ? '好友' : '房主';
   }
 
+  function isPlaceholderName(raw) {
+    var s = String(raw || '').trim();
+    return !s || s === '房主' || s === '好友' || s === 'P1' || s === 'P2';
+  }
+
+  function openIdTail(openId) {
+    var s = String(openId || '').replace(/^.*:/, '');
+    if (!s) return '';
+    return s.length <= 4 ? s : s.slice(-4);
+  }
+
+  function seatOpenId(session, seat) {
+    var room = session && session.room;
+    if (room) {
+      if (seat === 1) return room.guestOpenId || (room.openIds && room.openIds[1]) || '';
+      return room.hostOpenId || (room.openIds && room.openIds[0]) || '';
+    }
+    if (session && (session.mySeat || 0) === seat) return session.myOpenId || '';
+    return '';
+  }
+
   function nameOf(session, seat) {
     if (isAiMode(session) && seat === 1) return '简单AI';
     var names = session && session.names;
-    var raw = names && names[seat] ? names[seat] : '';
-    if (!raw && isAiMode(session) && seat === 0) {
-      raw = session.displayName || '玩家';
+    var nicks = session && session.nicknames;
+    var raw = '';
+    if (names && names[seat] && !isPlaceholderName(names[seat])) raw = names[seat];
+    if (!raw && nicks) {
+      var keyed = seat === 1 ? (nicks.guest || nicks[1]) : (nicks.host || nicks[0]);
+      if (keyed && !isPlaceholderName(keyed)) raw = keyed;
     }
-    if (!raw) raw = seatFallback(seat);
-    return truncateName(raw) || (isAiMode(session) && seat === 0 ? '玩家' : seatFallback(seat));
+    if (!raw && (session.mySeat || 0) === seat && session.displayName && !isPlaceholderName(session.displayName)) {
+      raw = session.displayName;
+    }
+    if (!raw && isAiMode(session) && seat === 0) {
+      raw = (session.displayName && !isPlaceholderName(session.displayName)) ? session.displayName : '玩家';
+    }
+    if (!raw) raw = openIdTail(seatOpenId(session, seat));
+    if (!raw && (session.mySeat || 0) === seat) raw = openIdTail(session.myOpenId) || '你';
+    if (!raw) raw = '对手';
+    return truncateName(raw) || ((session.mySeat || 0) === seat ? '你' : '对手');
   }
 
   function ownTurn(session) {
@@ -262,7 +302,8 @@
     if (!box) return;
     var active = session.versus && session.turn === seat &&
       !(session.hotseat && !(session.room && session.room.guestJoined) && seat === 1);
-    var label = nameOf(session, seat) + ' ' + starOf(session, seat);
+    var you = (session.mySeat || 0) === seat ? ' 你' : '';
+    var label = nameOf(session, seat) + you + ' ' + starOf(session, seat);
     ctx.save();
     roundRect(ctx, box.x, box.y, box.w, box.h, 8);
     ctx.fillStyle = active ? 'rgba(61, 42, 24, 0.92)' : 'rgba(24, 18, 12, 0.55)';
@@ -280,7 +321,9 @@
 
   function drawButton(ctx, btn, colors, pressed) {
     var outline = !!(btn && btn.outline);
+    var disabled = !!(btn && btn.disabled);
     ctx.save();
+    if (disabled) ctx.globalAlpha = 0.42;
     roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 10);
     if (outline) {
       ctx.fillStyle = pressed ? 'rgba(61, 42, 24, 0.4)' : 'rgba(24, 18, 12, 0.12)';
@@ -360,8 +403,9 @@
         y: ui.mode.y,
         w: ui.mode.w,
         h: ui.mode.h,
-        label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
-      }, colors, session.pressed === 'aim3d' || session.aim3d);
+        label: aim3dUsable(session) ? (session.aim3d ? '瞄准3D·开' : '瞄准3D') : '即将上线',
+        disabled: !aim3dUsable(session)
+      }, colors, !!(aim3dUsable(session) && (session.pressed === 'aim3d' || session.aim3d)));
       if (ui.lobby) {
         drawButton(ctx, {
           x: ui.lobby.x,
@@ -400,7 +444,8 @@
         y: ui.bgm.y,
         w: ui.bgm.w,
         h: ui.bgm.h,
-        label: session.bgm === false ? '音乐关' : '音乐'
+        label: session.bgm === false ? '音乐关' : '音乐',
+        outline: true
       }, colors, session.pressed === 'bgm' || session.bgm === false);
     }
 
@@ -701,6 +746,9 @@
     turnLabel: turnLabel,
     settleOutcome: settleOutcome,
     nameOf: nameOf,
+    isPlaceholderName: isPlaceholderName,
+    openIdTail: openIdTail,
+    aim3dUsable: aim3dUsable,
     liveTarget: liveTarget,
     starsOf: starsOf,
     starOf: starOf,

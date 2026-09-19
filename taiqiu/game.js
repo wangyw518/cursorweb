@@ -152,10 +152,10 @@
     }
 
     function applyLaunchName(q) {
-      var nick = (q && (q.displayName || q.name)) || '';
+      var nick = (q && (q.displayName || q.nick || q.name)) || '';
       if (!nick) return;
       session.displayName = nick;
-      session.names = session.names || ['房主', '好友'];
+      session.names = session.names || ['', ''];
       session.names[session.mySeat || 0] = nick;
     }
 

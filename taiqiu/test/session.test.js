@@ -215,16 +215,25 @@ check('session starts in Aim with 9-ball order and top view', function () {
   assert.ok(s.tiles.length > 0);
 });
 
-check('aim3d stub does not leave top viewMode', function () {
+check('aim3d stub is grey 即将上线 and toasts once without toggling', function () {
   var s = fresh();
   var btn = s.ui.mode;
+  assert.strictEqual(btn.label, '即将上线');
+  assert.strictEqual(btn.disabled, true);
+  assert.strictEqual(hud.aim3dUsable(s), false);
   var res = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
-  assert.strictEqual(res.kind, 'aim3d');
-  assert.strictEqual(s.aim3d, true);
-  assert.strictEqual(s.viewMode, 'top');
-  sessionMod.toggleAim3d(s);
+  assert.strictEqual(res.kind, 'aim3d-soon');
   assert.strictEqual(s.aim3d, false);
   assert.strictEqual(s.viewMode, 'top');
+  assert.ok(s.toast && s.toast.text.indexOf('即将上线') !== -1);
+  s.toast = null;
+  var again = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
+  assert.strictEqual(again.kind, 'aim3d-soon');
+  assert.strictEqual(s.aim3d, false);
+  assert.strictEqual(s.toast, null);
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, s);
+  assert.ok(chrome._log.texts.join('|').indexOf('即将上线') !== -1);
 });
 
 check('瞄准3D button sits clear of the top-right WeChat capsule', function () {
@@ -567,7 +576,9 @@ check('in-game 返回大厅 clears AI/practice and splash 好友对局 can invit
   assert.ok(s.room && s.room.roomId);
   assert.strictEqual(s.mode, 'room');
   assert.ok(s.names[1].indexOf('AI') === -1);
-  assert.ok(s.names[1].indexOf('好友') !== -1 || s.names[1] === '好友');
+  assert.ok(s.names[1].indexOf('AI') === -1);
+  assert.notStrictEqual(hud.nameOf(s, 1), '房主');
+  assert.notStrictEqual(hud.nameOf(s, 0), '好友');
   var invite = sessionMod.inviteRoom(s);
   assert.strictEqual(invite.kind, 'invite');
   assert.strictEqual(invite.payload.query, 'roomId=' + s.room.roomId);
@@ -815,6 +826,27 @@ check('versus HUD names fall back to 房主/好友 and never P1/P2', function ()
   assert.strictEqual(JSON.stringify(dbg).indexOf('P1'), -1);
 });
 
+check('versus HUD never shows only 房主/好友 and marks 你 on the local seat', function () {
+  var s = fresh();
+  s.versus = true;
+  s.mySeat = 0;
+  s.myOpenId = 'wxopenidABCDEF';
+  s.room = { hostOpenId: 'wxopenidABCDEF', guestOpenId: 'guest9876' };
+  s.names = ['房主', '好友'];
+  assert.strictEqual(hud.nameOf(s, 0), 'CDEF');
+  assert.strictEqual(hud.nameOf(s, 1), '9876');
+  assert.notStrictEqual(hud.nameOf(s, 0), '房主');
+  assert.notStrictEqual(hud.nameOf(s, 1), '好友');
+  s.names = ['微信昵称很长啊', 'Li'];
+  s.displayName = '微信昵称很长啊';
+  var ctx = mockCtx();
+  hud.drawChrome(ctx, s);
+  var blob = ctx._log.texts.join('|');
+  assert.ok(blob.indexOf('微信昵称很长…') !== -1);
+  assert.ok(blob.indexOf('你') !== -1);
+  assert.ok(blob.indexOf('Li') !== -1);
+});
+
 check('aim timeout is display-only; server shotClock swaps turn without rerack', function () {
   var host = fresh();
   sessionMod.createRoom(host);
@@ -912,6 +944,9 @@ check('HUD 音乐 toggle persists and defaults on', function () {
   var s = fresh();
   assert.strictEqual(s.bgm, true);
   assert.ok(s.ui.bgm);
+  assert.ok(s.ui.bgm.w >= 44 && s.ui.bgm.h >= 44, 'music hit target >= 44px');
+  assert.ok(s.ui.bgm.x + s.ui.bgm.w < viewport().width * 0.45, 'music stays in left safe zone');
+  assert.ok(s.ui.bgm.x < 40, 'music is not under the WeChat capsule');
   var res = sessionMod.handlePointerDown(s, s.ui.bgm.x + 4, s.ui.bgm.y + 4);
   assert.strictEqual(res.kind, 'bgm');
   assert.strictEqual(s.bgm, false);
@@ -1334,6 +1369,73 @@ check('guest legal pot adds guest stars, not a frozen 32, and new-game resets bo
   assert.strictEqual(host.roomStars.guest, 0);
   assert.strictEqual(guest.scores[1], 0);
   assert.strictEqual(guest.roomStars.guest, 0);
+});
+
+check('aim poll is at most 100ms and remote aim interpolates without a hard jump', function () {
+  assert.ok(config.room.aimPollMs <= 100);
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  assert.ok(sessionMod.aimPollSec(guest) <= 0.1);
+  sessionMod.pushAim(host, {
+    kind: 'charging',
+    aimAngle: 0.2,
+    power: 0.2,
+    ax: Math.cos(0.2),
+    ay: Math.sin(0.2),
+    aimLine: [{ x: 10, y: 10 }, { x: 20, y: 20 }]
+  });
+  sessionMod.pullRoom(guest);
+  assert.ok(guest.remoteAim);
+  assert.ok(Math.abs(guest.remoteAim.aimAngle - 0.2) < 1e-6);
+  sessionMod.pushAim(host, {
+    kind: 'charging',
+    aimAngle: 1.2,
+    power: 0.85,
+    ax: Math.cos(1.2),
+    ay: Math.sin(1.2),
+    aimLine: [{ x: 10, y: 10 }, { x: 80, y: 40 }]
+  });
+  sessionMod.pullRoom(guest);
+  assert.ok(guest.remoteAimTarget);
+  assert.ok(Math.abs(guest.remoteAimTarget.aimAngle - 1.2) < 1e-6);
+  assert.ok(Math.abs(guest.remoteAim.aimAngle - 1.2) > 0.2, 'must not snap dashes to the new angle');
+  sessionMod.update(guest, 0.25);
+  assert.ok(Math.abs(guest.remoteAim.aimAngle - 1.2) < 0.2);
+  assert.ok(guest.remoteAim.aimLine && guest.remoteAim.aimLine.length >= 2);
+});
+
+check('opponent fire applies the same impulse and runs local roll before a soft correct', function () {
+  var host = fresh();
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true, nick: '好友乙', openId: 'guest-b' });
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  var cueHost = balls.cueBall(host.balls);
+  var beforeX = balls.cueBall(guest.balls).x;
+  var fired = sessionMod.applyStrike(host, { angle: 0, power: 0.62, ax: 1, ay: 0, spin: 0 }, { kind: 'fire' });
+  assert.strictEqual(fired.kind, 'fire');
+  assert.strictEqual(host.phase, fsm.PHASE.Shot);
+  assert.ok(host.pendingShotSeq >= 1);
+  var room = roomApi.state(host.room.roomId);
+  assert.ok(room.state.phase === 'rolling' || room.state.phase === 'Shot');
+  assert.ok(room.state.power > 0 || (room.state.aim && room.state.aim.power > 0));
+  sessionMod.pullRoom(guest);
+  assert.strictEqual(guest.phase, fsm.PHASE.Shot);
+  assert.ok(guest.spectateShot && guest.spectateShot.active);
+  var cueGuest = balls.cueBall(guest.balls);
+  assert.ok(Math.hypot(cueGuest.vx, cueGuest.vy) > 20, 'spectator must see a moving cue, not a static snap');
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, guest);
+  assert.ok(chrome._log.texts.join('|').indexOf('对方击球中') !== -1);
+  var i;
+  for (i = 0; i < 240; i++) sessionMod.update(guest, 1 / 60);
+  assert.ok(!guest.spectateShot || !guest.spectateShot.active || guest.spectateShot.pendingCorrect);
+  assert.ok(Math.abs(balls.cueBall(guest.balls).x - beforeX) > 0.5 || guest.phase !== fsm.PHASE.Aim);
+  for (i = 0; i < 240; i++) sessionMod.update(host, 1 / 60);
+  sessionMod.pullRoom(guest, { full: true });
+  assert.notStrictEqual(guest.phase, 'static');
 });
 
 if (failures) {
