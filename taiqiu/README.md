@@ -24,7 +24,7 @@ Do **not** import the repository root. The playable project root is `taiqiu/`.
 
 State machine: **Aim → Shot → ResolvePocket → WaitCueStop → StarZone**
 
-1. **Aim** — top-down only (`viewMode: top`). Drag cue, dashed aim, pull-back power. **瞄准3D** is a stub and does not change the camera.
+1. **Aim** — top-down only (`viewMode: top`). Drag cue, dashed aim, pull-back power. **瞄准3D** is hidden until wired (`即将上线` toast only).
 2. **Shot** — fire the cue ball; custom 2D circles / cushions / friction / pockets.
 3. **ResolvePocket** — simplified 9-ball order (lowest numbered object ball first). Scratch, whiff, or wrong first contact is a **foul**. A miss or foul **does not rerack**.
 4. **WaitCueStop** — only after a valid pocket; cue keeps rolling.
@@ -49,10 +49,10 @@ Rewards are virtual **星币** only.
 - **练习** (`mode=practice`): one player keeps the table. A miss does not switch or rerack. No shot clock and no opponent chip. Top bar is `练习` plus this session’s 星币 only. End card is session 星币 + **再来一局** — no 你赢了/你输了 headline, no card 返回. Footer **返回大厅** still leaves to splash; invite is hidden (toast **请回大厅选好友对局**). No room server.
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull. The dashed preview is long enough to reach a far object ball (`previewLength` 720 / 3 bounces, or 1.25× table diagonal). Power uses on-screen drag length (bezel dead-zone), so a cue on any rail can still hit **满** / 100% without pulling the stick off-screen.
 - Release to shoot. A short pull cancels.
-- Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
+- Footer leftmost slot is **音乐 / 音乐关** (≥44px, off the WeChat capsule). **瞄准3D** is hidden.
 - In practice only, tap **弱AI试杆** for an optional noisy shot at the object ball (same `Cue.strike` path).
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap splash **好友对局** to create a room, then in-room **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX` (create also returns `share.query` / `share.path`). The friend joins from the share card (`onLaunch` + `onShow` + `getEnterOptionsSync`). Mid-game **返回大厅** returns to the splash in every mode so a solo AI/practice match cannot trap the player. While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (~140ms, Aim|Pull only, never mutates `balls[]`) so the waiting seat draws a live semi-transparent cue + dashed line + 「对方瞄准中」. After the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
+- Tap splash **好友对局** to create a room, then in-room **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX` (create also returns `share.query` / `share.path`). The friend joins from the share card (`onLaunch` + `onShow` + `getEnterOptionsSync`). Mid-game **返回大厅** returns to the splash in every mode so a solo AI/practice match cannot trap the player. While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (≤100ms, default 80ms, Aim|Pull only, never mutates `balls[]`) so the waiting seat interpolates a live cue + dashed line + 「对方瞄准中」. On fire, `POST /room/shot` `{shotSeq, angle, power, spin?}` sets `phase=rolling` / `impulse`; the opponent applies the same `Cue.strike` and runs local physics, then soft-corrects to the authoritative snapshot. HUD shows 「对方击球中」 while they roll. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -177,7 +177,12 @@ node taiqiu/dev/room-server.js 8788
 node taiqiu/dev/invite-join-check.js 8788
 ```
 
-## Browser smoke
+## 真机验收（PR #14 体验四条）
+
+1. **顶栏身份**：对局顶栏是微信昵称（超过 6 字 `前六字…`），自己一侧带 **你·**，不再只写「房主 / 好友」。缺昵称时用短 openId 尾，而不是占位字。
+2. **对端观战**：A 拉杆时 B 虚线连续（`/aim` ≤100ms + 本地插值）。A 出杆后 B 看到母球滚动（同一 `angle/power/spin` 本地 `Cue.strike`），HUD「对方击球中」，停稳后再软对齐权威桌，而不是只跳最终静帧。
+3. **音乐**：开屏和局内底栏左侧 **音乐 / 音乐关**，命中区域 ≥44px，不在微信右上角胶囊下。
+4. **瞄准3D**：按钮已隐藏。调用 `toggleAim3d` 只 toast「即将上线」一次，俯视不变。
 
 ```bash
 python3 -m http.server 8767 --directory taiqiu

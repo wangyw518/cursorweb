@@ -32,7 +32,7 @@
   var cfg = {
     roomApiBase: '',
     pollMs: 450,
-    aimPollMs: 100,
+    aimPollMs: 80,
     cloudEnv: '',
     cloudFn: 'taiqiuRoom'
   };
@@ -163,6 +163,11 @@
     if (next.turnOpenId == null) next.turnOpenId = '';
     if (next.aim && next.aim.angle == null && next.aim.aimAngle != null) next.aim.angle = next.aim.aimAngle;
     if (next.aim && next.aim.aimAngle == null && next.aim.angle != null) next.aim.aimAngle = next.aim.angle;
+    if (next.impulse) {
+      if (next.angle == null) next.angle = next.impulse.angle != null ? next.impulse.angle : next.impulse.aimAngle;
+      if (next.power == null) next.power = next.impulse.power;
+      if (next.spin == null) next.spin = next.impulse.spin;
+    }
     if (next.lastShot) {
       if (next.angle == null) next.angle = next.lastShot.angle != null ? next.lastShot.angle : next.lastShot.aimAngle;
       if (next.aimAngle == null) next.aimAngle = next.lastShot.aimAngle != null ? next.lastShot.aimAngle : next.lastShot.angle;

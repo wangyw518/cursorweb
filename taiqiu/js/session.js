@@ -84,6 +84,19 @@
     session.displayName = name;
     applySeatName(session, name);
     persist(session);
+    if (session.room && session.room.roomId && roomApi && roomApi.aim) {
+      roomApi.aim(session.room.roomId, {
+        roomId: session.room.roomId,
+        kind: 'name',
+        fromSeat: session.mySeat || 0,
+        role: (session.mySeat || 0) === 1 ? 'guest' : 'host',
+        token: session.room.token,
+        openId: session.myOpenId || '',
+        nick: name,
+        displayName: name,
+        name: name
+      });
+    }
     return session;
   }
 
@@ -152,8 +165,8 @@
   function aimPollSec(session) {
     var cfg = (roomApi.configOf && roomApi.configOf()) || {};
     var room = (session.config && session.config.room) || {};
-    var ms = cfg.aimPollMs || room.aimPollMs || 100;
-    if (!(ms > 0) || ms > 100) ms = 100;
+    var ms = cfg.aimPollMs || room.aimPollMs || 80;
+    if (!(ms > 0) || ms > 100) ms = 80;
     return ms / 1000;
   }
 
@@ -263,7 +276,7 @@
 
   function impulseFromState(state) {
     if (!state) return null;
-    var src = state.lastShot || state.aim || state;
+    var src = state.impulse || state.lastShot || state.aim || state;
     var angle = src.angle != null ? src.angle : src.aimAngle;
     if (angle == null && state.angle != null) angle = state.angle;
     if (angle == null && state.aimAngle != null) angle = state.aimAngle;

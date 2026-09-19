@@ -475,8 +475,20 @@
         aimAngle: settled.aimAngle,
         power: settled.power,
         spin: settled.spin,
+        ax: payload.ax,
+        ay: payload.ay,
         events: payload.events ? clone(payload.events) : []
       };
+      if (payload.ax != null || payload.ay != null || settled.angle != null) {
+        state.impulse = {
+          shotSeq: state.lastShot.shotSeq,
+          angle: settled.angle,
+          power: settled.power,
+          spin: settled.spin,
+          ax: payload.ax != null ? payload.ax : (settled.angle != null ? Math.cos(settled.angle) : 0),
+          ay: payload.ay != null ? payload.ay : (settled.angle != null ? Math.sin(settled.angle) : 0)
+        };
+      }
       state.guestJoined = !!(state.guestJoined || payload.guestJoined);
       state.seq += 1;
       if (reason !== 'new-game') {
@@ -505,6 +517,19 @@
       }
       if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
         return { ok: false, action: 'aim', reason: 'bad-token', roomId: roomId };
+      }
+      if (payload.kind === 'name') {
+        var nick = clipNick(payload.nick || payload.displayName || payload.name);
+        if (nick) {
+          state.names = state.names || ['', ''];
+          state.names[fromSeat] = nick;
+          state.nicknames = {
+            host: fromSeat === 0 ? nick : (state.nicknames && state.nicknames.host) || state.names[0],
+            guest: fromSeat === 1 ? nick : (state.nicknames && state.nicknames.guest) || state.names[1]
+          };
+        }
+        write(roomId, state);
+        return { ok: true, action: 'aim', roomId: roomId, state: clone(state) };
       }
       applyDueTimeout(state);
       stampTurn(state);
@@ -538,7 +563,18 @@
         aiming: payload.aiming !== false,
         updatedAt: Date.now()
       };
-      if (payload.kind === 'firing') state.phase = 'Shot';
+      if (payload.kind === 'firing') {
+        state.phase = 'Shot';
+        state.impulse = {
+          shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq,
+          angle: ang,
+          aimAngle: ang,
+          power: payload.power || 0,
+          spin: payload.spin || 0,
+          ax: payload.ax,
+          ay: payload.ay
+        };
+      }
       else if (state.phase !== 'Settle') {
         state.phase = (payload.kind === 'charging' || payload.kind === 'Pull' || (payload.power || 0) > 0.03)
           ? 'Pull'

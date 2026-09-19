@@ -215,25 +215,23 @@ check('session starts in Aim with 9-ball order and top view', function () {
   assert.ok(s.tiles.length > 0);
 });
 
-check('aim3d stub is grey 即将上线 and toasts once without toggling', function () {
+check('aim3d stub is hidden and toggle only toasts 即将上线 once', function () {
   var s = fresh();
-  var btn = s.ui.mode;
-  assert.strictEqual(btn.label, '即将上线');
-  assert.strictEqual(btn.disabled, true);
+  assert.strictEqual(s.ui.mode.hidden, true);
   assert.strictEqual(hud.aim3dUsable(s), false);
-  var res = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
-  assert.strictEqual(res.kind, 'aim3d-soon');
+  var chrome = mockCtx();
+  hud.drawChrome(chrome, s);
+  var blob = chrome._log.texts.join('|');
+  assert.strictEqual(blob.indexOf('瞄准3D'), -1);
+  var hit = hud.hitTest(s.ui, s.ui.mode.x + 8, s.ui.mode.y + 8, s.phase, s);
+  assert.notStrictEqual(hit, 'aim3d');
+  sessionMod.toggleAim3d(s);
   assert.strictEqual(s.aim3d, false);
   assert.strictEqual(s.viewMode, 'top');
   assert.ok(s.toast && s.toast.text.indexOf('即将上线') !== -1);
   s.toast = null;
-  var again = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
-  assert.strictEqual(again.kind, 'aim3d-soon');
-  assert.strictEqual(s.aim3d, false);
+  sessionMod.toggleAim3d(s);
   assert.strictEqual(s.toast, null);
-  var chrome = mockCtx();
-  hud.drawChrome(chrome, s);
-  assert.ok(chrome._log.texts.join('|').indexOf('即将上线') !== -1);
 });
 
 check('瞄准3D button sits clear of the top-right WeChat capsule', function () {
@@ -843,7 +841,7 @@ check('versus HUD never shows only 房主/好友 and marks 你 on the local seat
   hud.drawChrome(ctx, s);
   var blob = ctx._log.texts.join('|');
   assert.ok(blob.indexOf('微信昵称很长…') !== -1);
-  assert.ok(blob.indexOf('你') !== -1);
+  assert.ok(blob.indexOf('你·') !== -1);
   assert.ok(blob.indexOf('Li') !== -1);
 });
 
@@ -945,8 +943,8 @@ check('HUD 音乐 toggle persists and defaults on', function () {
   assert.strictEqual(s.bgm, true);
   assert.ok(s.ui.bgm);
   assert.ok(s.ui.bgm.w >= 44 && s.ui.bgm.h >= 44, 'music hit target >= 44px');
-  assert.ok(s.ui.bgm.x + s.ui.bgm.w < viewport().width * 0.45, 'music stays in left safe zone');
-  assert.ok(s.ui.bgm.x < 40, 'music is not under the WeChat capsule');
+  assert.ok(s.ui.bgm.y > viewport().height * 0.55, 'music sits in the footer, not the WeChat capsule');
+  assert.ok(Math.abs(s.ui.bgm.x - s.ui.mode.x) < 1, 'music occupies the old 瞄准3D slot');
   var res = sessionMod.handlePointerDown(s, s.ui.bgm.x + 4, s.ui.bgm.y + 4);
   assert.strictEqual(res.kind, 'bgm');
   assert.strictEqual(s.bgm, false);
