@@ -295,8 +295,9 @@
   }
 
   function remoteStick(session) {
-    var rem = session.remoteAim;
+    var rem = session.remoteAimVisual || session.remoteAim;
     if (!rem || session.phase !== 'Aim') return null;
+    if (session.remoteReplay) return null;
     if (hud.ownTurn && hud.ownTurn(session)) return null;
     var ang = rem.aimAngle != null ? rem.aimAngle : (rem.angle != null ? rem.angle : Math.atan2(rem.ay || -1, rem.ax || 0));
     return {
@@ -314,7 +315,8 @@
     var rem = remoteStick(session);
     if (rem) {
       stick = rem;
-      preview = (session.remoteAim && (session.remoteAim.preview || session.remoteAim.aimLine)) || preview;
+      var remote = session.remoteAimVisual || session.remoteAim;
+      preview = (remote && (remote.preview || remote.aimLine)) || preview;
       if (preview && preview.length && !preview.points) preview = { points: preview };
     }
     if (session.phase !== 'Aim' || !stick || stick.power < 0.04) return;

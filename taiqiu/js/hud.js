@@ -39,23 +39,17 @@
       title: { x: pad, y: top + 16 },
       target: { x: pad, y: top + 36 },
       best: { x: pad, y: top + 52 },
-      mode: slot(0, '瞄准3D'),
+      mode: null,
       ai: slot(1, '弱AI试杆'),
       room: slot(1, '邀请好友'),
       lobby: Object.assign(slot(2, '返回大厅'), { outline: true }),
       rerack: slot(3, '新开一局'),
-      bgm: {
-        x: viewport.width - pad - 46,
-        y: top,
-        w: 46,
-        h: 22,
-        label: '音乐'
-      },
+      bgm: Object.assign(slot(0, '音乐'), { w: Math.min(footerW, 72) }),
       hint: { x: viewport.width - pad, y: playTop + 10 },
       turn: { x: cx, y: top + 68 },
       clock: { x: viewport.width - pad, y: top + 36 },
-      name0: { x: pad, y: top + 36, w: 102, h: 22 },
-      name1: { x: pad + 110, y: top + 36, w: 102, h: 22 },
+      name0: { x: pad, y: top + 36, w: 118, h: 24 },
+      name1: { x: pad + 124, y: top + 36, w: 118, h: 24 },
       disclaimer: { x: cx, y: viewport.height - bottomSafe - 12 },
       power: { x: pad, y: playBottom + 34, w: Math.max(80, viewport.width - pad * 2 - 52), h: 10 },
       powerLabel: { x: viewport.width - pad, y: playBottom + 43 },
@@ -97,6 +91,7 @@
       if ((!session || !session.versus) && inRect(ui.share, x, y)) return 'share';
       if (inRect(ui.settleCard, x, y)) return 'settle-block';
     }
+    if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (session && session.roomPanel) {
       if (ui.roomClose && inRect(ui.roomClose, x, y)) return 'room-close';
       if (ui.roomInvite && inRect(ui.roomInvite, x, y)) return 'room';
@@ -114,9 +109,8 @@
       if (ui.start && inRect(ui.start, x, y)) return 'start-ai';
       return null;
     }
-    if (ui.bgm && inRect(ui.bgm, x, y)) return 'bgm';
     if (ui.lobby && inRect(ui.lobby, x, y)) return 'lobby';
-    if (inRect(ui.mode, x, y)) return 'aim3d';
+    if (ui.mode && inRect(ui.mode, x, y)) return 'aim3d';
     if (ui.ai && (!session || (!session.versus && session.mode !== 'ai')) && inRect(ui.ai, x, y)) return 'ai';
     if (ui.room && showsRoomChrome(session) && inRect(ui.room, x, y)) return 'room';
     if (ui.room && inRect(ui.room, x, y)) return 'room-blocked';
@@ -164,9 +158,9 @@
     if (!session.versus) return '';
     var mine = ownTurn(session);
     if (isAiMode(session)) return mine ? '轮到你出杆' : 'AI出杆中';
-    var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing';
+    var rem = session.remoteAim && !mine && session.remoteAim.kind !== 'firing' && !session.remoteReplay;
     if (rem) return '对方瞄准中';
-    if (session.remoteBusy === 'firing' && !mine) return '对方出杆';
+    if ((session.remoteReplay || session.remoteBusy === 'firing') && !mine) return '对方出杆中';
     return mine ? '轮到你出杆' : '对方出杆';
   }
 
@@ -189,15 +183,45 @@
     return seat === 1 ? '好友' : '房主';
   }
 
+  function isGenericRoleName(raw) {
+    var s = String(raw || '').trim();
+    return !s || s === '房主' || s === '好友' || s === 'P1' || s === 'P2' ||
+      s === 'host' || s === 'guest' || s === 'Host' || s === 'Guest';
+  }
+
+  function configuredName(session, seat) {
+    var room = (session && session.config && session.config.room) || {};
+    if (seat === 1) return String(room.guestDisplayName || '').trim();
+    return String(room.displayName || '').trim();
+  }
+
+  function isOwnSeat(session, seat) {
+    return !session || session.mySeat == null || session.mySeat === seat;
+  }
+
   function nameOf(session, seat) {
     if (isAiMode(session) && seat === 1) return '简单AI';
     var names = session && session.names;
     var raw = names && names[seat] ? names[seat] : '';
-    if (!raw && isAiMode(session) && seat === 0) {
-      raw = session.displayName || '玩家';
+    var mine = isOwnSeat(session, seat);
+    if (isGenericRoleName(raw)) {
+      if (mine) {
+        raw = (session && session.displayName) || configuredName(session, seat) || '';
+        if (isGenericRoleName(raw)) raw = isAiMode(session) ? '玩家' : '我';
+      } else {
+        raw = configuredName(session, seat) || '';
+        if (isGenericRoleName(raw)) raw = '对方';
+      }
     }
-    if (!raw) raw = seatFallback(seat);
-    return truncateName(raw) || (isAiMode(session) && seat === 0 ? '玩家' : seatFallback(seat));
+    return truncateName(raw) || (mine ? (isAiMode(session) ? '玩家' : '我') : '对方');
+  }
+
+  function chipLabel(session, seat) {
+    var name = nameOf(session, seat);
+    if (session && session.versus && isOwnSeat(session, seat) && !isPractice(session)) {
+      return '你·' + name;
+    }
+    return name;
   }
 
   function ownTurn(session) {
@@ -260,18 +284,19 @@
 
   function drawNameChip(ctx, box, session, seat, colors) {
     if (!box) return;
+    var mine = !!(session && session.versus && isOwnSeat(session, seat));
     var active = session.versus && session.turn === seat &&
       !(session.hotseat && !(session.room && session.room.guestJoined) && seat === 1);
-    var label = nameOf(session, seat) + ' ' + starOf(session, seat);
+    var label = chipLabel(session, seat) + ' ' + starOf(session, seat);
     ctx.save();
     roundRect(ctx, box.x, box.y, box.w, box.h, 8);
-    ctx.fillStyle = active ? 'rgba(61, 42, 24, 0.92)' : 'rgba(24, 18, 12, 0.55)';
+    ctx.fillStyle = mine || active ? 'rgba(61, 42, 24, 0.95)' : 'rgba(24, 18, 12, 0.55)';
     ctx.fill();
-    ctx.strokeStyle = active ? '#F5D76E' : (colors.buttonBorder || '#D4B483');
-    ctx.lineWidth = active ? 2 : 1;
+    ctx.strokeStyle = mine || active ? '#F5D76E' : (colors.buttonBorder || '#D4B483');
+    ctx.lineWidth = mine || active ? 2 : 1;
     ctx.stroke();
-    ctx.fillStyle = active ? '#F5D76E' : (colors.hud || '#F4E8D4');
-    ctx.font = (active ? 'bold 12px ' : '12px ') + FONT;
+    ctx.fillStyle = mine || active ? '#F5D76E' : (colors.hud || '#F4E8D4');
+    ctx.font = (mine || active ? 'bold 12px ' : '12px ') + FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, box.x + box.w * 0.5, box.y + box.h * 0.5 + 1);
@@ -355,13 +380,6 @@
     }
 
     if (session.phase !== 'Splash') {
-      drawButton(ctx, {
-        x: ui.mode.x,
-        y: ui.mode.y,
-        w: ui.mode.w,
-        h: ui.mode.h,
-        label: session.aim3d ? '瞄准3D·开' : '瞄准3D'
-      }, colors, session.pressed === 'aim3d' || session.aim3d);
       if (ui.lobby) {
         drawButton(ctx, {
           x: ui.lobby.x,
@@ -701,6 +719,9 @@
     turnLabel: turnLabel,
     settleOutcome: settleOutcome,
     nameOf: nameOf,
+    chipLabel: chipLabel,
+    isGenericRoleName: isGenericRoleName,
+    isOwnSeat: isOwnSeat,
     liveTarget: liveTarget,
     starsOf: starsOf,
     starOf: starOf,

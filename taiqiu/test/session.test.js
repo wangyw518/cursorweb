@@ -215,22 +215,26 @@ check('session starts in Aim with 9-ball order and top view', function () {
   assert.ok(s.tiles.length > 0);
 });
 
-check('aim3d stub does not leave top viewMode', function () {
+check('aim3d is hidden and stays top viewMode', function () {
   var s = fresh();
-  var btn = s.ui.mode;
-  var res = sessionMod.handlePointerDown(s, btn.x + 8, btn.y + 8);
-  assert.strictEqual(res.kind, 'aim3d');
-  assert.strictEqual(s.aim3d, true);
+  assert.strictEqual(s.ui.mode, null);
   assert.strictEqual(s.viewMode, 'top');
-  sessionMod.toggleAim3d(s);
+  assert.strictEqual(s.aim3d, false);
+  var res = sessionMod.toggleAim3d(s);
+  assert.strictEqual(res, false);
   assert.strictEqual(s.aim3d, false);
   assert.strictEqual(s.viewMode, 'top');
+  assert.ok(s.toast && s.toast.text.indexOf('即将上线') !== -1);
 });
 
-check('瞄准3D button sits clear of the top-right WeChat capsule', function () {
+check('音乐 button sits in the footer clear of the top-right WeChat capsule', function () {
   var ui = hud.layout(viewport());
-  assert.ok(ui.mode.x + ui.mode.w < viewport().width * 0.5);
-  assert.ok(ui.mode.y > viewport().height * 0.55);
+  var v = viewport();
+  var capsule = { x: v.width * 0.55, y: 0, w: v.width * 0.45, h: 80 };
+  assert.ok(ui.bgm);
+  assert.ok(ui.bgm.y > v.height * 0.55, 'music must leave the WeChat capsule band');
+  assert.ok(ui.bgm.x + ui.bgm.w < capsule.x || ui.bgm.y > capsule.y + capsule.h);
+  assert.strictEqual(hud.hitTest(ui, ui.bgm.x + 8, ui.bgm.y + 8, 'Aim'), 'bgm');
 });
 
 check('simple AI plans at the target center with distance power and a low foul rate', function () {
@@ -803,16 +807,29 @@ check('truncateName keeps 6 chars and ellipsizes', function () {
   assert.strictEqual(hud.seatFallback(1), '好友');
 });
 
-check('versus HUD names fall back to 房主/好友 and never P1/P2', function () {
+check('versus HUD names fall back to 我/对方 and never 房主/好友 or P1/P2', function () {
   var s = fresh();
   sessionMod.createRoom(s);
   s.versus = true;
+  s.mySeat = 0;
+  s.names = ['房主', '好友'];
+  s.displayName = '';
+  assert.strictEqual(hud.nameOf(s, 0), '我');
+  assert.strictEqual(hud.nameOf(s, 1), '对方');
+  assert.ok(hud.chipLabel(s, 0).indexOf('你') !== -1);
+  assert.strictEqual(hud.chipLabel(s, 1).indexOf('你'), -1);
   s.names = ['星券台球玩家甲乙丙', 'Li'];
   assert.strictEqual(hud.nameOf(s, 0), '星券台球玩家…');
   assert.strictEqual(hud.nameOf(s, 1), 'Li');
   var dbg = sessionMod.getDebugState(s);
   assert.ok(dbg.names);
   assert.strictEqual(JSON.stringify(dbg).indexOf('P1'), -1);
+  var ctx = mockCtx();
+  hud.drawChrome(ctx, s);
+  var blob = ctx._log.texts.join('|');
+  assert.ok(blob.indexOf('你·') !== -1);
+  assert.strictEqual(blob.indexOf('P1'), -1);
+  assert.strictEqual(blob.indexOf('P2'), -1);
 });
 
 check('aim timeout is display-only; server shotClock swaps turn without rerack', function () {
@@ -856,8 +873,9 @@ check('versus HUD chips use nicks and 轮到你出杆, never P1/P2', function ()
   var ctx = mockCtx();
   hud.drawChrome(ctx, s);
   var blob = ctx._log.texts.join('|');
-  assert.ok(blob.indexOf('星券台球玩家…') !== -1);
+  assert.ok(blob.indexOf('你·星券台球玩家…') !== -1 || blob.indexOf('星券台球玩家…') !== -1);
   assert.ok(blob.indexOf('Li') !== -1);
+  assert.ok(blob.indexOf('你') !== -1);
   assert.ok(blob.indexOf('轮到你出杆') !== -1);
   assert.strictEqual(blob.indexOf('P1'), -1);
   assert.strictEqual(blob.indexOf('P2'), -1);
@@ -1334,6 +1352,84 @@ check('guest legal pot adds guest stars, not a frozen 32, and new-game resets bo
   assert.strictEqual(host.roomStars.guest, 0);
   assert.strictEqual(guest.scores[1], 0);
   assert.strictEqual(guest.roomStars.guest, 0);
+});
+
+check('configurable displayName is used when WeChat nick is missing', function () {
+  storage.resetMemory();
+  net.resetMemory();
+  var cfg = JSON.parse(JSON.stringify(config));
+  cfg.room = Object.assign({}, config.room, { displayName: '配置昵称玩家甲' });
+  var s = sessionMod.create(viewport(), cfg, { skipSplash: true });
+  s.versus = true;
+  s.mySeat = 0;
+  s.names = ['房主', '好友'];
+  s.displayName = '配置昵称玩家甲';
+  assert.strictEqual(hud.nameOf(s, 0), '配置昵称玩家…');
+  assert.strictEqual(hud.nameOf(s, 1), '对方');
+  assert.ok(hud.chipLabel(s, 0).indexOf('你') === 0);
+});
+
+check('2P spectator interpolates aim and locally replays the shot', function () {
+  var host = fresh();
+  host.displayName = '房主甲';
+  sessionMod.createRoom(host);
+  var guest = sessionMod.create(viewport(), config, { skipSplash: true });
+  guest.displayName = '好友乙';
+  sessionMod.joinRoom(guest, host.room.roomId);
+  sessionMod.pullRoom(host);
+  assert.ok(sessionMod.aimSyncMs(host) <= 100);
+  assert.ok(sessionMod.aimSyncMs(guest) <= 100);
+
+  sessionMod.pushAim(host, {
+    kind: 'charging',
+    aimAngle: -Math.PI / 2,
+    power: 0.2,
+    ax: 0,
+    ay: -1,
+    aimLine: [{ x: 100, y: 200 }, { x: 100, y: 120 }]
+  });
+  sessionMod.pullRoom(guest);
+  assert.ok(guest.remoteAim);
+  sessionMod.queueRemoteAim(guest, {
+    kind: 'charging',
+    aimAngle: -Math.PI / 2 + 0.4,
+    power: 0.8,
+    ax: Math.cos(-Math.PI / 2 + 0.4),
+    ay: Math.sin(-Math.PI / 2 + 0.4),
+    aimLine: [{ x: 100, y: 200 }, { x: 140, y: 80 }]
+  });
+  guest.remoteAimInterp.at = Date.now() - 40;
+  guest.remoteAimInterp.dur = 80;
+  sessionMod.stepRemoteAim(guest);
+  var vis = guest.remoteAimVisual;
+  assert.ok(vis);
+  assert.ok(vis.power > 0.2 && vis.power < 0.8, 'power should interpolate, got ' + vis.power);
+  assert.ok(vis.aimAngle > -Math.PI / 2 && vis.aimAngle < -Math.PI / 2 + 0.4);
+
+  var oneX = balls.findByN(guest.balls, 1).x;
+  var cueY = balls.cueBall(guest.balls).y;
+  sessionMod.applyStrike(host, { ax: 0, ay: -1, power: 0.72, fired: true }, { kind: 'fire' });
+  assert.strictEqual(host.phase, fsm.PHASE.Shot);
+  sessionMod.pullRoom(guest);
+  assert.ok(guest.remoteReplay, 'spectator must start a local physics replay');
+  assert.strictEqual(guest.phase, fsm.PHASE.Shot);
+  assert.ok(Math.hypot(balls.cueBall(guest.balls).vx, balls.cueBall(guest.balls).vy) > 1);
+  assert.ok(Math.abs(balls.findByN(guest.balls, 1).x - oneX) < 0.01, 'object balls stay until contact');
+  assert.ok(hud.turnLabel(guest).indexOf('出杆') !== -1);
+
+  sessionMod.update(guest, config.fixedDt);
+  sessionMod.update(guest, config.fixedDt);
+  assert.ok(Math.abs(balls.cueBall(guest.balls).y - cueY) > 0.15, 'spectator must see the cue roll');
+
+  sessionMod.debugForceStop(host, { pocketTarget: false, firstContact: true });
+  sessionMod.pullRoom(guest);
+  if (guest.remoteReplay) {
+    guest.remoteReplay.stopped = true;
+    sessionMod.finishRemoteReplay(guest);
+  }
+  assert.strictEqual(guest.remoteReplay, null);
+  assert.strictEqual(guest.phase, fsm.PHASE.Aim);
+  assert.strictEqual(guest.turn, 1);
 });
 
 if (failures) {

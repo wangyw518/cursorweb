@@ -32,7 +32,7 @@
   var cfg = {
     roomApiBase: '',
     pollMs: 450,
-    aimPollMs: 140,
+    aimPollMs: 80,
     cloudEnv: '',
     cloudFn: 'taiqiuRoom'
   };
@@ -263,6 +263,8 @@
       shotSeq: payload.shotSeq,
       aimAngle: payload.aimAngle,
       power: payload.power,
+      ax: payload.ax,
+      ay: payload.ay,
       spin: payload.spin,
       events: payload.events || [],
       ballsSnapshot: snap,

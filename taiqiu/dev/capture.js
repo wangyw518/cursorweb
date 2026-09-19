@@ -107,10 +107,10 @@ async function main() {
   await sleep(80);
   await shot('taiqiu_table_ready');
 
-  await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.mode; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
+  await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.bgm; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
   await sleep(60);
-  await shot('taiqiu_aim3d_stub');
-  await evalExpr('window.__taiqiu.sessionMod.toggleAim3d(window.__taiqiu.session)');
+  await shot('taiqiu_music_footer');
+  await evalExpr('(function(){var s=window.__taiqiu.session; var r=s.ui.bgm; window.__taiqiu.sessionMod.handlePointerDown(s,r.x+10,r.y+10);})()');
 
   var ball = await evalExpr('(function(){var b=window.__taiqiu.session.balls.filter(function(x){return x.id==="cue";})[0]; return {x:b.x,y:b.y};})()');
   await evalExpr(

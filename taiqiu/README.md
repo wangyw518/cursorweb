@@ -24,7 +24,7 @@ Do **not** import the repository root. The playable project root is `taiqiu/`.
 
 State machine: **Aim → Shot → ResolvePocket → WaitCueStop → StarZone**
 
-1. **Aim** — top-down only (`viewMode: top`). Drag cue, dashed aim, pull-back power. **瞄准3D** is a stub and does not change the camera.
+1. **Aim** — top-down only (`viewMode: top`). Drag cue, dashed aim, pull-back power. **瞄准3D** is not shipped (hidden / 即将上线); do not leave a dead button.
 2. **Shot** — fire the cue ball; custom 2D circles / cushions / friction / pockets.
 3. **ResolvePocket** — simplified 9-ball order (lowest numbered object ball first). Scratch, whiff, or wrong first contact is a **foul**. A miss or foul **does not rerack**.
 4. **WaitCueStop** — only after a valid pocket; cue keeps rolling.
@@ -49,10 +49,18 @@ Rewards are virtual **星币** only.
 - **练习** (`mode=practice`): one player keeps the table. A miss does not switch or rerack. No shot clock and no opponent chip. Top bar is `练习` plus this session’s 星币 only. End card is session 星币 + **再来一局** — no 你赢了/你输了 headline, no card 返回. Footer **返回大厅** still leaves to splash; invite is hidden (toast **请回大厅选好友对局**). No room server.
 - Drag from the cue ball or felt. Pull back to aim; fire direction is opposite the pull. The dashed preview is long enough to reach a far object ball (`previewLength` 720 / 3 bounces, or 1.25× table diagonal). Power uses on-screen drag length (bezel dead-zone), so a cue on any rail can still hit **满** / 100% without pulling the stick off-screen.
 - Release to shoot. A short pull cancels.
-- Tap **瞄准3D** in the footer (clear of the WeChat capsule) for the stub. 俯视瞄准 stays on.
+- **瞄准3D** is hidden (即将上线). Footer left slot is **音乐**, below the WeChat capsule so it is tappable on a real phone.
 - In practice only, tap **弱AI试杆** for an optional noisy shot at the object ball (same `Cue.strike` path).
 - After a win (9 pocketed), tap **再来一局** for a new rack. Mid-game **新开一局** is the same full rack. A miss keeps every ball where it stopped and returns to Aim.
-- Tap splash **好友对局** to create a room, then in-room **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX` (create also returns `share.query` / `share.path`). The friend joins from the share card (`onLaunch` + `onShow` + `getEnterOptionsSync`). Mid-game **返回大厅** returns to the splash in every mode so a solo AI/practice match cannot trap the player. While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (~140ms, Aim|Pull only, never mutates `balls[]`) so the waiting seat draws a live semi-transparent cue + dashed line + 「对方瞄准中」. After the balls stop, `shot` still carries the full table. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
+- Tap splash **好友对局** to create a room, then in-room **邀请好友**. WeChat `shareAppMessage` / `onShareAppMessage` carries `query=roomId=XXXXXX` (create also returns `share.query` / `share.path`). The friend joins from the share card (`onLaunch` + `onShow` + `getEnterOptionsSync`). Mid-game **返回大厅** returns to the splash in every mode so a solo AI/practice match cannot trap the player. While aiming, the shooter posts `POST /room/aim` `{roomId, shotSeq, angle, power, aimLine?}` (≤100ms, Aim|Pull only, never mutates `balls[]`). The waiting seat interpolates `angle/power/aimLine` so the dashed cue stays continuous, and shows 「对方瞄准中」. On `kind=firing` the room stores an impulse; the spectator locally replays that shot (same `Cue.strike` + 2D physics) and keeps seeing the balls roll until they stop. Authoritative `shot` still aligns the whole table at settle. Aim polls still strip object-ball coords. Legal 1–8 keeps the shooter; miss / foul / server `foulCode=shotClock` (20s `deadlineAt`) switches without rerack. The client **displays** remaining seconds only — it does not locally force a handoff. HUD **音乐** (footer, not under the capsule) toggles the original procedural lounge loop (default on; not 羊了个羊; does not cover cue / pocket SFX).
+- 2P top chips use WeChat `nickName` when the profile API returns it, otherwise `room.displayName` / `room.guestDisplayName`. Names longer than 6 characters become `前六字…`. Your chip is highlighted and prefixed **你·**; the other chip is the opponent nick (never only 房主/好友). If a nick is still missing, HUD shows **我 / 对方**.
+
+## 真机验收（PR #14 体验四条）
+
+1. **顶栏身份** — 双方开房后顶栏应是昵称，自己一侧有「你」或高亮，对方是对方昵称。把 `js/config.json` → `room.displayName` 设成超过 6 字的名字可在开发者工具确认截断。禁止只看到「房主 / 好友」。
+2. **对端观战** — A 拉杆时 B 的虚线应连续跟上（不要一跳一跳）。A 出杆后 B 必须看到击球反馈和滚球，不能只有最终静帧。Aim 期间 B 的非白球坐标不被同步改写；停球后整桌与权威结果对齐。可短暂显示「对方出杆中」。
+3. **音乐** — 底栏左侧「音乐 / 音乐关」，避开微信右上角胶囊，真机可点。
+4. **瞄准3D** — 按钮已隐藏。不要再出现可点但无效的「瞄准3D」。
 
 Max cue power is raised so a kitchen break can reach the rack. Pockets are oversized (`pocketR` ≥ 1.85× `ballR`, corners ~2.1×) with a wide mouth; centers sit on/outside the cushion nose (not inset onto the cloth). Cue / ball / cushion / pocket SFX play when Web Audio is available.
 
@@ -108,7 +116,7 @@ Turn rules (authoritative on the room): pocket 1–8 continues; miss or foul swi
 | create | `POST /room/create` | optional `{ balls, scores, targetN, openId, nick }` | `{ roomId, role: "host", share: { query: "roomId=XXXXXX", path: "?roomId=XXXXXX" }, state }` |
 | join | `POST /room/join` | `{ roomId }` (`room` / `id` aliases) | `{ role: "guest", state }` or `{ ok:false, reason:"missing"|"full"|"ended" }` |
 | shot | `POST /room/shot` | `{ roomId, shotSeq, aimAngle, power, spin?, events[], ballsSnapshot }` | `{ state }` |
-| aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine? }` — only when `turnOpenId===me` and phase Aim\|Pull | `{ state }` dirty `aim{angle,power,aimLine,updatedAt}`; object-ball coords stripped; `shotSeq` unchanged |
+| aim | `POST /room/aim` | `{ roomId, shotSeq, angle, power, aimLine? }` — only when `turnOpenId===me` and phase Aim\|Pull. `kind=firing` stores `impulse` for spectator replay. `kind=name` updates that seat's nick without a turn check | `{ state }` dirty `aim{angle,power,aimLine,updatedAt}` or `impulse`; object-ball coords stripped; `shotSeq` unchanged |
 | state | `GET /room/state?roomId=&sinceSeq=` | — | `deadlineAt`, `nicknames{host,guest}`, `winnerOpenId?`, `stars{host,guest}`, `foulCode?`, `foulHint`, `pocketScore`, `zoneBonus`, `turnOpenId`. Aim/Pull + `sinceSeq>=shotSeq` omits non-cue ball coords |
 
 `events[]` examples: `{ type: "miss" }`, `{ type: "legal" }`, `{ type: "pocket", n: 1, legal: true }`, `{ type: "foul" }`, `{ type: "nine", legal: true }`. `ballsSnapshot` is the felt-normalized table after the balls stop (`nx`, `ny`). Waiting-seat shots return `{ ok: false, reason: "not-your-turn" }`.

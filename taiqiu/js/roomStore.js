@@ -405,11 +405,16 @@
       state.lastRole = roleOfSeat(fromSeat);
       state.lastShot = {
         shotSeq: payload.shotSeq != null ? payload.shotSeq : state.shotSeq + 1,
-        aimAngle: payload.aimAngle,
-        power: payload.power,
+        aimAngle: payload.aimAngle != null ? payload.aimAngle : (state.impulse && state.impulse.aimAngle),
+        power: payload.power != null ? payload.power : (state.impulse && state.impulse.power),
+        ax: payload.ax != null ? payload.ax : (state.impulse && state.impulse.ax),
+        ay: payload.ay != null ? payload.ay : (state.impulse && state.impulse.ay),
         spin: payload.spin,
+        kind: 'firing',
+        fromSeat: fromSeat,
         events: payload.events ? clone(payload.events) : []
       };
+      state.impulse = null;
       state.guestJoined = !!(state.guestJoined || payload.guestJoined);
       state.seq += 1;
       if (reason !== 'new-game') {
@@ -438,6 +443,25 @@
       }
       if (payload.token && payload.token !== tokenFor(roomId, fromSeat)) {
         return { ok: false, action: 'aim', reason: 'bad-token', roomId: roomId };
+      }
+      if (payload.kind === 'name') {
+        state.names = state.names || ['房主', '好友'];
+        var nick = clipNick(payload.nick || payload.displayName || payload.name || '');
+        if (nick) state.names[fromSeat] = nick;
+        if (payload.names && payload.names[fromSeat]) {
+          var fromName = clipNick(payload.names[fromSeat]);
+          if (fromName) state.names[fromSeat] = fromName;
+        }
+        if (payload.nicknames) {
+          if (fromSeat === 0 && payload.nicknames.host) state.names[0] = clipNick(payload.nicknames.host);
+          if (fromSeat === 1 && payload.nicknames.guest) state.names[1] = clipNick(payload.nicknames.guest);
+        }
+        state.nicknames = { host: state.names[0], guest: state.names[1] };
+        write(roomId, state);
+        var named = clone(state);
+        named.balls = cueOnly(named.balls);
+        named.ballsSnapshot = cueOnly(named.ballsSnapshot);
+        return { ok: true, action: 'aim', roomId: roomId, state: named };
       }
       applyDueTimeout(state);
       stampTurn(state);
@@ -471,8 +495,19 @@
         aiming: payload.aiming !== false,
         updatedAt: Date.now()
       };
-      if (payload.kind === 'firing') state.phase = 'Shot';
-      else if (state.phase !== 'Settle') {
+      if (payload.kind === 'firing') {
+        state.phase = 'Shot';
+        state.impulse = {
+          kind: 'firing',
+          aimAngle: ang,
+          angle: ang,
+          power: payload.power || 0,
+          ax: payload.ax,
+          ay: payload.ay,
+          fromSeat: fromSeat,
+          shotSeq: state.shotSeq
+        };
+      } else if (state.phase !== 'Settle') {
         state.phase = (payload.kind === 'charging' || payload.kind === 'Pull' || (payload.power || 0) > 0.03)
           ? 'Pull'
           : 'Aim';

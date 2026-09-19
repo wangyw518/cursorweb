@@ -51,7 +51,7 @@
     var safe = info.safeArea || {};
     var width = info.windowWidth;
     var height = info.windowHeight;
-    return {
+    var viewport = {
       width: width,
       height: height,
       pixelRatio: info.pixelRatio || 1,
@@ -59,6 +59,22 @@
       safeTop: safe.top || info.statusBarHeight || 20,
       safeBottom: height - (safe.bottom || height)
     };
+    try {
+      if (wx.getMenuButtonBoundingClientRect) {
+        var mb = wx.getMenuButtonBoundingClientRect();
+        if (mb && mb.width) {
+          viewport.capsule = {
+            left: mb.left,
+            right: mb.right,
+            top: mb.top,
+            bottom: mb.bottom,
+            width: mb.width,
+            height: mb.height
+          };
+        }
+      }
+    } catch (err) {}
+    return viewport;
   }
 
   function applyCanvasSize(canvas, ctx, viewport) {

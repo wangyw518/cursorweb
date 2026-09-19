@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * M1: Aim→Shot→ResolvePocket→WaitCueStop→StarZone, virtual 星币, aim3d stub.
+ * M1: Aim→Shot→ResolvePocket→WaitCueStop→StarZone, virtual 星币, friend-room HUD.
  */
 require('./score.test.js');
 require('./tiles.test.js');

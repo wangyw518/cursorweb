@@ -48,8 +48,18 @@
     });
   }
 
+  var AIM_SYNC_MAX_MS = 100;
+  var AIM_SYNC_DEFAULT_MS = 80;
+  var REMOTE_REPLAY_MAX_MS = 4500;
+
   function seatFallback(seat) {
     return seat === 1 ? '好友' : '房主';
+  }
+
+  function isGenericRoleName(raw) {
+    if (hud && hud.isGenericRoleName) return hud.isGenericRoleName(raw);
+    var s = String(raw || '').trim();
+    return !s || s === '房主' || s === '好友' || s === 'P1' || s === 'P2';
   }
 
   function aiLabel(session) {
@@ -69,7 +79,7 @@
 
   function applyLocalName(session, raw) {
     var name = String(raw || '').trim();
-    if (!name) return session;
+    if (!name || isGenericRoleName(name)) return session;
     session.displayName = name;
     session.names = session.names || [seatFallback(0), seatFallback(1)];
     session.names[session.mySeat || 0] = name;
@@ -77,6 +87,7 @@
     if ((session.mySeat || 0) === 1) session.nicknames.guest = name;
     else session.nicknames.host = name;
     persist(session);
+    if (session.room && session.room.roomId) pushNames(session);
     return session;
   }
 
@@ -85,7 +96,7 @@
     var hint = session.displayName ||
       (session.mySeat === 1 ? (room.guestDisplayName || room.displayName) : room.displayName) ||
       '';
-    if (hint) applyLocalName(session, hint);
+    if (hint && !isGenericRoleName(hint)) applyLocalName(session, hint);
     function fromInfo(info) {
       var nick = info && (info.nickName || (info.userInfo && info.userInfo.nickName));
       if (nick) applyLocalName(session, nick);
@@ -94,10 +105,24 @@
     }
     try {
       if (typeof wx === 'undefined') return session;
+      if (wx.getStorageSync) {
+        try {
+          var cached = wx.getStorageSync('taiqiu.userInfo') || wx.getStorageSync('userInfo');
+          if (cached) {
+            if (typeof cached === 'string') cached = JSON.parse(cached);
+            fromInfo(cached);
+          }
+        } catch (errCache) {}
+      }
       if (wx.getUserProfile) {
         wx.getUserProfile({
           desc: '用于对局显示昵称',
-          success: function (res) { fromInfo(res.userInfo || res); },
+          success: function (res) {
+            fromInfo(res.userInfo || res);
+            try {
+              if (wx.setStorageSync) wx.setStorageSync('taiqiu.userInfo', res.userInfo || res);
+            } catch (errStore) {}
+          },
           fail: function () {
             if (wx.getUserInfo) wx.getUserInfo({ success: function (res) { fromInfo(res.userInfo || res); } });
           }
@@ -141,11 +166,351 @@
     return Math.round(sec * 1000);
   }
 
-  function aimPollSec(session) {
+  function aimSyncMs(session) {
     var cfg = (roomApi.configOf && roomApi.configOf()) || {};
-    var room = (session.config && session.config.room) || {};
-    var ms = cfg.aimPollMs || room.aimPollMs || 140;
-    return ms / 1000;
+    var room = (session && session.config && session.config.room) || {};
+    var ms = cfg.aimPollMs || room.aimPollMs || AIM_SYNC_DEFAULT_MS;
+    if (!(ms > 0)) ms = AIM_SYNC_DEFAULT_MS;
+    if (ms > AIM_SYNC_MAX_MS) ms = AIM_SYNC_MAX_MS;
+    return ms;
+  }
+
+  function aimPollSec(session) {
+    return aimSyncMs(session) / 1000;
+  }
+
+  function lerpNum(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function lerpAngle(a, b, t) {
+    var d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return a + d * t;
+  }
+
+  function lerpPoints(a, b, t) {
+    if (!b || !b.length) return a ? a.slice() : [];
+    if (!a || !a.length) return b.slice();
+    var n = Math.max(a.length, b.length);
+    var out = [];
+    var i;
+    for (i = 0; i < n; i++) {
+      var pa = a[Math.min(i, a.length - 1)];
+      var pb = b[Math.min(i, b.length - 1)];
+      out.push({
+        x: lerpNum(pa.x, pb.x, t),
+        y: lerpNum(pa.y, pb.y, t)
+      });
+    }
+    return out;
+  }
+
+  function aimPoseOf(aim) {
+    if (!aim) return null;
+    var ang = aim.aimAngle != null ? aim.aimAngle : (aim.angle != null ? aim.angle : Math.atan2(aim.ay || -1, aim.ax || 0));
+    var ax = aim.ax != null ? aim.ax : Math.cos(ang);
+    var ay = aim.ay != null ? aim.ay : Math.sin(ang);
+    var pts = [];
+    if (aim.preview && aim.preview.points) pts = aim.preview.points;
+    else if (aim.aimLine && aim.aimLine.length) pts = aim.aimLine;
+    return {
+      angle: ang,
+      ax: ax,
+      ay: ay,
+      power: aim.power || 0,
+      points: pts,
+      ghost: (aim.preview && aim.preview.ghost) || aim.ghost || null,
+      kind: aim.kind || 'aim',
+      fromSeat: aim.fromSeat
+    };
+  }
+
+  function applyAimVisual(session, pose) {
+    if (!pose) {
+      session.remoteAimVisual = null;
+      return null;
+    }
+    session.remoteAimVisual = {
+      aimAngle: pose.angle,
+      angle: pose.angle,
+      ax: pose.ax,
+      ay: pose.ay,
+      power: pose.power,
+      kind: pose.kind,
+      fromSeat: pose.fromSeat,
+      preview: { points: pose.points || [], ghost: pose.ghost || null },
+      aimLine: pose.points || []
+    };
+    return session.remoteAimVisual;
+  }
+
+  function queueRemoteAim(session, aim) {
+    if (!aim) return null;
+    var to = aimPoseOf(aim);
+    var now = Date.now();
+    var from = session.remoteAimVisual
+      ? aimPoseOf(session.remoteAimVisual)
+      : ((session.remoteAimInterp && session.remoteAimInterp.to) || to);
+    var dur = aimSyncMs(session);
+    if (session.remoteAimInterp && session.remoteAimInterp.at) {
+      var gap = now - session.remoteAimInterp.at;
+      if (gap > 30 && gap < 180) dur = gap;
+    }
+    session.remoteAim = aim;
+    session.remoteAimInterp = { from: from, to: to, at: now, dur: dur };
+    if (aim.kind === 'firing') applyAimVisual(session, to);
+    return session.remoteAimInterp;
+  }
+
+  function stepRemoteAim(session) {
+    var interp = session.remoteAimInterp;
+    if (!interp || !interp.to) {
+      if (session.remoteAim) applyAimVisual(session, aimPoseOf(session.remoteAim));
+      return session.remoteAimVisual;
+    }
+    if (interp.to.kind === 'firing') {
+      applyAimVisual(session, interp.to);
+      return session.remoteAimVisual;
+    }
+    var u = interp.dur > 0 ? (Date.now() - interp.at) / interp.dur : 1;
+    if (u < 0) u = 0;
+    if (u > 1) u = 1;
+    var from = interp.from || interp.to;
+    var to = interp.to;
+    var pose = {
+      angle: lerpAngle(from.angle, to.angle, u),
+      power: lerpNum(from.power || 0, to.power || 0, u),
+      points: lerpPoints(from.points, to.points, u),
+      ghost: to.ghost || from.ghost,
+      kind: to.kind,
+      fromSeat: to.fromSeat
+    };
+    pose.ax = Math.cos(pose.angle);
+    pose.ay = Math.sin(pose.angle);
+    applyAimVisual(session, pose);
+    return session.remoteAimVisual;
+  }
+
+  function firingImpulse(src) {
+    if (!src) return null;
+    var aim = src.aim && (src.aim.kind === 'firing' || (src.aim.power > 0.03 && src.phase === fsm.PHASE.Shot))
+      ? src.aim
+      : null;
+    var raw = aim || src.impulse || null;
+    if (!raw && src.lastShot && (src.lastShot.kind === 'firing' || src.lastShot.power > 0.03) &&
+        src.lastReason !== 'timeout' && src.lastReason !== 'new-game') {
+      raw = src.lastShot;
+    }
+    if (!raw && src.kind === 'firing') raw = src;
+    if (!raw) return null;
+    var ang = raw.aimAngle != null ? raw.aimAngle : raw.angle;
+    var ax = raw.ax;
+    var ay = raw.ay;
+    if ((ax == null || ay == null) && ang != null) {
+      ax = Math.cos(ang);
+      ay = Math.sin(ang);
+    }
+    var power = raw.power;
+    if (!(power > 0.03) || ax == null || ay == null) return null;
+    return {
+      angle: ang != null ? ang : Math.atan2(ay, ax),
+      ax: ax,
+      ay: ay,
+      power: power,
+      fromSeat: raw.fromSeat != null ? raw.fromSeat : src.fromSeat
+    };
+  }
+
+  function isFullBallSnap(snap) {
+    if (!snap || !snap.length) return false;
+    var n = 0;
+    var i;
+    for (i = 0; i < snap.length; i++) {
+      if (snap[i] && snap[i].id !== 'cue' && snap[i].n !== 0) n += 1;
+    }
+    return n >= 1;
+  }
+
+  function mergeIncomingNames(session, state) {
+    var incoming = null;
+    if (state && state.nicknames) {
+      incoming = [
+        state.nicknames.host || state.nicknames[0],
+        state.nicknames.guest || state.nicknames[1]
+      ];
+    } else if (state && state.names) incoming = state.names.slice();
+    if (!incoming) return session;
+    session.names = session.names || [seatFallback(0), seatFallback(1)];
+    var mine = session.mySeat || 0;
+    var opp = mine === 1 ? 0 : 1;
+    if (session.displayName && !isGenericRoleName(session.displayName)) {
+      session.names[mine] = session.displayName;
+    } else if (!isGenericRoleName(incoming[mine])) {
+      session.names[mine] = incoming[mine];
+    }
+    if (!isGenericRoleName(incoming[opp])) {
+      session.names[opp] = incoming[opp];
+    } else if (isGenericRoleName(session.names[opp])) {
+      session.names[opp] = incoming[opp] || session.names[opp];
+    }
+    session.nicknames = { host: session.names[0], guest: session.names[1] };
+    return session;
+  }
+
+  function mergeRoomMeta(session, state) {
+    if (!state) return session;
+    if (state.stars) {
+      session.roomStars = {
+        host: state.stars.host != null ? state.stars.host : (state.stars[0] || 0),
+        guest: state.stars.guest != null ? state.stars.guest : (state.stars[1] || 0)
+      };
+      session.scores = [session.roomStars.host, session.roomStars.guest];
+    }
+    mergeIncomingNames(session, state);
+    if (state.guestJoined && session.room) {
+      session.room.guestJoined = true;
+      session.hotseat = false;
+    }
+    if (state.hostOpenId && session.room) session.room.hostOpenId = state.hostOpenId;
+    if (state.guestOpenId && session.room) session.room.guestOpenId = state.guestOpenId;
+    return session;
+  }
+
+  function beginRemoteReplay(session, src) {
+    if (!session || session.remoteReplay) return null;
+    if (session.phase !== fsm.PHASE.Aim && session.phase !== 'Pull') return null;
+    var impulse = firingImpulse(src) || firingImpulse(session.remoteAim);
+    if (!impulse) return null;
+    if (impulse.fromSeat != null && impulse.fromSeat === session.mySeat) return null;
+    var cueBall = findCue(session);
+    if (!cueBall || cueBall.pocketed) return null;
+    guardObjectBalls(session);
+    var struck = cue.strike(cueBall, {
+      ax: impulse.ax,
+      ay: impulse.ay,
+      angle: impulse.angle,
+      power: impulse.power,
+      fired: true
+    }, session.config);
+    if (!struck || !struck.fired) return null;
+    session.remoteReplay = {
+      fromSeat: impulse.fromSeat,
+      startedAt: Date.now(),
+      angle: struck.angle,
+      power: struck.power,
+      stopped: false
+    };
+    session.phase = fsm.PHASE.Shot;
+    session.remoteBusy = 'firing';
+    session.shot = emptyShot();
+    if (session.target) session.shot.targetId = session.target.id;
+    stopDetect.reset(session.stop);
+    session.settleIn = 0;
+    session.preview = { points: [], ghost: null, bounces: 0 };
+    if (session.cue) {
+      session.cue.dragging = false;
+      session.cue.power = 0;
+    }
+    if (sfx && sfx.cue) sfx.cue();
+    return session.remoteReplay;
+  }
+
+  function finishRemoteReplay(session) {
+    var pending = session.pendingRoomState;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
+    session.remoteBusy = null;
+    session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    balls.haltBalls(session.balls);
+    if (pending) {
+      applyRoomState(session, pending, {
+        forceBalls: isFullBallSnap(pending.ballsSnapshot || pending.balls)
+      });
+    } else if (session.phase === fsm.PHASE.Shot) {
+      session.phase = fsm.PHASE.Aim;
+      guardObjectBalls(session);
+    }
+    return session;
+  }
+
+  function maybeFinishRemoteReplay(session) {
+    if (!session.remoteReplay) return session;
+    var pending = session.pendingRoomState;
+    var age = Date.now() - (session.remoteReplay.startedAt || 0);
+    var settled = !!(pending && (
+      isAuthoritativeBalls(session, pending) ||
+      pending.matchOver ||
+      pending.phase === fsm.PHASE.Settle
+    ));
+    if (!settled) return session;
+    if (session.remoteReplay.stopped || pending.matchOver || pending.phase === fsm.PHASE.Settle ||
+        age > REMOTE_REPLAY_MAX_MS) {
+      finishRemoteReplay(session);
+    }
+    return session;
+  }
+
+  function shouldStartRemoteReplay(session, state) {
+    if (!session || !state || session.remoteReplay) return false;
+    if (session.phase !== fsm.PHASE.Aim && session.phase !== 'Pull') return false;
+    if (!session.versus || session.turn === session.mySeat) return false;
+    if (state.lastReason === 'timeout' || state.lastReason === 'new-game') return false;
+    var impulse = firingImpulse(state);
+    return !!(impulse && impulse.fromSeat !== session.mySeat);
+  }
+
+  function queuePendingSettle(session, state) {
+    if (!state) return session;
+    var incoming = incomingShotSeq(state);
+    var last = session.room && session.room.lastSeq != null ? session.room.lastSeq : -1;
+    if (state.matchOver || state.phase === fsm.PHASE.Settle ||
+        (incoming != null && incoming > last && isFullBallSnap(state.ballsSnapshot || state.balls))) {
+      session.pendingRoomState = state;
+    }
+    return session;
+  }
+
+  function tickRoomSync(session, dt) {
+    if (!session.room) return;
+    session.syncAcc += dt;
+    var watching = session.versus && (!canAim(session) || session.remoteReplay);
+    var pollSec = watching
+      ? aimPollSec(session)
+      : ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
+    if (watching) pollSec = Math.min(pollSec, AIM_SYNC_MAX_MS / 1000);
+    if (session.syncAcc > pollSec) {
+      session.syncAcc = 0;
+      pullRoom(session);
+      if (session.phase === fsm.PHASE.Aim) guardObjectBalls(session);
+    }
+    if (canAim(session) && session.cue && session.cue.dragging) {
+      var gap = aimSyncMs(session);
+      if (Date.now() - (session.lastAimPush || 0) >= gap) {
+        pushAim(session, { kind: 'charging' });
+      }
+    }
+  }
+
+  function pushNames(session) {
+    if (!session.room || !session.room.roomId) return null;
+    if (!session.displayName || isGenericRoleName(session.displayName)) return null;
+    return roomApi.aim(session.room.roomId, {
+      roomId: session.room.roomId,
+      fromSeat: session.mySeat,
+      role: session.mySeat === 1 ? 'guest' : 'host',
+      token: session.room.token,
+      openId: session.myOpenId || '',
+      kind: 'name',
+      nick: session.displayName,
+      displayName: session.displayName,
+      name: session.displayName,
+      names: session.names,
+      nicknames: session.nicknames
+    });
   }
 
   function ensureBgm(session) {
@@ -366,6 +731,8 @@
       shotSeq: shotSeq,
       aimAngle: last.aimAngle,
       power: last.power,
+      ax: last.ax,
+      ay: last.ay,
       spin: last.spin,
       events: session.lastShotEvents || eventsFromResolution(session, reason),
       ballsSnapshot: snap,
@@ -483,16 +850,7 @@
     if (state.turnOpenId != null) session.turnOpenId = state.turnOpenId;
     session.winner = state.winner;
     session.matchOver = !!state.matchOver;
-    if (state.nicknames) {
-      session.names = [
-        state.nicknames.host || state.nicknames[0] || (session.names && session.names[0]) || '房主',
-        state.nicknames.guest || state.nicknames[1] || (session.names && session.names[1]) || '好友'
-      ];
-      session.nicknames = { host: session.names[0], guest: session.names[1] };
-    } else if (state.names) {
-      session.names = state.names.slice();
-      session.nicknames = { host: session.names[0], guest: session.names[1] };
-    }
+    mergeIncomingNames(session, state);
     if (state.deadlineAt != null) session.aimDeadlineAt = state.deadlineAt;
     else if (state.aimDeadlineAt != null) session.aimDeadlineAt = state.aimDeadlineAt;
     if (state.winnerOpenId) session.winnerOpenId = state.winnerOpenId;
@@ -526,12 +884,17 @@
       session.hotseat = false;
     }
     if (state.aim && state.aim.fromSeat !== session.mySeat) {
-      session.remoteAim = state.aim;
+      queueRemoteAim(session, state.aim);
       session.remoteBusy = state.aim.kind === 'firing' ? 'firing' : null;
+    } else if (state.impulse && state.impulse.fromSeat !== session.mySeat) {
+      queueRemoteAim(session, state.impulse);
+      session.remoteBusy = 'firing';
     } else if (state.phase === fsm.PHASE.Shot && session.turn !== session.mySeat) {
       session.remoteBusy = 'firing';
     } else if (state.aim == null && session.turn === session.mySeat) {
       session.remoteAim = null;
+      session.remoteAimVisual = null;
+      session.remoteAimInterp = null;
       session.remoteBusy = null;
     }
     if (state.matchOver) {
@@ -557,6 +920,12 @@
   function ingestState(session, res, opts) {
     var state = res && res.state ? res.state : res;
     if (!state || !state.roomId) return null;
+    if (session.remoteReplay) {
+      mergeRoomMeta(session, state);
+      queuePendingSettle(session, state);
+      maybeFinishRemoteReplay(session);
+      return state;
+    }
     if (session.phase === fsm.PHASE.Shot ||
         session.phase === fsm.PHASE.ResolvePocket ||
         session.phase === fsm.PHASE.WaitCueStop ||
@@ -565,6 +934,14 @@
         session.room.guestJoined = true;
         session.hotseat = false;
       }
+      return state;
+    }
+    if (shouldStartRemoteReplay(session, state)) {
+      mergeRoomMeta(session, state);
+      queuePendingSettle(session, state);
+      if (state.aim && state.aim.fromSeat !== session.mySeat) queueRemoteAim(session, state.aim);
+      else if (state.impulse) queueRemoteAim(session, state.impulse);
+      beginRemoteReplay(session, state);
       return state;
     }
     applyRoomState(session, state, opts);
@@ -645,6 +1022,10 @@
     session.aiThink = 0;
     session.aiPlan = null;
     session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
     session.remoteBusy = null;
     rack(session);
     if (localAi || mode === 'ai') {
@@ -721,6 +1102,10 @@
       aimDeadlineAt: 0,
       aimSeq: 0,
       remoteAim: null,
+      remoteAimVisual: null,
+      remoteAimInterp: null,
+      remoteReplay: null,
+      pendingRoomState: null,
       remoteBusy: null,
       banner: null,
       lastAimPush: 0,
@@ -1242,24 +1627,26 @@
           }
         }
       }
-      if (session.room) {
-        session.syncAcc += dt;
-        var watching = session.versus && !canAim(session);
-        var pollSec = watching
-          ? aimPollSec(session)
-          : ((roomApi.configOf && roomApi.configOf().pollMs) || 450) / 1000;
-        if (session.syncAcc > pollSec) {
-          session.syncAcc = 0;
-          pullRoom(session);
-          guardObjectBalls(session);
-        }
-        if (canAim(session) && session.cue && session.cue.dragging) {
-          var gap = aimPollSec(session) * 1000;
-          if (Date.now() - (session.lastAimPush || 0) >= gap) {
-            pushAim(session, { kind: 'charging' });
-          }
-        }
+      if (session.versus && !canAim(session)) stepRemoteAim(session);
+      tickRoomSync(session, dt);
+      return;
+    }
+    if (session.phase === fsm.PHASE.Shot && session.remoteReplay) {
+      var replayEv = physics.step(worldOf(session), dt, session.config);
+      noteContacts(session, replayEv);
+      handleOutOfBounds(session, replayEv);
+      stopDetect.tick(
+        session.stop,
+        physics.anyMoving(session.balls, session.config.stopSpeed),
+        dt,
+        session.config.stopHoldMs
+      );
+      if (session.stop.stopped || !physics.anyMoving(session.balls, session.config.stopSpeed)) {
+        session.remoteReplay.stopped = true;
+        balls.haltBalls(session.balls);
       }
+      tickRoomSync(session, dt);
+      maybeFinishRemoteReplay(session);
       return;
     }
     if (session.phase === fsm.PHASE.Shot) {
@@ -1437,7 +1824,7 @@
       host: (session.names && session.names[0]) || seatFallback(0),
       guest: (session.names && session.names[1]) || seatFallback(1)
     };
-    applyLocalName(session, session.displayName || seatFallback(1));
+    applyLocalName(session, session.displayName);
     session.toast = { text: '已加入 ' + roomId, life: 1.4 };
     return { kind: 'join', roomId: joined.roomId, seat: joined.seat };
   }
@@ -1626,6 +2013,10 @@
     session.aiThink = 0;
     session.aiPlan = null;
     session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
     session.remoteBusy = null;
     session.aimDeadlineAt = 0;
     session.turnOpenId = '';
@@ -1727,7 +2118,7 @@
     refreshPreview(session);
     noteFullPower(session);
     guardObjectBalls(session);
-    var gap = aimPollSec(session) * 1000;
+    var gap = aimSyncMs(session);
     if (Date.now() - (session.lastAimPush || 0) >= gap) {
       pushAim(session, { kind: 'charging' });
     }
@@ -1754,11 +2145,17 @@
     session.lastShotInput = {
       aimAngle: struck.angle,
       power: struck.power,
+      ax: struck.ax,
+      ay: struck.ay,
       spin: shot.spin || 0
     };
     session.phase = fsm.PHASE.Shot;
     session.remoteBusy = null;
     session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
     session.aiThink = 0;
     session.aiPlan = null;
     stopDetect.reset(session.stop);
@@ -1808,6 +2205,10 @@
     session.aiThink = 0;
     session.aiPlan = null;
     session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
     session.remoteBusy = null;
     fetchNick(session);
     var me = session.displayName || '玩家';
@@ -1846,6 +2247,10 @@
     session.aiThink = 0;
     session.aiPlan = null;
     session.remoteAim = null;
+    session.remoteAimVisual = null;
+    session.remoteAimInterp = null;
+    session.remoteReplay = null;
+    session.pendingRoomState = null;
     session.remoteBusy = null;
     rack(session);
     session.phase = fsm.PHASE.Aim;
@@ -1877,13 +2282,10 @@
   }
 
   function toggleAim3d(session) {
-    session.aim3d = !session.aim3d;
+    session.aim3d = false;
     session.viewMode = 'top';
-    session.toast = {
-      text: session.aim3d ? '瞄准3D 占位' : '俯视瞄准',
-      life: 1.2
-    };
-    return session.aim3d;
+    session.toast = { text: '瞄准3D 即将上线', life: 1.2 };
+    return false;
   }
 
   function getDebugState(session) {
@@ -1911,6 +2313,8 @@
       localAi: !!session.localAi,
       aiThink: session.aiThink || 0,
       roomId: session.room ? session.room.roomId : null,
+      remoteReplay: !!session.remoteReplay,
+      remoteAimVisual: session.remoteAimVisual,
       winner: session.winner,
       scores: session.scores.slice(),
       stars: session.roomStars || { host: (session.scores[0] || 0), guest: (session.scores[1] || 0) },
@@ -2005,6 +2409,13 @@
     startPractice: startPractice,
     backToLobby: backToLobby,
     applyStrike: applyStrike,
+    beginRemoteReplay: beginRemoteReplay,
+    finishRemoteReplay: finishRemoteReplay,
+    stepRemoteAim: stepRemoteAim,
+    queueRemoteAim: queueRemoteAim,
+    pushNames: pushNames,
+    aimSyncMs: aimSyncMs,
+    lerpAngle: lerpAngle,
     scheduleAi: scheduleAi,
     needsShotClock: needsShotClock,
     resolvePocket: resolvePocket,

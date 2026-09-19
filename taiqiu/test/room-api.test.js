@@ -267,6 +267,27 @@ check('aim snapshot bumps aimSeq only and keeps shotSeq', function () {
   assert.strictEqual(fire.state.shotSeq, 0);
   assert.strictEqual(fire.state.aimSeq, 2);
   assert.strictEqual(fire.state.phase, 'Shot');
+  assert.ok(fire.state.impulse);
+  assert.strictEqual(fire.state.impulse.kind, 'firing');
+  assert.ok(Math.abs(fire.state.impulse.power - 0.9) < 1e-6);
+});
+
+check('aim kind=name updates nicknames without requiring the turn', function () {
+  var store = storeMod.createStore();
+  var made = store.create({ nick: '房主甲', openId: 'h-1' });
+  store.join({ roomId: made.roomId, nick: '好友乙', openId: 'g-1' });
+  var named = store.aim(made.roomId, {
+    fromSeat: 1,
+    token: store.tokenFor(made.roomId, 1),
+    kind: 'name',
+    nick: '微信昵称乙',
+    displayName: '微信昵称乙'
+  });
+  assert.strictEqual(named.ok, true);
+  assert.strictEqual(named.state.nicknames.guest, '微信昵称乙');
+  assert.strictEqual(named.state.nicknames.host, '房主甲');
+  assert.strictEqual(named.state.shotSeq, 0);
+  assert.strictEqual(named.state.phase, 'Aim');
 });
 
 check('GET state after deadline emits foulCode=shotClock, swaps turn, no rerack', function () {
